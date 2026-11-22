@@ -102,6 +102,9 @@ enum ImageCodec {
 
     static func encode(_ runtime: SmalltalkRuntime, workspace: String, transcript: String) throws -> Data {
         guard runtime.activeHomes.isEmpty else { throw SmalltalkError("Images können nur zwischen Ausführungen gespeichert werden.") }
+        if let error = runtime.projectWindows().error {
+            throw SmalltalkError("Image kann nicht gespeichert werden: \(error)")
+        }
         var ids: [ObjectIdentifier: Int] = [:]
         var pending: [Pending] = []
 
@@ -307,6 +310,7 @@ enum ImageCodec {
         guard Set(globals.keys).isDisjoint(with: ["nil", "true", "false", "self", "super", "thisContext"]) else { throw invalid("Reservierte globale Variable.") }
         runtime.globals = globals
         try runtime.installDesktopIfNeeded(workspace: image.workspace)
+        try runtime.installUserInterfaceIfNeeded()
         if let error = runtime.projectWindows().error {
             throw SmalltalkError(error)
         }

@@ -13,12 +13,14 @@ final class ToolWindowState {
     var documentURL: URL?
     var result = "Bereit. Auswahl oder gesamten Workspace mit ⌘D ausführen."
     var error: String?
+    var content: UIElementInfo?
     @ObservationIgnored var changed: (() -> Void)?
 
     init(_ info: ToolWindowInfo) {
         id = info.id
         kind = info.kind
         text = info.text
+        content = info.content
     }
 }
 
@@ -49,6 +51,11 @@ final class AppModel {
     private var hasLoaded = false
     private var restoring = false
     private var dirtyText: Set<Int64> = []
+    private struct InputAddress: Hashable {
+        let windowID: Int64
+        let elementID: String
+    }
+    private var pendingInputs: [InputAddress: String] = [:]
     private var pendingFrames: [Int64: NSRect] = [:]
     private var pendingMinimized: [Int64: Bool] = [:]
     private var pendingClose: Set<Int64> = []
@@ -150,6 +157,7 @@ final class AppModel {
         for info in evaluation.windows {
             if let state = states[info.id], state.kind == info.kind, !replaceBuffers {
                 if !dirtyText.contains(info.id) { state.text = info.text }
+                state.content = info.content
             } else {
                 let state = ToolWindowState(info)
                 state.changed = { [weak self] in
@@ -160,6 +168,15 @@ final class AppModel {
                 states[info.id] = state
             }
         }
+        var visibleInputs: Set<InputAddress> = []
+        func collectInputs(_ node: UIElementInfo, windowID: Int64) {
+            if node.kind == .textField { visibleInputs.insert(InputAddress(windowID: windowID, elementID: node.id)) }
+            for child in node.children { collectInputs(child, windowID: windowID) }
+        }
+        for info in evaluation.windows {
+            if let content = info.content { collectInputs(content, windowID: info.id) }
+        }
+        pendingInputs = pendingInputs.filter { visibleInputs.contains($0.key) }
         restoring = false
         windowInfos = evaluation.windows
         if pendingActive == nil { activeWindowID = evaluation.activeWindowID }
@@ -177,7 +194,7 @@ final class AppModel {
                 y: frame.map { Int64($0.origin.y.rounded()) } ?? info.y,
                 width: frame.map { Int64($0.width.rounded()) } ?? info.width,
                 height: frame.map { Int64($0.height.rounded()) } ?? info.height,
-                minimized: pendingMinimized[info.id] ?? info.minimized
+                minimized: pendingMinimized[info.id] ?? info.minimized, content: info.content
             )
         }
         if let id = pendingActive, let index = visibleWindows.firstIndex(where: { $0.id == id }) {
@@ -201,6 +218,25 @@ final class AppModel {
     @discardableResult
     private func flushWindowState() async -> Bool {
         captureGeometry()
+        // Keep typing local and responsive. Flush every field before a button
+        // action, workspace evaluation or image save so Smalltalk sees the edits.
+        var latestInput: EvaluationResult?
+        var inputOutput = ""
+        for (address, text) in pendingInputs.sorted(by: { $0.key.elementID < $1.key.elementID }) {
+            let evaluation = await session.uiAction(.text(windowID: address.windowID, elementID: address.elementID, value: text))
+            inputOutput += evaluation.transcript
+            if evaluation.executionError != nil {
+                apply(evaluation, appendTranscript: false)
+                states[address.windowID]?.error = evaluation.error
+                transcript += inputOutput
+                return false
+            }
+            states[address.windowID]?.error = nil
+            if pendingInputs[address] == text { pendingInputs.removeValue(forKey: address) }
+            latestInput = evaluation
+        }
+        if let latestInput { apply(latestInput, appendTranscript: false) }
+        transcript += inputOutput
         var actions: [WindowAction] = []
         for id in dirtyText.sorted() {
             if let state = states[id] { actions.append(.text(id, state.text)) }
@@ -221,7 +257,7 @@ final class AppModel {
         for action in actions {
             let evaluation = await session.windowAction(action)
             output += evaluation.transcript
-            if evaluation.error != nil {
+            if evaluation.executionError != nil {
                 // Keep editable text if a Smalltalk setter was changed to reject it.
                 for (id, state) in states where windowInfos.first(where: { $0.id == id })?.text != state.text { dirtyText.insert(id) }
                 apply(evaluation, appendTranscript: false)
@@ -235,6 +271,26 @@ final class AppModel {
         }
         transcript += output
         return true
+    }
+
+    func inputText(windowID: Int64, element: UIElementInfo) -> String {
+        pendingInputs[InputAddress(windowID: windowID, elementID: element.id)] ?? element.text
+    }
+
+    func editInput(windowID: Int64, elementID: String, text: String) {
+        pendingInputs[InputAddress(windowID: windowID, elementID: elementID)] = text
+        imageHasChanges = true
+    }
+
+    func clickControl(windowID: Int64, elementID: String) async {
+        guard !isRunning else { return }
+        isRunning = true
+        defer { isRunning = false }
+        guard await flushWindowState() else { return }
+        let evaluation = await session.uiAction(.click(windowID: windowID, elementID: elementID))
+        apply(evaluation)
+        states[windowID]?.error = evaluation.error
+        imageHasChanges = true
     }
 
     func openTool(_ kind: ToolKind) async {
@@ -379,7 +435,7 @@ final class AppModel {
         do {
             try await session.saveImage(to: url, workspace: workspaceState?.text ?? "", transcript: transcript)
             imageURL = url; preferences.set(url.path, forKey: Self.lastImageKey)
-            imageHasChanges = !dirtyText.isEmpty || !pendingFrames.isEmpty || !pendingMinimized.isEmpty || !pendingClose.isEmpty || pendingActive != nil
+            imageHasChanges = !dirtyText.isEmpty || !pendingInputs.isEmpty || !pendingFrames.isEmpty || !pendingMinimized.isEmpty || !pendingClose.isEmpty || pendingActive != nil
             result = "Image gespeichert: \(url.lastPathComponent)"; error = nil
         } catch { self.error = "Image konnte nicht gespeichert werden: \(error.localizedDescription)" }
     }
@@ -387,6 +443,7 @@ final class AppModel {
     private func clearPending() {
         synchronization?.cancel(); synchronization = nil
         dirtyText.removeAll(); pendingFrames.removeAll(); pendingMinimized.removeAll(); pendingClose.removeAll(); pendingActive = nil
+        pendingInputs.removeAll()
     }
 
     private func restoreImage(from url: URL) async throws {

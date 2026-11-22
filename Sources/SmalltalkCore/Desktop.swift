@@ -1,7 +1,7 @@
 import Foundation
 
 public enum ToolKind: String, CaseIterable, Sendable {
-    case workspace, browser, transcript
+    case workspace, browser, transcript, custom
 }
 
 public struct ToolWindowInfo: Identifiable, Sendable {
@@ -14,8 +14,9 @@ public struct ToolWindowInfo: Identifiable, Sendable {
     public let width: Int64
     public let height: Int64
     public let minimized: Bool
+    public let content: UIElementInfo?
 
-    public init(id: Int64, kind: ToolKind, title: String, text: String, x: Int64, y: Int64, width: Int64, height: Int64, minimized: Bool) {
+    public init(id: Int64, kind: ToolKind, title: String, text: String, x: Int64, y: Int64, width: Int64, height: Int64, minimized: Bool, content: UIElementInfo? = nil) {
         self.id = id
         self.kind = kind
         self.title = title
@@ -25,6 +26,7 @@ public struct ToolWindowInfo: Identifiable, Sendable {
         self.width = width
         self.height = height
         self.minimized = minimized
+        self.content = content
     }
 }
 
@@ -120,6 +122,7 @@ extension SmalltalkRuntime {
                 case .workspace: selector = "openWorkspace"
                 case .browser: selector = "openBrowser"
                 case .transcript: selector = "openTranscript"
+                case .custom: selector = "openWindow"
                 }
                 result = try send(desktop, selector, [])
             case .close(let id): result = try send(desktop, "close:", [window(id)])
@@ -162,7 +165,12 @@ extension SmalltalkRuntime {
                 warning = "Desktop enthält ein ungültiges Fenster; prüfe dessen Instanzvariablen."
                 continue
             }
-            windows.append(ToolWindowInfo(id: id, kind: kind, title: String(title.prefix(256)), text: text, x: Self.coordinate(x), y: Self.coordinate(y), width: Self.windowWidth(width), height: Self.windowHeight(height), minimized: minimized))
+            var content: UIElementInfo?
+            if kind == .custom {
+                do { content = try projectWindowContent(object) }
+                catch { warning = error.localizedDescription }
+            }
+            windows.append(ToolWindowInfo(id: id, kind: kind, title: String(title.prefix(256)), text: text, x: Self.coordinate(x), y: Self.coordinate(y), width: Self.windowWidth(width), height: Self.windowHeight(height), minimized: minimized, content: content))
             if case .object(let selected)? = active, selected === object, !minimized { activeID = id }
         }
         return (windows, activeID, warning)

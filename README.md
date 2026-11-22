@@ -69,6 +69,45 @@ Browser und Transcript werden beim erneuten Öffnen nach vorne geholt. Jeder Auf
 
 Fenstertexte werden vor einer Auswertung oder dem Speichern eines Images an die Smalltalk-Objekte übertragen. Ältere Images ohne Fensterverwaltung erhalten beim Laden die drei Standardfenster; ihr gespeicherter Workspace wird übernommen. Bei dieser Ergänzung werden keine benutzerdefinierten `initialize`-Methoden aufgerufen.
 
+## Oberflächen in Smalltalk
+
+Mit **Beispiele → Eigene Oberfläche** öffnest du ein ausführbares Beispiel. Fenster, Bedienelemente, Layouts und Button-Aktionen sind gewöhnliche Smalltalk-Objekte und Methoden. SwiftUI stellt sie als native macOS-Oberfläche dar.
+
+```smalltalk
+| window column input output button |
+window := UIWindow new.
+window title: 'Begrüßung'.
+input := UITextField new.
+input label: 'Name'; placeholder: 'Dein Name'.
+output := UILabel new.
+output text: 'Bereit.'.
+button := UIButton new.
+button title: 'Begrüßen'.
+button action: [ output text: 'Hallo, ', input text, '!' ].
+column := UIColumn new.
+column padding: 20; spacing: 12.
+column add: input; add: button; add: output.
+window content: column; open
+```
+
+| Klasse | Nachrichten |
+| --- | --- |
+| `UIWindow` | `title:`, `content:`, `open`, `moveToX:y:`, `resizeWidth:height:` |
+| `UILabel` | `text:`, `text` |
+| `UIButton` | `title:`, `action:` (Block ohne Argumente), `click` |
+| `UITextField` | `label:`, `placeholder:`, `text:`, `text` |
+| `UIColumn`, `UIRow` | `add:`, `remove:`, `removeAll`, `children:`, `spacing:`, `padding:` |
+| `UISpacer` | Flexibler Abstand innerhalb einer Zeile oder Spalte |
+| Alle UI-Elemente | `enabled:`; ein deaktiviertes Layout deaktiviert seine enthaltenen Elemente |
+
+Zeilen und Spalten lassen sich verschachteln. `add:` gibt das hinzugefügte Element zurück. `spacing:` akzeptiert 0 bis 128 Punkte, `padding:` 0 bis 256. Eine Oberfläche ist ein Baum mit maximal 512 Elementen und 16 Verschachtelungsebenen; ein Element darf innerhalb eines Fensters nur einmal vorkommen.
+
+Für einen eigenen Fenstertyp leitest du von `UIWindow` ab und baust den Inhalt in `initialize` auf. Das vollständige Beispiel steht in `Examples/GreetingWindow.st`. Einmal über **⌘O** öffnen und ausführen; anschließend öffnet `GreetingWindow new open` weitere unabhängige Exemplare. In Button-Blöcken kannst du Nachrichten wie `[ self greet ]` verwenden und die Methode `greet` später im Browser verändern. Bestehende Fenster verwenden sofort die neue Methode. Auch Unterklassen der Bedienelemente sind möglich.
+
+Texteingaben bleiben während des Tippens flüssig im nativen Feld. Vor einem Button-Klick, einer Smalltalk-Auswertung oder dem Speichern eines Images werden alle Eingaben über `text:` ins Objektmodell übertragen. Ein Button sieht dadurch auch ohne Return oder Fokuswechsel den aktuellen Text. Änderungen aus Smalltalk werden danach wieder angezeigt. Fehler einer Button-Aktion erscheinen im betroffenen eigenen Fenster.
+
+Images erhalten Oberflächen, Eingabewerte, eigene Klassen und die von Aktionen eingefangenen Objekte und lokalen Variablen. Nach dem Laden funktionieren die Buttons weiter. Bereits gespeicherte Images erhalten die neuen UI-Klassen und die fehlenden Öffnungsmethoden, ohne vorhandene Methoden zu ersetzen oder `initialize` auszuführen. Das bisherige `SystemWindow`-Layout bleibt unverändert.
+
 ## Erster Versuch
 
 ```smalltalk

@@ -12,6 +12,7 @@ struct ToolContentView: View {
                 case .workspace: WorkspaceView(model: model, state: state)
                 case .browser: SystemView(model: model)
                 case .transcript: TranscriptView(model: model)
+                case .custom: UserInterfaceView(model: model, state: state)
                 }
             } else {
                 Text("Fenster geschlossen").foregroundStyle(.secondary)
@@ -34,6 +35,7 @@ struct WorkspaceView: View {
                     Button("Arrays und Blöcke") { Task { await model.example(SmalltalkExamples.collections) } }
                     Button("Eine eigene Klasse") { Task { await model.example(SmalltalkExamples.classes) } }
                     Button("Fenster öffnen") { Task { await model.example("window := Desktop openWorkspace.\nwindow title: 'Mein Workspace'.\nwindow text: '6 * 7'") } }
+                    Button("Eigene Oberfläche") { Task { await model.example(SmalltalkExamples.userInterface) } }
                 } label: { Label("Beispiele", systemImage: "text.book.closed") }
                 .disabled(model.isRunning)
                 Button { Task { await model.run(windowID: state.id) } } label: { Label("Do it", systemImage: "play.fill") }

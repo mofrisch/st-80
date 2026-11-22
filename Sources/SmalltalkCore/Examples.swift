@@ -58,6 +58,35 @@ public enum SmalltalkExamples {
     greeter greeting
     """
 
+    public static let userInterface = """
+    "Die Oberfläche und ihre Aktionen bestehen aus Smalltalk-Objekten."
+    | window column nameField greeting buttons greetButton clearButton |
+
+    window := UIWindow new.
+    window title: 'Meine Smalltalk-Oberfläche'.
+
+    nameField := UITextField new.
+    nameField label: 'Name'; placeholder: 'Dein Name'.
+    greeting := UILabel new.
+    greeting text: 'Noch keine Begrüßung.'.
+
+    greetButton := UIButton new.
+    greetButton title: 'Begrüßen'.
+    greetButton action: [ greeting text: 'Hallo, ', nameField text, '!' ].
+    clearButton := UIButton new.
+    clearButton title: 'Leeren'.
+    clearButton action: [ nameField text: ''. greeting text: 'Noch keine Begrüßung.' ].
+
+    buttons := UIRow new.
+    buttons spacing: 12; add: greetButton; add: clearButton.
+    column := UIColumn new.
+    column padding: 20; spacing: 12.
+    column add: nameField; add: buttons; add: greeting.
+
+    window content: column.
+    window open
+    """
+
     public static let precedence = """
     "Unär vor binär vor Keyword.
      Binäre Nachrichten werden von links nach rechts ausgewertet."

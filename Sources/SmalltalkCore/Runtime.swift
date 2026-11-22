@@ -25,6 +25,8 @@ final class STClass {
 }
 
 final class STObject {
+    // Native handles are stable while live and regenerated on image load.
+    let nativeID = UUID().uuidString
     let stClass: STClass
     var fields: [String: Value]
 
@@ -110,6 +112,8 @@ public struct BindingInfo: Identifiable, Sendable {
 public struct EvaluationResult: Sendable {
     public let value: String?
     public let error: String?
+    /// A failed Smalltalk operation, distinct from an invalid native projection.
+    public let executionError: String?
     public let transcript: String
     public let classes: [ClassInfo]
     public let bindings: [BindingInfo]
@@ -187,6 +191,7 @@ final class SmalltalkRuntime {
         if bootstrap {
             _ = run(SmalltalkExamples.bootstrap)
             try? installDesktopIfNeeded(workspace: SmalltalkExamples.workspace)
+            try? installUserInterfaceIfNeeded()
         }
         transcript = ""
     }
@@ -449,6 +454,6 @@ final class SmalltalkRuntime {
             return BindingInfo(name: name, value: printValue(value), className: classOf(value).name)
         }.sorted { $0.name < $1.name }
         let desktop = projectWindows()
-        return EvaluationResult(value: value, error: error ?? desktop.error, transcript: transcript, classes: infos, bindings: bindings, windows: desktop.windows, activeWindowID: desktop.activeID)
+        return EvaluationResult(value: value, error: error ?? desktop.error, executionError: error, transcript: transcript, classes: infos, bindings: bindings, windows: desktop.windows, activeWindowID: desktop.activeID)
     }
 }

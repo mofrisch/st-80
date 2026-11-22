@@ -181,6 +181,7 @@ final class NativeWindowManager {
         case .workspace: NSSize(width: 480, height: 320)
         case .browser: NSSize(width: 750, height: 500)
         case .transcript: NSSize(width: 400, height: 200)
+        case .custom: NSSize(width: 320, height: 160)
         }
     }
 

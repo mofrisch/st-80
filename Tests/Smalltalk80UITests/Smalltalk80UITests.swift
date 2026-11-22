@@ -157,6 +157,104 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertFalse(reopenedSecondWindow.staticTexts["FEHLER"].exists)
     }
 
+    func testSmalltalkFormFlushesInputsBeforeClickAndSurvivesImageRelaunch() throws {
+        continueAfterFailure = false
+        let suite = "dev.moritz.Smalltalk80UITests.\(UUID().uuidString)"
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("st80-ui-form-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let app = XCUIApplication()
+        defer {
+            app.terminate()
+            try? FileManager.default.removeItem(at: directory)
+            UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite)
+        }
+        app.launchEnvironment["ST80_PREFERENCES_SUITE"] = suite
+        app.launch()
+        let editor = app.windows["toolWindow-1"].textViews["workspaceEditor"]
+        replaceText(in: editor, with: """
+        UIWindow subclass: #FormWindow instanceVariableNames: 'firstName surname greeting'.
+        FormWindow compile: 'initialize
+            | column row button |
+            super initialize.
+            self title: ''Smalltalk-Formular''.
+            firstName := UITextField new.
+            firstName label: ''Vorname''; placeholder: ''Dein Vorname''.
+            surname := UITextField new.
+            surname label: ''Nachname''; placeholder: ''Dein Nachname''.
+            greeting := UILabel new.
+            greeting text: ''Bereit.''.
+            button := UIButton new.
+            button title: ''Begrüßen''; action: [ self greet ].
+            row := UIRow new.
+            row spacing: 12; add: firstName; add: surname.
+            column := UIColumn new.
+            column padding: 20; spacing: 12.
+            column add: row; add: button; add: greeting.
+            self content: column'.
+        FormWindow compile: 'greet greeting text: ''Hallo, '', firstName text, '' '', surname text, ''!'''.
+        form := FormWindow new open
+        """)
+        app.windows["toolWindow-1"].buttons["executeButton"].click()
+        let window = app.windows["toolWindow-4"]
+        XCTAssertTrue(window.waitForExistence(timeout: 10))
+        XCTAssertEqual(window.title, "Smalltalk-Formular")
+        let first = window.textFields["Vorname"]
+        let last = window.textFields["Nachname"]
+        XCTAssertTrue(first.waitForExistence(timeout: 5))
+        XCTAssertTrue(last.exists)
+        XCTAssertTrue(first.identifier.hasPrefix("ui-"))
+        XCTAssertNotEqual(first.identifier, last.identifier)
+        XCTAssertNotEqual(first.identifier, window.buttons["Begrüßen"].identifier)
+        XCTAssertLessThan(first.frame.minX, last.frame.minX)
+        first.click()
+        first.typeText("Moritz")
+        last.click()
+        last.typeText("Frisch")
+        window.buttons["Begrüßen"].click()
+        XCTAssertTrue(window.staticTexts["Hallo, Moritz Frisch!"].waitForExistence(timeout: 5))
+
+        first.click()
+        first.typeKey("a", modifierFlags: .command)
+        first.typeText("Ada")
+        last.click()
+        last.typeKey("a", modifierFlags: .command)
+        last.typeText("Lovelace")
+        // Save directly from a field, without Return or another button click.
+        last.typeKey("s", modifierFlags: [.command, .shift])
+        XCTAssertTrue(app.buttons["OKButton"].waitForExistence(timeout: 5))
+        navigateFilePanel(in: app, to: directory.path)
+        app.buttons["OKButton"].click()
+        let image = directory.appendingPathComponent("Smalltalk.stimage")
+        let saved = expectation(for: NSPredicate { _, _ in FileManager.default.fileExists(atPath: image.path) }, evaluatedWith: nil)
+        wait(for: [saved], timeout: 10)
+
+        app.terminate()
+        app.launch()
+        let restored = app.windows["toolWindow-4"]
+        XCTAssertTrue(restored.waitForExistence(timeout: 10))
+        XCTAssertEqual(restored.textFields["Vorname"].value as? String, "Ada")
+        XCTAssertEqual(restored.textFields["Nachname"].value as? String, "Lovelace")
+        restored.buttons["Begrüßen"].click()
+        XCTAssertTrue(restored.staticTexts["Hallo, Ada Lovelace!"].waitForExistence(timeout: 5))
+        let attachment = XCTAttachment(screenshot: restored.screenshot())
+        attachment.name = "Smalltalk form after image relaunch"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+
+        // Projection errors must not prevent the workspace from flushing edits
+        // and evaluating a repair of a malformed UI tree.
+        let workspace = app.windows["toolWindow-1"]
+        let workspaceEditor = workspace.textViews["workspaceEditor"]
+        restored.textFields["Vorname"].typeKey("1", modifierFlags: .command)
+        replaceText(in: workspaceEditor, with: "broken := UIColumn new. form content: broken. broken add: broken")
+        workspace.buttons["executeButton"].click()
+        let error = workspace.staticTexts.containing(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Ungültige Oberfläche", "Ungültige Oberfläche")).firstMatch
+        XCTAssertTrue(error.waitForExistence(timeout: 5))
+        replaceText(in: workspaceEditor, with: "form content: UILabel new. form content text: 'Layout repariert.'")
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(restored.staticTexts["Layout repariert."].waitForExistence(timeout: 5))
+    }
+
     private func launchFreshApp() -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()

@@ -84,6 +84,16 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "E763C158D0D0D4BDA864D939";
 		};
+		"215E9350BD82BB45237011DF" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "UserInterfaceView.swift";
+			"sourceTree" = "<group>";
+		};
+		"D86867657BAAC40C32F0BB62" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "215E9350BD82BB45237011DF";
+		};
 		"BE8A3E618D30795026A4A2C0" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "folder.assetcatalog";
@@ -102,6 +112,7 @@
 				"CEDEEEC32F4E32B65AABDC7C",
 				"028F009E575D1086CF95145C",
 				"E763C158D0D0D4BDA864D939",
+				"215E9350BD82BB45237011DF",
 				"BE8A3E618D30795026A4A2C0",
 			);
 			"name" = "Smalltalk80";
@@ -117,6 +128,7 @@
 				"FF558E34FA4D31E6D7940E13",
 				"E9A3A06101E5E990E08AC83A",
 				"B359C9D34C850F42515A2FE9",
+				"D86867657BAAC40C32F0BB62",
 			);
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};
@@ -190,6 +202,16 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "34CBE9088A9DB65AA6F179AF";
 		};
+		"94548BD53821B77583B63592" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "UserInterface.swift";
+			"sourceTree" = "<group>";
+		};
+		"4A6A4697E64B7565EA5635F6" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "94548BD53821B77583B63592";
+		};
 		"9A1DD6CB9693B13BD0703810" = {
 			"isa" = "PBXGroup";
 			"children" = (
@@ -200,6 +222,7 @@
 				"B1EC01BC2013A89697491AC4",
 				"E94E237EC9E1EFB17D9F8F5C",
 				"34CBE9088A9DB65AA6F179AF",
+				"94548BD53821B77583B63592",
 			);
 			"name" = "SmalltalkCore";
 			"path" = "Sources/SmalltalkCore";
@@ -216,6 +239,7 @@
 				"01219561E51AFE070CDFC87B",
 				"DF3F1B7DC3B9571D95C53929",
 				"34AF2753C628463BFA29C191",
+				"4A6A4697E64B7565EA5635F6",
 			);
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};
@@ -249,12 +273,23 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "E0A5D27593EB899D38A221C7";
 		};
+		"3A423049B79C559E376FB2EB" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "UserInterfaceTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"DE17CA547D3A93CA6CB49E16" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "3A423049B79C559E376FB2EB";
+		};
 		"00D87828BA1863352DC141E0" = {
 			"isa" = "PBXGroup";
 			"children" = (
 				"6657EA69D3229CC166305898",
 				"7BA730601CD9F92A8A7E853F",
 				"E0A5D27593EB899D38A221C7",
+				"3A423049B79C559E376FB2EB",
 			);
 			"name" = "SmalltalkCoreTests";
 			"path" = "Tests/SmalltalkCoreTests";
@@ -267,6 +302,7 @@
 				"7E39317AEF4D6FD8CBB3FE3E",
 				"6CA9A429D19BAEEAF9E463C9",
 				"21A2FEEA544AE92A9EC7B83F",
+				"DE17CA547D3A93CA6CB49E16",
 			);
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};

@@ -7,6 +7,12 @@ final class ApplicationDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        // Use the bundled artwork for Dock and About, bypassing stale system icons.
+        if let icon = Bundle.main.image(forResource: "AppIcon") {
+            NSImage(named: NSImage.applicationIconName)?.setName(nil)
+            icon.setName(NSImage.applicationIconName)
+            NSApp.applicationIconImage = icon
+        }
         Task { await model.load(); NSApp.activate(ignoringOtherApps: true) }
     }
 

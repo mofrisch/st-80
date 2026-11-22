@@ -113,6 +113,8 @@ public struct EvaluationResult: Sendable {
     public let transcript: String
     public let classes: [ClassInfo]
     public let bindings: [BindingInfo]
+    public let windows: [ToolWindowInfo]
+    public let activeWindowID: Int64?
 }
 
 /// An isolated, persistent object space. Evaluations run away from the UI actor.
@@ -182,7 +184,10 @@ final class SmalltalkRuntime {
         add("Transcript")
         globals["Transcript"] = .transcript
         // Bootstrap examples use exactly the same parser and compiler as the workspace.
-        if bootstrap { _ = run(SmalltalkExamples.bootstrap) }
+        if bootstrap {
+            _ = run(SmalltalkExamples.bootstrap)
+            try? installDesktopIfNeeded(workspace: SmalltalkExamples.workspace)
+        }
         transcript = ""
     }
 
@@ -438,10 +443,12 @@ final class SmalltalkRuntime {
             return ClassInfo(name: stClass.name, superclass: stClass.superclass?.name, fields: stClass.fields, methods: methods.sorted { $0.selector < $1.selector })
         }
         let bindings = globals.compactMap { name, value -> BindingInfo? in
+            if name == "Desktop" { return nil }
             if case .classObject = value { return nil }
             if case .transcript = value { return nil }
             return BindingInfo(name: name, value: printValue(value), className: classOf(value).name)
         }.sorted { $0.name < $1.name }
-        return EvaluationResult(value: value, error: error, transcript: transcript, classes: infos, bindings: bindings)
+        let desktop = projectWindows()
+        return EvaluationResult(value: value, error: error ?? desktop.error, transcript: transcript, classes: infos, bindings: bindings, windows: desktop.windows, activeWindowID: desktop.activeID)
     }
 }

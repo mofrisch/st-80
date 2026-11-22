@@ -13,10 +13,10 @@ Das Projekt enthält vier Targets:
 
 | Target | Aufgabe |
 | --- | --- |
-| Smalltalk80 | Native SwiftUI-App mit AppKit-Texteditor |
+| Smalltalk80 | Native macOS-Fenster mit SwiftUI-Inhalt und AppKit-Texteditor |
 | SmalltalkCore | Parser, Objektspeicher, Interpreter und Compiler für Methoden |
-| SmalltalkCoreTests | Sprach- und Sitzungstests |
-| Smalltalk80UITests | Workspace-Auswahl, Methodenänderungen und Image-Neustart über die Oberfläche |
+| SmalltalkCoreTests | Sprach-, Image- und Fenstermodelltests |
+| Smalltalk80UITests | Workspaces, Methodenänderungen, native Fenster und Image-Neustart |
 
 Die lokale App wird ad hoc signiert; zum Ausprobieren ist kein Development Team nötig.
 Voraussetzungen: macOS 14 oder neuer und Xcode mit Swift 6.
@@ -28,8 +28,9 @@ Voraussetzungen: macOS 14 oder neuer und Xcode mit Swift 6.
 - **Browser:** Links eine Klasse und eine Instanzmethode auswählen. Methode bearbeiten und mit **⌘S** akzeptieren. Bereits existierende Objekte verwenden sofort die neue Methode.
 - Über **+** lassen sich Klassen und Methoden anlegen. Im Klassenbrowser stehen die eigenen Methoden; geerbte Methoden findet man bei der Oberklasse.
 - Rechts erscheinen die Workspace-Variablen, ihre Klassen und ihre Werte.
-- **⌘1 / ⌘2:** Zwischen Workspace und Browser wechseln.
-- **⌘O:** UTF-8-Quelltext öffnen. **⌘S** speichert im Workspace den Quelltext als `.st`.
+- **⌘N:** Einen weiteren, unabhängigen Workspace öffnen.
+- **⌘1 / ⌘2 / ⌘3:** Workspace, Browser oder Transcript nach vorne holen.
+- **⌘O:** UTF-8-Quelltext in einem neuen Workspace öffnen. **⌘S** speichert im Workspace den Quelltext als `.st`.
 - Das Menü **Beispiele** enthält Zähler, Arrays und Blöcke, Klassendefinitionen und Nachrichtenreihenfolge.
 
 ## Images speichern und laden
@@ -40,13 +41,33 @@ Voraussetzungen: macOS 14 oder neuer und Xcode mit Swift 6.
 - Beim App-Start wird das zuletzt erfolgreich gespeicherte oder geöffnete Image automatisch geladen. Weitere Änderungen müssen ausdrücklich gespeichert werden; beim Beenden wird die Datei nicht automatisch überschrieben.
 - Rechts stehen der Image-Dateiname und der Speicherstatus. Im Browser Methoden vor dem Speichern mit **⌘S** akzeptieren; noch nicht akzeptierter Methodenquelltext gehört nicht zum Image.
 
-Ein Image erhält Klassen und ihre Hierarchie, akzeptierte Methoden (auch Änderungen an Basisklassen), Workspace-Variablen, Instanzvariablen, Arrays und gespeicherte Blöcke samt lexikalischen Kontexten. Gemeinsam genutzte Referenzen und zyklische Objektgraphen bleiben erhalten. Workspace-Quelltext und Transcript werden ebenfalls gesichert. Nicht mehr erreichbare Objekte werden weggelassen.
+Ein Image erhält Klassen und ihre Hierarchie, akzeptierte Methoden (auch Änderungen an Basisklassen), Workspace-Variablen, Instanzvariablen, Arrays und gespeicherte Blöcke samt lexikalischen Kontexten. Gemeinsam genutzte Referenzen und zyklische Objektgraphen bleiben erhalten. Alle Workspace-Texte, offene Fenster samt Größe, Position, Reihenfolge und Minimierungszustand sowie das Transcript werden ebenfalls gesichert. Nicht mehr erreichbare Objekte werden weggelassen.
 
 Beim Laden wird zuerst eine separate Sitzung vollständig aufgebaut und geprüft. Fehlerhafte oder inkompatible Dateien lassen die bisherige Sitzung bestehen. Gespeicherter Methodenquelltext wird geparst, aber beim Laden wird kein Smalltalk-Code ausgeführt; insbesondere werden keine `initialize`-Methoden aufgerufen. Bereits beendete Rücksprungkontexte von Blöcken bleiben beendet.
 
 **Sitzung zurücksetzen** beginnt einen frischen Stand und löst die automatische Image-Zuordnung. Bereits gespeicherte Dateien bleiben bestehen. **Workspace speichern** mit **⌘S** sichert weiterhin ausschließlich den Quelltext als `.st`.
 
 Das eigene Format ist versioniertes JSON (`format: st80-image`, `version: 1`) mit einer Objekttabelle und Referenz-IDs. Es ist kein historisches Smalltalk-80-Image. Die aktuelle Grenze liegt bei 32 MiB pro Image und 40.000 erreichbaren Referenzobjekten; außerdem gelten die Laufzeitgrenzen des Prototyps.
+
+## Native Fensterverwaltung
+
+Workspace, System Browser und Transcript sind getrennte macOS-Fenster. Sie lassen sich über die normalen Titelleisten verschieben, skalieren, minimieren und schließen. Alle Workspaces teilen dieselbe Smalltalk-Sitzung, behalten aber jeweils ihren eigenen Text, ihre Auswahl und ihr letztes Ausführungsergebnis.
+
+Die Fenster sind gewöhnliche `SystemWindow`-Objekte. Die globale Variable `Desktop` enthält einen `DesktopManager`; seine Smalltalk-Methoden verwalten die Fensterliste und das aktive Fenster. Auch die native Bedienung sendet diese Nachrichten. Die Methoden lassen sich im Browser bearbeiten.
+
+```smalltalk
+window := Desktop openWorkspace.
+window title: 'Mein Workspace'.
+window text: '6 * 7'.
+window moveToX: 180 y: 240.
+window resizeWidth: 700 height: 500
+```
+
+Weitere Befehle sind `Desktop openBrowser`, `Desktop openTranscript`, `Desktop windows`, `Desktop activeWindow`, `Desktop activate: window` und `Desktop close: window`.
+
+Browser und Transcript werden beim erneuten Öffnen nach vorne geholt. Jeder Aufruf von `openWorkspace` erzeugt ein neues Fenster. Bis zu 128 Fenster sind vorgesehen. Die Koordinaten bezeichnen macOS-Bildschirmpunkte mit Ursprung unten links; beim Laden werden Fenster an die verfügbaren Bildschirme angepasst.
+
+Fenstertexte werden vor einer Auswertung oder dem Speichern eines Images an die Smalltalk-Objekte übertragen. Ältere Images ohne Fensterverwaltung erhalten beim Laden die drei Standardfenster; ihr gespeicherter Workspace wird übernommen. Bei dieser Ergänzung werden keine benutzerdefinierten `initialize`-Methoden aufgerufen.
 
 ## Erster Versuch
 
@@ -95,6 +116,18 @@ Für den Prototyp gelten bewusste Vereinfachungen:
 - Strings sind Unicode-Werte; `at:` liefert einen String mit einem Zeichen. `==` vergleicht bei Strings deren Wert. Character, Fraction, Float und LargeInteger fehlen.
 - Der Objektspeicher verwendet zunächst eine Arena und wird beim Zurücksetzen freigegeben. Ein Garbage Collector, Prozesse, Debugger und BitBlt fehlen noch.
 - Derzeit sind bis zu 100.000 Ausführungsschritte, 128 Aufrufebenen, 32 syntaktische Verschachtelungen, 20.000 Arena-Einträge und 4.096 Elemente pro Array vorgesehen. Fehler machen bereits ausgeführte Änderungen nicht rückgängig.
+
+## App-Icon
+
+Das App-Icon verbindet überlappende Programmfenster mit einer Nachrichtenblase. Die transparente Originalgrafik liegt in `Design/AppIcon.png`, die verwendeten ImageGen-Prompts in `Design/AppIcon-prompt.txt`.
+
+Das Xcode-Target verwendet `Assets.xcassets/AppIcon.appiconset` mit allen zehn macOS-Größen von 16 bis 1024 Pixeln. Die Ableitungen lassen sich mit den macOS-Bordmitteln erneut erzeugen:
+
+```sh
+python3 scripts/prepare-app-icon.py Design/AppIcon.png
+```
+
+Der Projektgenerator erhält die Asset-Katalog-Zuordnung und die App-Icon-Einstellung für Debug und Release.
 
 ## Prüfen und bauen
 

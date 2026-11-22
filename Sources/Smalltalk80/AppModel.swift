@@ -3,38 +3,58 @@ import SmalltalkCore
 import SwiftUI
 import UniformTypeIdentifiers
 
-enum EditorMode: String, CaseIterable {
-    case workspace = "Workspace"
-    case browser = "Browser"
+@MainActor
+@Observable
+final class ToolWindowState {
+    let id: Int64
+    let kind: ToolKind
+    var text: String { didSet { if text != oldValue { changed?() } } }
+    var selection = NSRange(location: 0, length: 0)
+    var documentURL: URL?
+    var result = "Bereit. Auswahl oder gesamten Workspace mit ⌘D ausführen."
+    var error: String?
+    @ObservationIgnored var changed: (() -> Void)?
+
+    init(_ info: ToolWindowInfo) {
+        id = info.id
+        kind = info.kind
+        text = info.text
+    }
 }
 
 @MainActor
 @Observable
 final class AppModel {
-    var mode = EditorMode.workspace
-    var workspace = SmalltalkExamples.workspace {
-        didSet { if workspace != oldValue { imageHasChanges = true } }
-    }
-    var workspaceSelection = NSRange(location: 0, length: 0)
-    var methodSource = ""
-    var methodSelection = NSRange(location: 0, length: 0)
+    var states: [Int64: ToolWindowState] = [:]
+    var windowInfos: [ToolWindowInfo] = []
+    var activeWindowID: Int64?
+    var lastWorkspaceID: Int64?
     var selectedClass: String? = "Counter"
     var selectedMethod: String?
+    var methodSource = ""
+    var methodSelection = NSRange(location: 0, length: 0)
     var classes: [ClassInfo] = []
     var bindings: [BindingInfo] = []
-    var transcript = "" {
-        didSet { if transcript != oldValue { imageHasChanges = true } }
-    }
-    var result = "Bereit. Markiere einen Ausdruck oder führe den Workspace aus."
+    var transcript = "" { didSet { if transcript != oldValue && !restoring { imageHasChanges = true } } }
+    var result = "Bereit."
     var error: String?
-    var isRunning = false
+    var isRunning = false {
+        didSet { if !isRunning { scheduleSynchronization() } }
+    }
     var search = ""
-    var workspaceURL: URL?
     var imageURL: URL?
     var imageHasChanges = true
     private let session = SmalltalkSession()
     private let preferences: UserDefaults
     private var hasLoaded = false
+    private var restoring = false
+    private var dirtyText: Set<Int64> = []
+    private var pendingFrames: [Int64: NSRect] = [:]
+    private var pendingMinimized: [Int64: Bool] = [:]
+    private var pendingClose: Set<Int64> = []
+    private var pendingActive: Int64?
+    private var synchronization: Task<Void, Never>?
+    @ObservationIgnored private var nativeWindows: NativeWindowManager?
     private static let lastImageKey = "lastImagePath"
     private static var imageType: UTType { UTType(filenameExtension: "stimage", conformingTo: .data) ?? .data }
 
@@ -43,6 +63,11 @@ final class AppModel {
         preferences = suite.flatMap { UserDefaults(suiteName: $0) } ?? .standard
     }
 
+    var activeKind: ToolKind? { activeWindowID.flatMap { states[$0]?.kind } }
+    var workspaceState: ToolWindowState? {
+        if let id = activeWindowID, let state = states[id], state.kind == .workspace { return state }
+        return lastWorkspaceID.flatMap { states[$0] }
+    }
     var currentClass: ClassInfo? { classes.first { $0.name == selectedClass } }
     var currentMethod: MethodInfo? { currentClass?.methods.first { $0.selector == selectedMethod } }
     var isPrimitive: Bool { currentMethod?.isPrimitive == true }
@@ -51,37 +76,197 @@ final class AppModel {
     func load() async {
         guard !hasLoaded else { return }
         hasLoaded = true
+        nativeWindows = NativeWindowManager(
+            content: { [weak self] id in
+                guard let self else { return AnyView(EmptyView()) }
+                return AnyView(ToolContentView(model: self, windowID: id))
+            },
+            onActivate: { [weak self] id in self?.activated(id) },
+            onClose: { [weak self] id in
+                self?.pendingClose.insert(id)
+                self?.scheduleSynchronization()
+            },
+            onFrame: { [weak self] id, frame in
+                self?.pendingFrames[id] = frame
+                self?.imageHasChanges = true
+                self?.scheduleSynchronization()
+            },
+            onMinimize: { [weak self] id, minimized in
+                self?.pendingMinimized[id] = minimized
+                self?.imageHasChanges = true
+                self?.scheduleSynchronization()
+            }
+        )
         isRunning = true
         defer { isRunning = false }
-        apply(await session.snapshot())
         if let path = preferences.string(forKey: Self.lastImageKey) {
-            do { try await restoreImage(from: URL(fileURLWithPath: path)) }
+            do { try await restoreImage(from: URL(fileURLWithPath: path)); return }
             catch { self.error = "Das letzte Image konnte nicht geladen werden: \(error.localizedDescription)" }
+        }
+        let failure = error
+        apply(await session.snapshot(), replaceBuffers: true)
+        error = failure
+    }
+
+    private func activated(_ id: Int64) {
+        guard states[id] != nil, activeWindowID != id else { return }
+        activeWindowID = id
+        if states[id]?.kind == .workspace { lastWorkspaceID = id }
+        pendingActive = id
+        imageHasChanges = true
+        scheduleSynchronization()
+    }
+
+    private func scheduleSynchronization() {
+        // Native focus and geometry are flushed before the next interpreter job.
+        // Merely clicking into an editor must not briefly disable text input.
+        guard hasLoaded, !isRunning, synchronization == nil, !pendingClose.isEmpty else { return }
+        synchronization = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(120))
+            guard let self else { return }
+            self.synchronization = nil
+            guard !self.isRunning else { return }
+            self.isRunning = true
+            await self.flushWindowState()
+            self.isRunning = false
         }
     }
 
-    func apply(_ evaluation: EvaluationResult) {
+    private func apply(_ evaluation: EvaluationResult, replaceBuffers: Bool = false, appendTranscript: Bool = true) {
         classes = evaluation.classes
         bindings = evaluation.bindings
         error = evaluation.error
         if let value = evaluation.value { result = value }
-        transcript += evaluation.transcript
-        // Keep a useful recent history even across many executions.
+        if appendTranscript { transcript += evaluation.transcript }
         if transcript.count > 100_000 { transcript = String(transcript.suffix(80_000)) }
+        restoring = true
+        let ids = Set(evaluation.windows.map(\.id))
+        states = states.filter { ids.contains($0.key) }
+        dirtyText.formIntersection(ids)
+        pendingFrames = pendingFrames.filter { ids.contains($0.key) }
+        pendingMinimized = pendingMinimized.filter { ids.contains($0.key) }
+        pendingClose.formIntersection(ids)
+        if let id = pendingActive, !ids.contains(id) { pendingActive = nil }
+        for info in evaluation.windows {
+            if let state = states[info.id], state.kind == info.kind, !replaceBuffers {
+                if !dirtyText.contains(info.id) { state.text = info.text }
+            } else {
+                let state = ToolWindowState(info)
+                state.changed = { [weak self] in
+                    guard let self, !self.restoring else { return }
+                    self.dirtyText.insert(info.id)
+                    self.imageHasChanges = true
+                }
+                states[info.id] = state
+            }
+        }
+        restoring = false
+        windowInfos = evaluation.windows
+        if pendingActive == nil { activeWindowID = evaluation.activeWindowID }
+        if let id = activeWindowID, states[id]?.kind == .workspace { lastWorkspaceID = id }
+        if lastWorkspaceID.flatMap({ states[$0] }) == nil {
+            lastWorkspaceID = evaluation.windows.first { $0.kind == .workspace }?.id
+        }
+        // Native events may arrive while an interpreter job is running. Project
+        // those newer events over its snapshot without delaying newly opened tools.
+        var visibleWindows = evaluation.windows.map { info in
+            let frame = pendingFrames[info.id]
+            return ToolWindowInfo(
+                id: info.id, kind: info.kind, title: info.title, text: info.text,
+                x: frame.map { Int64($0.origin.x.rounded()) } ?? info.x,
+                y: frame.map { Int64($0.origin.y.rounded()) } ?? info.y,
+                width: frame.map { Int64($0.width.rounded()) } ?? info.width,
+                height: frame.map { Int64($0.height.rounded()) } ?? info.height,
+                minimized: pendingMinimized[info.id] ?? info.minimized
+            )
+        }
+        if let id = pendingActive, let index = visibleWindows.firstIndex(where: { $0.id == id }) {
+            let front = visibleWindows.remove(at: index)
+            visibleWindows.append(front)
+        }
+        nativeWindows?.synchronize(visibleWindows, activeID: pendingActive ?? evaluation.activeWindowID)
     }
 
-    func run(printResult: Bool = false) async {
+    private func captureGeometry() {
+        for (id, frame) in nativeWindows?.captureFrames() ?? [:] {
+            guard let saved = windowInfos.first(where: { $0.id == id }) else { continue }
+            if saved.x != Int64(frame.origin.x.rounded()) || saved.y != Int64(frame.origin.y.rounded()) ||
+                saved.width != Int64(frame.width.rounded()) || saved.height != Int64(frame.height.rounded()) {
+                pendingFrames[id] = frame
+            }
+        }
+    }
+
+    /// Flush local edits before evaluating Smalltalk or taking an image snapshot.
+    @discardableResult
+    private func flushWindowState() async -> Bool {
+        captureGeometry()
+        var actions: [WindowAction] = []
+        for id in dirtyText.sorted() {
+            if let state = states[id] { actions.append(.text(id, state.text)) }
+        }
+        dirtyText.removeAll()
+        for (id, frame) in pendingFrames.sorted(by: { $0.key < $1.key }) {
+            actions.append(.frame(id, x: Int64(frame.origin.x.rounded()), y: Int64(frame.origin.y.rounded()), width: Int64(frame.width.rounded()), height: Int64(frame.height.rounded())))
+        }
+        pendingFrames.removeAll()
+        for (id, minimized) in pendingMinimized { actions.append(.minimize(id, minimized)) }
+        pendingMinimized.removeAll()
+        if let id = pendingActive { actions.append(.activate(id)) }
+        pendingActive = nil
+        for id in pendingClose.sorted() { actions.append(.close(id)) }
+        pendingClose.removeAll()
+        var latest: EvaluationResult?
+        var output = ""
+        for action in actions {
+            let evaluation = await session.windowAction(action)
+            output += evaluation.transcript
+            if evaluation.error != nil {
+                // Keep editable text if a Smalltalk setter was changed to reject it.
+                for (id, state) in states where windowInfos.first(where: { $0.id == id })?.text != state.text { dirtyText.insert(id) }
+                apply(evaluation, appendTranscript: false)
+                transcript += output
+                return false
+            }
+            latest = evaluation
+        }
+        if let latest {
+            apply(latest, appendTranscript: false)
+        }
+        transcript += output
+        return true
+    }
+
+    func openTool(_ kind: ToolKind) async {
         guard !isRunning else { return }
         isRunning = true
         defer { isRunning = false }
-        let source: String
-        let text = workspace as NSString
-        if workspaceSelection.length > 0, NSMaxRange(workspaceSelection) <= text.length {
-            source = text.substring(with: workspaceSelection)
-        } else { source = workspace }
+        guard await flushWindowState() else { return }
+        apply(await session.windowAction(.open(kind)))
+        imageHasChanges = true
+    }
+
+    func showWorkspace() async {
+        guard !isRunning else { return }
+        guard let id = workspaceState?.id else { await openTool(.workspace); return }
+        isRunning = true
+        defer { isRunning = false }
+        guard await flushWindowState() else { return }
+        apply(await session.windowAction(.activate(id)))
+    }
+
+    func run(windowID: Int64? = nil, printResult: Bool = false) async {
+        guard !isRunning, let state = windowID.flatMap({ states[$0] }) ?? workspaceState, state.kind == .workspace else { return }
+        isRunning = true
+        defer { isRunning = false }
+        let text = state.text as NSString
+        let selection = state.selection
+        let source = selection.length > 0 && NSMaxRange(selection) <= text.length ? text.substring(with: selection) : state.text
+        guard await flushWindowState() else { return }
         let evaluation = await session.evaluate(source)
         apply(evaluation)
-        // An evaluation may change reachable objects even when it ends in an error.
+        state.result = evaluation.value ?? ""
+        state.error = evaluation.error
         imageHasChanges = true
         if printResult, let value = evaluation.value { transcript += "→ \(value)\n" }
     }
@@ -90,6 +275,7 @@ final class AppModel {
         guard !isRunning, let selectedClass, !isPrimitive else { return }
         isRunning = true
         defer { isRunning = false }
+        guard await flushWindowState() else { return }
         let evaluation = await session.compile(methodSource, in: selectedClass)
         apply(evaluation)
         if evaluation.error == nil {
@@ -102,36 +288,20 @@ final class AppModel {
         selectedMethod = nil
         methodSource = ""
         methodSelection = NSRange(location: 0, length: 0)
-        mode = .browser
     }
-
-    func chooseMethod() {
-        methodSource = currentMethod?.source ?? ""
-        methodSelection = NSRange(location: 0, length: 0)
-        mode = .browser
-    }
-
-    func newMethod() {
-        selectedMethod = nil
-        methodSource = "newMethod\n    ^ self"
-        methodSelection = NSRange(location: 0, length: 0)
-        mode = .browser
-    }
+    func chooseMethod() { methodSource = currentMethod?.source ?? ""; methodSelection = NSRange(location: 0, length: 0) }
+    func newMethod() { selectedMethod = nil; methodSource = "newMethod\n    ^ self"; methodSelection = NSRange(location: 0, length: 0) }
 
     func createClass(name: String, fields: String) async -> Bool {
         guard !isRunning else { return false }
         isRunning = true
         defer { isRunning = false }
-        let escapedName = name.replacingOccurrences(of: "'", with: "''")
-        let escapedFields = fields.replacingOccurrences(of: "'", with: "''")
-        let evaluation = await session.evaluate("Object subclass: #'\(escapedName)' instanceVariableNames: '\(escapedFields)'")
+        guard await flushWindowState() else { return false }
+        let nameLiteral = name.replacingOccurrences(of: "'", with: "''")
+        let fieldsLiteral = fields.replacingOccurrences(of: "'", with: "''")
+        let evaluation = await session.evaluate("Object subclass: #'\(nameLiteral)' instanceVariableNames: '\(fieldsLiteral)'")
         apply(evaluation)
-        if evaluation.error == nil {
-            imageHasChanges = true
-            selectedClass = name
-            newMethod()
-            return true
-        }
+        if evaluation.error == nil { imageHasChanges = true; selectedClass = name; newMethod(); return true }
         return false
     }
 
@@ -139,25 +309,20 @@ final class AppModel {
         guard !isRunning else { return }
         isRunning = true
         defer { isRunning = false }
-        apply(await session.reset())
-        selectedClass = "Counter"
-        selectedMethod = nil
-        methodSource = ""
-        result = "Neue Sitzung. Counter und die Basisklassen sind bereit."
-        transcript = ""
-        imageURL = nil
-        imageHasChanges = true
+        clearPending()
+        apply(await session.reset(), replaceBuffers: true)
+        selectedClass = "Counter"; selectedMethod = nil; methodSource = ""
+        transcript = ""; imageURL = nil; imageHasChanges = true
         preferences.removeObject(forKey: Self.lastImageKey)
     }
 
-    func example(_ text: String) {
-        workspace = text
-        workspaceSelection = NSRange(location: 0, length: 0)
-        workspaceURL = nil
-        mode = .workspace
+    func example(_ text: String) async {
+        await openTool(.workspace)
+        workspaceState?.text = text
+        workspaceState?.selection = NSRange(location: 0, length: 0)
     }
 
-    func openWorkspace() {
+    func openWorkspace() async {
         guard !isRunning else { return }
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.plainText, UTType(filenameExtension: "st") ?? .plainText]
@@ -165,23 +330,20 @@ final class AppModel {
         panel.canChooseDirectories = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
-            example(try String(contentsOf: url, encoding: .utf8))
-            workspaceURL = url
+            let source = try String(contentsOf: url, encoding: .utf8)
+            await example(source)
+            workspaceState?.documentURL = url
         } catch { self.error = error.localizedDescription }
     }
 
     func saveWorkspace() {
-        guard !isRunning else { return }
+        guard !isRunning, let state = workspaceState else { return }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [UTType(filenameExtension: "st") ?? .plainText]
-        panel.nameFieldStringValue = workspaceURL?.lastPathComponent ?? "Workspace.st"
+        panel.nameFieldStringValue = state.documentURL?.lastPathComponent ?? "Workspace.st"
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            try workspace.write(to: url, atomically: true, encoding: .utf8)
-            workspaceURL = url
-            result = "Workspace gespeichert: \(url.lastPathComponent)"
-            error = nil
-        } catch { self.error = error.localizedDescription }
+        do { try state.text.write(to: url, atomically: true, encoding: .utf8); state.documentURL = url; error = nil }
+        catch { self.error = error.localizedDescription }
     }
 
     func openImage() async {
@@ -210,39 +372,31 @@ final class AppModel {
             panel.allowedContentTypes = [Self.imageType]
             panel.nameFieldStringValue = imageURL?.lastPathComponent ?? "Smalltalk.stimage"
             panel.directoryURL = imageURL?.deletingLastPathComponent()
-            guard panel.runModal() == .OK, let selectedURL = panel.url else { return }
-            url = selectedURL
+            guard panel.runModal() == .OK, let chosen = panel.url else { return }
+            url = chosen
         }
-        let savedWorkspace = workspace
-        let savedTranscript = transcript
+        guard await flushWindowState() else { return }
         do {
-            try await session.saveImage(to: url, workspace: savedWorkspace, transcript: savedTranscript)
-            imageURL = url
-            preferences.set(url.path, forKey: Self.lastImageKey)
-            imageHasChanges = workspace != savedWorkspace || transcript != savedTranscript
-            result = "Image gespeichert: \(url.lastPathComponent)"
-            error = nil
+            try await session.saveImage(to: url, workspace: workspaceState?.text ?? "", transcript: transcript)
+            imageURL = url; preferences.set(url.path, forKey: Self.lastImageKey)
+            imageHasChanges = !dirtyText.isEmpty || !pendingFrames.isEmpty || !pendingMinimized.isEmpty || !pendingClose.isEmpty || pendingActive != nil
+            result = "Image gespeichert: \(url.lastPathComponent)"; error = nil
         } catch { self.error = "Image konnte nicht gespeichert werden: \(error.localizedDescription)" }
     }
 
+    private func clearPending() {
+        synchronization?.cancel(); synchronization = nil
+        dirtyText.removeAll(); pendingFrames.removeAll(); pendingMinimized.removeAll(); pendingClose.removeAll(); pendingActive = nil
+    }
+
     private func restoreImage(from url: URL) async throws {
-        // The session swaps its runtime only after the complete image is valid.
         let image = try await session.loadImage(from: url)
-        apply(image.evaluation)
-        workspace = image.workspace
+        clearPending()
+        apply(image.evaluation, replaceBuffers: true)
         transcript = image.transcript
-        workspaceURL = nil
-        workspaceSelection = NSRange(location: 0, length: 0)
-        if !classes.contains(where: { $0.name == selectedClass }) { selectedClass = classes.first?.name }
-        selectedMethod = nil
-        methodSource = ""
-        methodSelection = NSRange(location: 0, length: 0)
-        mode = .workspace
-        search = ""
-        imageURL = url
-        imageHasChanges = false
+        selectedMethod = nil; methodSource = ""; methodSelection = NSRange(location: 0, length: 0)
+        search = ""; imageURL = url; imageHasChanges = false
         preferences.set(url.path, forKey: Self.lastImageKey)
-        result = "Image geladen: \(url.lastPathComponent)"
-        error = nil
+        result = "Image geladen: \(url.lastPathComponent)"; error = nil
     }
 }

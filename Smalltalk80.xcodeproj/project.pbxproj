@@ -54,6 +54,16 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "B723385D74CB44129972153E";
 		};
+		"CEDEEEC32F4E32B65AABDC7C" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "NativeWindows.swift";
+			"sourceTree" = "<group>";
+		};
+		"FF558E34FA4D31E6D7940E13" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "CEDEEEC32F4E32B65AABDC7C";
+		};
 		"028F009E575D1086CF95145C" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -74,13 +84,25 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "E763C158D0D0D4BDA864D939";
 		};
+		"BE8A3E618D30795026A4A2C0" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "folder.assetcatalog";
+			"path" = "Assets.xcassets";
+			"sourceTree" = "<group>";
+		};
+		"8188C47FD287E80EDA873C0C" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "BE8A3E618D30795026A4A2C0";
+		};
 		"EA793748BEC3E34E43961730" = {
 			"isa" = "PBXGroup";
 			"children" = (
 				"024B7EF8617F44DCD58FF08F",
 				"B723385D74CB44129972153E",
+				"CEDEEEC32F4E32B65AABDC7C",
 				"028F009E575D1086CF95145C",
 				"E763C158D0D0D4BDA864D939",
+				"BE8A3E618D30795026A4A2C0",
 			);
 			"name" = "Smalltalk80";
 			"path" = "Sources/Smalltalk80";
@@ -92,10 +114,21 @@
 			"files" = (
 				"1E8F38222724BE1C9F95BB6D",
 				"0CA934880AB2CC8FA4FF6030",
+				"FF558E34FA4D31E6D7940E13",
 				"E9A3A06101E5E990E08AC83A",
 				"B359C9D34C850F42515A2FE9",
 			);
 			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"1AFACABD9C86CAD43A4EED59" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Desktop.swift";
+			"sourceTree" = "<group>";
+		};
+		"B8C0963C5E991F6947873A94" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "1AFACABD9C86CAD43A4EED59";
 		};
 		"C9A31D27656994C0E2798086" = {
 			"isa" = "PBXFileReference";
@@ -160,6 +193,7 @@
 		"9A1DD6CB9693B13BD0703810" = {
 			"isa" = "PBXGroup";
 			"children" = (
+				"1AFACABD9C86CAD43A4EED59",
 				"C9A31D27656994C0E2798086",
 				"33B1895A79D8F6ED4ADD59E2",
 				"109758B7E5C241A2E0740964",
@@ -175,6 +209,7 @@
 			"isa" = "PBXSourcesBuildPhase";
 			"buildActionMask" = "2147483647";
 			"files" = (
+				"B8C0963C5E991F6947873A94",
 				"858CDD75F7CBE4DAF9ED8219",
 				"F6F9D25834FE780A4D31475B",
 				"79D0B5764AFA0A9EEE2057B1",
@@ -183,6 +218,16 @@
 				"34AF2753C628463BFA29C191",
 			);
 			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"6657EA69D3229CC166305898" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "DesktopTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"7E39317AEF4D6FD8CBB3FE3E" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "6657EA69D3229CC166305898";
 		};
 		"7BA730601CD9F92A8A7E853F" = {
 			"isa" = "PBXFileReference";
@@ -207,6 +252,7 @@
 		"00D87828BA1863352DC141E0" = {
 			"isa" = "PBXGroup";
 			"children" = (
+				"6657EA69D3229CC166305898",
 				"7BA730601CD9F92A8A7E853F",
 				"E0A5D27593EB899D38A221C7",
 			);
@@ -218,6 +264,7 @@
 			"isa" = "PBXSourcesBuildPhase";
 			"buildActionMask" = "2147483647";
 			"files" = (
+				"7E39317AEF4D6FD8CBB3FE3E",
 				"6CA9A429D19BAEEAF9E463C9",
 				"21A2FEEA544AE92A9EC7B83F",
 			);
@@ -382,7 +429,7 @@
 			"isa" = "PBXResourcesBuildPhase";
 			"buildActionMask" = "2147483647";
 			"files" = (
-
+				"8188C47FD287E80EDA873C0C",
 			);
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};
@@ -404,6 +451,7 @@
 				"INFOPLIST_KEY_CFBundleDisplayName" = "Smalltalk/80";
 				"INFOPLIST_KEY_LSApplicationCategoryType" = "public.app-category.developer-tools";
 				"INFOPLIST_KEY_NSPrincipalClass" = "NSApplication";
+				"ASSETCATALOG_COMPILER_APPICON_NAME" = "AppIcon";
 				"ENABLE_HARDENED_RUNTIME" = "YES";
 			};
 		};
@@ -425,6 +473,7 @@
 				"INFOPLIST_KEY_CFBundleDisplayName" = "Smalltalk/80";
 				"INFOPLIST_KEY_LSApplicationCategoryType" = "public.app-category.developer-tools";
 				"INFOPLIST_KEY_NSPrincipalClass" = "NSApplication";
+				"ASSETCATALOG_COMPILER_APPICON_NAME" = "AppIcon";
 				"ENABLE_HARDENED_RUNTIME" = "YES";
 			};
 		};

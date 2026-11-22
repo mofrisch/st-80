@@ -306,6 +306,10 @@ enum ImageCodec {
         }
         guard Set(globals.keys).isDisjoint(with: ["nil", "true", "false", "self", "super", "thisContext"]) else { throw invalid("Reservierte globale Variable.") }
         runtime.globals = globals
+        try runtime.installDesktopIfNeeded(workspace: image.workspace)
+        if let error = runtime.projectWindows().error {
+            throw SmalltalkError(error)
+        }
         let contents = LoadedImage(evaluation: runtime.snapshot(), workspace: image.workspace, transcript: image.transcript)
         return (runtime, contents)
     }

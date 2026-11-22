@@ -58,6 +58,7 @@ product_refs = {
 
 groups = []
 source_phases = {}
+resource_builds = {}
 for name in products:
     directory = Path("Tests" if name.endswith("Tests") else "Sources") / name
     refs, builds = [], []
@@ -65,6 +66,11 @@ for name in products:
         ref = add(f"File.{directory}/{source.name}", "PBXFileReference", lastKnownFileType="sourcecode.swift", path=source.name, sourceTree="<group>")
         refs.append(ref)
         builds.append(add(f"Build.{name}.{source.name}", "PBXBuildFile", fileRef=ref))
+    resource_builds[name] = []
+    if name == "Smalltalk80":
+        catalog = add(f"File.{directory}/Assets.xcassets", "PBXFileReference", lastKnownFileType="folder.assetcatalog", path="Assets.xcassets", sourceTree="<group>")
+        refs.append(catalog)
+        resource_builds[name].append(add("Build.Smalltalk80.Assets.xcassets", "PBXBuildFile", fileRef=catalog))
     groups.append(add(f"Group.{name}", "PBXGroup", children=refs, name=name, path=str(directory), sourceTree="<group>"))
     source_phases[name] = add(f"Sources.{name}", "PBXSourcesBuildPhase", buildActionMask=2147483647, files=builds, runOnlyForDeploymentPostprocessing=0)
 
@@ -102,7 +108,7 @@ for name, (_, _, product_type) in products.items():
         proxy = add("Proxy.UI.App", "PBXContainerItemProxy", containerPortal=uid("Project"), proxyType=1, remoteGlobalIDString=uid("Target.Smalltalk80"), remoteInfo="Smalltalk80")
         dependencies.append(add("Dependency.UI.App", "PBXTargetDependency", target=uid("Target.Smalltalk80"), targetProxy=proxy))
     framework_phase = add(f"Frameworks.{name}", "PBXFrameworksBuildPhase", buildActionMask=2147483647, files=frameworks, runOnlyForDeploymentPostprocessing=0)
-    resource_phase = add(f"Resources.{name}", "PBXResourcesBuildPhase", buildActionMask=2147483647, files=[], runOnlyForDeploymentPostprocessing=0)
+    resource_phase = add(f"Resources.{name}", "PBXResourcesBuildPhase", buildActionMask=2147483647, files=resource_builds[name], runOnlyForDeploymentPostprocessing=0)
     settings = {
         "PRODUCT_NAME": "$(TARGET_NAME)",
         "PRODUCT_BUNDLE_IDENTIFIER": f"dev.moritz.{name}",
@@ -116,6 +122,7 @@ for name, (_, _, product_type) in products.items():
             "INFOPLIST_KEY_CFBundleDisplayName": "Smalltalk/80",
             "INFOPLIST_KEY_LSApplicationCategoryType": "public.app-category.developer-tools",
             "INFOPLIST_KEY_NSPrincipalClass": "NSApplication",
+            "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
             "ENABLE_HARDENED_RUNTIME": "YES",
         })
     elif name == "SmalltalkCore":

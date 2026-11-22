@@ -10,7 +10,11 @@ let package = Package(
     ],
     targets: [
         .target(name: "SmalltalkCore"),
-        .executableTarget(name: "Smalltalk80", dependencies: ["SmalltalkCore"]),
+        .executableTarget(
+            name: "Smalltalk80",
+            dependencies: ["SmalltalkCore"],
+            exclude: ["Assets.xcassets"]
+        ),
         .testTarget(name: "SmalltalkCoreTests", dependencies: ["SmalltalkCore"]),
     ]
 )

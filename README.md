@@ -37,7 +37,8 @@ Local builds use ad hoc signing, so you can run the app without a development te
 - **⌘⇧S — Save Image** saves the running session as a `.stimage` file. The first save opens the native file dialog. Subsequent saves replace the same file atomically.
 - **⌘⌥⇧S — Save Image As …** saves to another image file.
 - **⌘⇧O — Open Image …** replaces the session with a saved one.
-- The app loads the last successfully saved or opened image at launch. Save subsequent changes explicitly. Quitting leaves the last saved file as it was.
+- The app loads the last successfully saved or opened image at launch.
+- When you quit with unsaved changes, choose **Save**, **Don’t Save**, or **Cancel**. The app stays open if you cancel the save or if saving fails.
 - The image bar shows the file name and save status. Accept browser edits with **⌘S** before saving an image. The image stores accepted methods.
 
 An image preserves classes and their hierarchy, accepted methods (including changes to built-in classes), workspace variables, instance variables, arrays, and saved blocks with their lexical contexts. It preserves shared references and cyclic object graphs. It also saves all workspace buffers, open windows with their size, position, order, and minimized state, and the Transcript. Unreachable objects are omitted.

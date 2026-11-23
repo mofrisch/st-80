@@ -181,8 +181,11 @@ private struct UIElementView: View {
         case "imageName":
             Text(controller.imageURL?.lastPathComponent ?? "No image saved yet").font(.caption.weight(.medium))
         case "imageStatus":
-            Text(controller.imageHasChanges ? "Unsaved changes" : "Saved")
-                .font(.caption).foregroundStyle(.secondary)
+            if controller.imageHasChanges {
+                Text("Unsaved changes").font(.caption).foregroundStyle(.secondary)
+            } else if controller.imageURL != nil {
+                Text("Saved").font(.caption).foregroundStyle(.secondary)
+            }
         default: Text(element.text)
         }
     }

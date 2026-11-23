@@ -3,6 +3,84 @@ import XCTest
 
 @MainActor
 final class Smalltalk80UITests: XCTestCase {
+    func testQuitSavesPendingWorkspaceDraftAndReopensCleanly() throws {
+        continueAfterFailure = false
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("st80-quit-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let suite = "dev.moritz.Smalltalk80UITests.\(UUID().uuidString)"
+        defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
+        let app = XCUIApplication()
+        app.launchEnvironment["ST80_PREFERENCES_SUITE"] = suite
+        app.launch()
+        let editor = app.windows["toolWindow-1"].textViews["workspaceEditor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        app.typeKey("q", modifierFlags: .command)
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 5))
+
+        app.launch()
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        let source = "Do not evaluate this draft"
+        replaceText(in: editor, with: source)
+        let save = app.buttons["Save"]
+        let cancel = app.buttons["Cancel"]
+        editor.typeKey("q", modifierFlags: .command)
+        XCTAssertTrue(save.waitForExistence(timeout: 5))
+        cancel.click()
+        XCTAssertTrue(editor.isHittable)
+        XCTAssertEqual(editor.value as? String, source)
+
+        editor.typeKey("q", modifierFlags: .command)
+        XCTAssertTrue(save.waitForExistence(timeout: 5))
+        save.click()
+        let panelSave = app.buttons["OKButton"]
+        XCTAssertTrue(panelSave.waitForExistence(timeout: 5))
+        cancel.click()
+        XCTAssertTrue(editor.isHittable)
+        XCTAssertEqual(editor.value as? String, source)
+
+        let image = directory.appendingPathComponent("Smalltalk.stimage")
+        let conflictingLog = directory.appendingPathComponent("Smalltalk.changes")
+        try Data("another log".utf8).write(to: conflictingLog)
+        editor.typeKey("q", modifierFlags: .command)
+        XCTAssertTrue(save.waitForExistence(timeout: 5))
+        save.click()
+        XCTAssertTrue(panelSave.waitForExistence(timeout: 5))
+        navigateFilePanel(in: app, to: directory.path)
+        panelSave.click()
+        XCTAssertTrue(app.staticTexts["Could not save the image"].waitForExistence(timeout: 5))
+        app.buttons["OK"].click()
+        XCTAssertTrue(editor.isHittable)
+        XCTAssertEqual(editor.value as? String, source)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: image.path))
+        try FileManager.default.removeItem(at: conflictingLog)
+
+        editor.typeKey("q", modifierFlags: .command)
+        XCTAssertTrue(save.waitForExistence(timeout: 5))
+        save.click()
+        XCTAssertTrue(panelSave.waitForExistence(timeout: 5))
+        navigateFilePanel(in: app, to: directory.path)
+        panelSave.click()
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 10))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: image.path))
+
+        app.launch()
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertEqual(editor.value as? String, source)
+        let revisedSource = "Save this to the same image"
+        replaceText(in: editor, with: revisedSource)
+        editor.typeKey("q", modifierFlags: .command)
+        XCTAssertTrue(save.waitForExistence(timeout: 5))
+        save.click()
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 10))
+
+        app.launch()
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertEqual(editor.value as? String, revisedSource)
+        app.typeKey("q", modifierFlags: .command)
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 5))
+    }
+
     func testBrowserShowsAndAcceptsClassDefinitions() {
         let app = launchFreshApp()
         let workspace = app.windows["toolWindow-1"]
@@ -504,7 +582,11 @@ final class Smalltalk80UITests: XCTestCase {
         replaceText(in: editor, with: "Counter compile: 'recovered ^ 73'")
         workspace.buttons["executeButton"].click()
         XCTAssertTrue(workspace.staticTexts["#recovered"].waitForExistence(timeout: 5))
-        app.terminate()
+        editor.typeKey("q", modifierFlags: .command)
+        let discard = app.buttons["Don't Save"]
+        XCTAssertTrue(discard.waitForExistence(timeout: 5))
+        discard.click()
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 5))
         app.launch()
         let restored = app.windows["toolWindow-1"]
         let restoredEditor = restored.textViews["workspaceEditor"]

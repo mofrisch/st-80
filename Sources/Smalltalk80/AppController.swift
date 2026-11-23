@@ -13,13 +13,17 @@ final class AppController {
     var isRunning = false {
         didSet {
             if !isRunning {
+                let waiter = operationWaiter
+                operationWaiter = nil
+                waiter?.resume()
                 scheduleWindowSynchronization()
                 scheduleInputSynchronization()
             }
         }
     }
+    @ObservationIgnored private var operationWaiter: CheckedContinuation<Void, Never>?
     var imageURL: URL?
-    var imageHasChanges = true
+    private(set) var imageHasChanges = false
     private let session = SmalltalkSession()
     private let preferences: UserDefaults
     private var hasLoaded = false
@@ -77,11 +81,31 @@ final class AppController {
 
     private func received(_ event: NativeWindowEvent) {
         pendingWindowEvents.append(event)
-        if case .activated(let id) = event.kind, presentedWindow(id) != nil {
-            windowPresentation.activeID = id
+        switch event.kind {
+        case .activated(let id):
+            if presentedWindow(id) != nil, windowPresentation.activeID != id {
+                windowPresentation.activeID = id
+                imageHasChanges = true
+            }
+        case .closeRequested, .frame, .minimized:
+            imageHasChanges = true
+        case .screens, .frameApplied:
+            // AppKit also sends these when presenting a fresh or restored desktop.
+            break
         }
-        imageHasChanges = true
         scheduleWindowSynchronization()
+    }
+
+    func imageNeedsSaving() -> Bool {
+        nativeWindows?.captureGeometry()
+        return imageHasChanges
+    }
+
+    /// The application delegate waits here for a command already in progress.
+    func waitForCurrentOperation() async {
+        while isRunning {
+            await withCheckedContinuation { operationWaiter = $0 }
+        }
     }
 
     private func scheduleWindowSynchronization() {
@@ -269,17 +293,17 @@ final class AppController {
         imageHasChanges = true
     }
 
-    func openTool(_ kind: ToolKind) async { await sendWindowAction(.open(kind), marksImageDirty: true) }
+    func openTool(_ kind: ToolKind) async { await sendWindowAction(.open(kind)) }
 
-    func showWorkspace() async { await sendWindowAction(.showWorkspace, marksImageDirty: false) }
+    func showWorkspace() async { await sendWindowAction(.showWorkspace) }
 
-    private func sendWindowAction(_ action: WindowAction, marksImageDirty: Bool) async {
+    private func sendWindowAction(_ action: WindowAction) async {
         guard !isRunning else { return }
         isRunning = true
         defer { isRunning = false }
         guard await flushWindowState(allowInputFailure: true) else { return }
         apply(await session.windowAction(action))
-        if marksImageDirty { imageHasChanges = true }
+        imageHasChanges = true
     }
 
     func reset() async {
@@ -290,7 +314,7 @@ final class AppController {
         _ = await session.reset()
         do { try await startUnsavedChangeLog() } catch { self.error = error.localizedDescription }
         apply(await session.snapshot(), replacingWindows: true)
-        imageURL = nil; imageHasChanges = true
+        imageURL = nil; imageHasChanges = false
         preferences.removeObject(forKey: Self.lastImageKey)
     }
 
@@ -352,8 +376,13 @@ final class AppController {
         catch { self.error = "Could not load the image: \(error.localizedDescription)" }
     }
 
-    func saveImage(asNewFile: Bool = false) async {
-        guard !isRunning else { return }
+    enum ImageSaveResult {
+        case saved, cancelled, failed(String)
+    }
+
+    @discardableResult
+    func saveImage(asNewFile: Bool = false) async -> ImageSaveResult {
+        guard !isRunning else { return .cancelled }
         isRunning = true
         defer { isRunning = false }
         let url: URL
@@ -364,17 +393,24 @@ final class AppController {
             panel.allowedContentTypes = [Self.imageType]
             panel.nameFieldStringValue = imageURL?.lastPathComponent ?? "Smalltalk.stimage"
             panel.directoryURL = imageURL?.deletingLastPathComponent()
-            guard panel.runModal() == .OK, let chosen = panel.url else { return }
+            guard panel.runModal() == .OK, let chosen = panel.url else { return .cancelled }
             url = chosen
         }
-        guard await flushWindowState() else { return }
+        guard await flushWindowState() else {
+            let reason = error ?? windowPresentation.windows.compactMap(\.inputError).first
+            return .failed(reason ?? "Some pending window or editor changes could not be applied.")
+        }
         do {
             try await session.saveImage(to: url, workspace: windowPresentation.workspace?.info.text ?? "", transcript: "")
             apply(await session.snapshot())
             imageURL = url; preferences.set(url.path, forKey: Self.lastImageKey)
             imageHasChanges = controlEdits.hasPendingEdits || !pendingWindowEvents.isEmpty
             result = "Saved image: \(url.lastPathComponent)"; error = nil
-        } catch { self.error = "Could not save the image: \(error.localizedDescription)" }
+            return .saved
+        } catch {
+            self.error = "Could not save the image: \(error.localizedDescription)"
+            return .failed(error.localizedDescription)
+        }
     }
 
     private func clearPending() {

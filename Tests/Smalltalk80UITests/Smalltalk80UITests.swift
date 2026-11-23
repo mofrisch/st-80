@@ -3,6 +3,35 @@ import XCTest
 
 @MainActor
 final class Smalltalk80UITests: XCTestCase {
+    func testBrowserCreatesAndEditsClassMethodsIndependently() {
+        let app = launchFreshApp()
+        let workspace = app.windows["toolWindow-1"]
+        let workspaceEditor = workspace.textViews["workspaceEditor"]
+        XCTAssertTrue(workspaceEditor.waitForExistence(timeout: 10))
+        workspaceEditor.typeKey("2", modifierFlags: .command)
+
+        let browser = app.windows["toolWindow-2"]
+        XCTAssertTrue(browser.buttons["classMethodSide"].waitForExistence(timeout: 5))
+        browser.buttons["classMethodSide"].click()
+        browser.buttons["newMethod"].click()
+        let source = browser.textViews["methodEditor"]
+        replaceText(in: source, with: "value\n    ^ 70")
+        source.typeKey("s", modifierFlags: .command)
+        XCTAssertTrue(browser.staticTexts["Counter class » value"].firstMatch.waitForExistence(timeout: 5))
+
+        browser.buttons["instanceMethodSide"].click()
+        browser.staticTexts["value"].firstMatch.click()
+        XCTAssertEqual(source.value as? String, "value ^ count")
+        browser.buttons["classMethodSide"].click()
+        XCTAssertEqual(source.value as? String, "value\n    ^ 70")
+        replaceText(in: source, with: "value\n    ^ 73")
+        source.typeKey("s", modifierFlags: .command)
+        source.typeKey("1", modifierFlags: .command)
+        replaceText(in: workspaceEditor, with: "Counter value + Counter new value")
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(workspace.staticTexts["73"].waitForExistence(timeout: 5))
+    }
+
     func testBrowserOrganizationMenusCreateCategoriesAndProtocols() {
         let app = launchFreshApp()
         let workspace = app.windows["toolWindow-1"]

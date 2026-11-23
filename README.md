@@ -23,7 +23,7 @@ Local builds use ad hoc signing, so you can run the app without a development te
 
 - In a **Workspace**, select code and press **⌘D** to run it. With no selection, the entire buffer runs.
 - **⌘P** also prints the result to the Transcript.
-- In the **System Browser**, navigate from a class category to a class, a protocol, and an instance method. Edit the source below the lists and press **⌘S** to accept it. Existing objects use the new method immediately.
+- In the **System Browser**, select a class and switch between **Instance** and **Class** below the lists. Each side has its own protocols, methods, and editor draft. Use **New Method** to start a definition and **⌘S** to accept it. The new method is available immediately.
 - Use **Create Class …** and **New Method** to add definitions. The browser shows the selected class's own methods. Select its superclass to browse inherited methods.
 - **Details** in the browser shows the class information and shared workspace variables, including their classes and values.
 - **⌘N** opens an independent workspace.
@@ -59,7 +59,7 @@ Saving produces three related files.
 
 The original sources live in `Sources/SmalltalkCore/Library/*.st`. Xcode and Swift Package Manager bundle the generated `Smalltalk80.sources` with the executable `Kernel.seed.json`. On a cold start, the VM installs the precompiled methods and the Smalltalk compiler compiles `InitialWorld.st`.
 
-Accepting code writes and syncs the changes entry before installing the method in the live image. This also applies to `SomeClass compile:` in a workspace. A write failure prevents installation. Before the first image save, the log lives in `~/Library/Application Support/Smalltalk80/Changes/`. The Code Changes window shows its path. **Smalltalk → Open Changes File …** can import a log for review even if its session never saved an image.
+Accepting code writes and syncs the changes entry before installing the method in the live image. This also applies to `SomeClass compile:` and `SomeClass compileClass:` in a workspace. A write failure prevents installation. Before the first image save, the log lives in `~/Library/Application Support/Smalltalk80/Changes/`. The Code Changes window shows its path. **Smalltalk → Open Changes File …** can import a log for review even if its session never saved an image.
 
 **Smalltalk → Code Changes …** opens the history. **Versions …** in the browser filters the history to the selected method and shows its shipped baseline from the sources archive. **Restore Version** compiles the selected source and logs the restoration as a new change. Entries after the saved image checkpoint are marked and are never replayed automatically on load. To restore a new class, restore its definition before its methods. The log records accepted code changes. Arbitrary object mutations and unaccepted editor contents belong to the live session.
 
@@ -69,7 +69,7 @@ Keep the image, its matching `.changes` file, and its referenced sources archive
 
 ## Smalltalk compiler and boot image
 
-`02-Scanner.st` and `03-Compiler.st` contain the scanner and parser. The same compiler handles **Do it**, **Accept Method**, and `Class>>compile:`. It builds syntax trees in temporary object memory. The Swift VM validates these trees before executing code or installing a method.
+`02-Scanner.st` and `03-Compiler.st` contain the scanner and parser. The same compiler handles **Do it**, **Accept Method**, `Class>>compile:`, and `Class>>compileClass:`. It builds syntax trees in temporary object memory. The Swift VM validates these trees before executing code or installing a method.
 
 After changing a numbered system source file, rebuild both bundled artifacts from the project directory.
 
@@ -246,7 +246,7 @@ Unary messages bind before binary messages, and binary messages before keyword m
 The prototype has these limits.
 
 - The interpreter executes syntax trees. The VM does not implement Blue Book bytecode or load historical images.
-- Classes share a simplified `Class`. The system does not yet implement a full metaclass hierarchy or separate class methods.
+- Classes share a simplified `Class` and have separate method dictionaries for the instance and class sides. Class methods inherit along the superclass chain. In a class method, `self` is the receiving class and `super` starts lookup above the defining class. The simplified model has no individual metaclass objects or class instance variables.
 - `subclass:instanceVariableNames:` is the short form. The longer Smalltalk-80 message is accepted with empty class variables and pool dictionaries.
 - `new` sends `initialize`. With no explicit `^`, a method returns `self` and a block returns its last expression.
 - Assigning an undeclared name in a workspace creates a persistent workspace variable. `| temp |` declares a local that lasts for the evaluation.

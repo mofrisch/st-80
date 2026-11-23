@@ -37,6 +37,7 @@ final class AppController {
     var changesPath: String?
     var changeClassFilter: String?
     var changeMethodFilter: String?
+    var changeSideFilter: MethodSide?
     var selectedChange: String?
     var baseChange: ChangeInfo?
     @ObservationIgnored private var nativeWindows: NativeWindowBackend?
@@ -135,7 +136,7 @@ final class AppController {
                 guard let self else { return }
                 switch request {
                 case .saveImage: await self.saveImage()
-                case .showVersions(let className, let selector): await self.showChanges(className: className, selector: selector)
+                case .showVersions(let className, let selector, let side): await self.showChanges(className: className, selector: selector, side: side)
                 }
             }
         }
@@ -399,16 +400,22 @@ final class AppController {
     }
 
     var filteredChanges: [ChangeInfo] {
-        let history = changes.reversed().filter { (changeClassFilter == nil || $0.className == changeClassFilter) && (changeMethodFilter == nil || $0.selector == changeMethodFilter) }
-        if let baseChange, changeClassFilter == baseChange.className, changeMethodFilter == baseChange.selector { return history + [baseChange] }
+        let history = changes.reversed().filter {
+            (changeClassFilter == nil || $0.className == changeClassFilter) &&
+            (changeMethodFilter == nil || $0.selector == changeMethodFilter) &&
+            (changeSideFilter == nil || $0.side == changeSideFilter)
+        }
+        if let baseChange, changeClassFilter == baseChange.className, changeMethodFilter == baseChange.selector,
+           changeSideFilter == baseChange.side { return history + [baseChange] }
         return history
     }
-    func showChanges(className: String? = nil, selector: String? = nil) async {
+    func showChanges(className: String? = nil, selector: String? = nil, side: MethodSide = .instance) async {
         changeClassFilter = className
         changeMethodFilter = selector
+        changeSideFilter = selector == nil ? nil : side
         selectedChange = nil
         baseChange = nil
-        if let className, let selector { baseChange = await session.baseVersion(of: selector, in: className) }
+        if let className, let selector { baseChange = await session.baseVersion(of: selector, in: className, side: side) }
         await openTool(.changes)
     }
     func openChanges() async {

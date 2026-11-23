@@ -50,7 +50,7 @@ public enum SmalltalkBootstrap {
 
     private struct Build {
         let sources: LibrarySources
-        let methods: [String: [String: Method]]
+        let methods: [MethodSide: [String: [String: Method]]]
     }
 
     private static func compilerFor(_ build: Build) throws -> SmalltalkRuntime {
@@ -59,11 +59,10 @@ public enum SmalltalkBootstrap {
             guard let parent = runtime.classes[definition.superclass] else {
                 throw SmalltalkError("System superclass \(definition.superclass) is missing.")
             }
-            let stClass = try runtime.subclass(of: parent, name: definition.name, fields: definition.fields.joined(separator: " "))
-            stClass.methods = build.methods[definition.name] ?? [:]
+            _ = try runtime.subclass(of: parent, name: definition.name, fields: definition.fields.joined(separator: " "))
         }
-        for (name, methods) in build.methods where SmalltalkRuntime.builtinNames.contains(name) {
-            runtime.classes[name]?.methods = methods
+        for (side, tables) in build.methods {
+            for (name, methods) in tables { runtime.classes[name]?[side] = methods }
         }
         try runtime.validateCompilerClasses()
         return runtime
@@ -72,7 +71,7 @@ public enum SmalltalkBootstrap {
     private static func build(_ scripts: [String], using compiler: SmalltalkRuntime) throws -> Build {
         let classes = SmalltalkRuntime(bootstrap: false)
         var definitions: [LibrarySources.Definition] = []
-        var methods: [String: [String: Method]] = [:]
+        var methods: [MethodSide: [String: [String: Method]]] = [:]
         for script in scripts {
             let body = try compiler.compileWorkspace(script)
             guard body.temporaries.isEmpty else { throw SmalltalkError("System sources cannot declare workspace variables.") }
@@ -89,27 +88,30 @@ public enum SmalltalkBootstrap {
                     }
                     let newClass = try classes.subclass(of: stClass, name: child, fields: fields)
                     definitions.append(.init(name: child, superclass: name, fields: newClass.ownFields))
-                case "compile:":
+                case "compile:", "compileClass:":
                     guard arguments.count == 1, case .literal(.string(let source)) = arguments[0].kind else {
                         throw SmalltalkError("Invalid method declaration for \(name).")
                     }
-                    let method = try compiler.compileMethod(source, fields: stClass.fields)
-                    guard methods[name, default: [:]].updateValue(method, forKey: method.selector) == nil else {
-                        throw SmalltalkError("Duplicate system method \(name)>>\(method.selector).")
+                    let side: MethodSide = selector == "compile:" ? .instance : .classSide
+                    let method = try compiler.compileMethod(source, fields: stClass.fields(for: side))
+                    guard methods[side, default: [:]][name, default: [:]].updateValue(method, forKey: method.selector) == nil else {
+                        throw SmalltalkError("Duplicate system method \(side.displayName(for: name))>>\(method.selector).")
                     }
                 default:
                     throw SmalltalkError("System sources can only declare classes and methods.")
                 }
             }
         }
-        return Build(sources: LibrarySources(definitions: definitions, methods: methods.mapValues { $0.mapValues(\.source) }), methods: methods)
+        let sources = methods.mapValues { $0.mapValues { $0.mapValues(\.source) } }
+        return Build(sources: LibrarySources(definitions: definitions, methods: sources[.instance] ?? [:], classMethods: sources[.classSide]), methods: methods)
     }
 
     private static func encode(_ build: Build) throws -> (Data, Data) {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let sources = try encoder.encode(build.sources)
-        let seed = LibrarySeed(sourcesID: SystemLibrary.digest(sources), methods: build.methods.mapValues { $0.mapValues(MethodCode.init) })
+        let code = build.methods.mapValues { $0.mapValues { $0.mapValues(MethodCode.init) } }
+        let seed = LibrarySeed(sourcesID: SystemLibrary.digest(sources), methods: code[.instance] ?? [:], classMethods: code[.classSide])
         return (sources, try encoder.encode(seed))
     }
 }

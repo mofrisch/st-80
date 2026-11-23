@@ -13,6 +13,9 @@ struct LibrarySources: Codable, Sendable {
     var version = 1
     let definitions: [Definition]
     let methods: [String: [String: String]]
+    var classMethods: [String: [String: String]]?
+
+    subscript(side: MethodSide) -> [String: [String: String]] { side == .instance ? methods : classMethods ?? [:] }
 
     static func decode(_ data: Data) throws -> Self {
         let result = try JSONDecoder().decode(Self.self, from: data)
@@ -25,6 +28,9 @@ struct LibrarySeed: Codable, Sendable {
     var version = 1
     let sourcesID: String
     let methods: [String: [String: MethodCode]]
+    var classMethods: [String: [String: MethodCode]]?
+
+    subscript(side: MethodSide) -> [String: [String: MethodCode]] { side == .instance ? methods : classMethods ?? [:] }
 }
 
 struct SystemLibrary: Sendable {
@@ -34,7 +40,6 @@ struct SystemLibrary: Sendable {
     let seed: LibrarySeed
     let initialWorld: String
     var definitions: [LibrarySources.Definition] { sources.definitions }
-    var methods: [String: [String: String]] { sources.methods }
 
     static let shared: Result<SystemLibrary, SmalltalkError> = {
         do {
@@ -71,14 +76,16 @@ struct SystemLibrary: Sendable {
             guard let parent = runtime.classes[definition.superclass] else { throw SmalltalkError("System superclass \(definition.superclass) is missing.") }
             _ = try runtime.subclass(of: parent, name: definition.name, fields: definition.fields.joined(separator: " "))
         }
-        guard Set(seed.methods.keys) == Set(methods.keys) else { throw SmalltalkError("The boot image contains a different method table.") }
-        for (name, code) in seed.methods {
-            guard let stClass = runtime.classes[name], let sources = methods[name], Set(code.keys) == Set(sources.keys) else {
-                throw SmalltalkError("Class \(name) is incomplete in the boot image.")
-            }
-            for (selector, executable) in code {
-                guard let source = sources[selector] else { throw SmalltalkError("System method \(name)>>\(selector) is missing.") }
-                stClass.methods[selector] = try executable.validatedMethod(selector: selector, source: source, fields: stClass.fields)
+        for side in MethodSide.allCases {
+            guard Set(seed[side].keys) == Set(sources[side].keys) else { throw SmalltalkError("The boot image contains a different method table.") }
+            for (name, code) in seed[side] {
+                guard let stClass = runtime.classes[name], let methodSources = sources[side][name], Set(code.keys) == Set(methodSources.keys) else {
+                    throw SmalltalkError("Method table for \(side.displayName(for: name)) is incomplete in the boot image.")
+                }
+                for (selector, executable) in code {
+                    guard let source = methodSources[selector] else { throw SmalltalkError("System method \(name)>>\(selector) is missing.") }
+                    stClass[side][selector] = try executable.validatedMethod(selector: selector, source: source, fields: stClass.fields(for: side))
+                }
             }
         }
         try runtime.validateCompilerClasses()

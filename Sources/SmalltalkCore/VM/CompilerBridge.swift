@@ -33,6 +33,7 @@ extension SmalltalkRuntime {
                   let parent = workspace.classes["Object"] else { throw SmalltalkError("Compiler class \(name) is missing.") }
             let copy = STClass(name, superclass: parent, fields: original.ownFields)
             copy.methods = original.methods
+            copy.classMethods = original.classMethods
             workspace.classes[name] = copy
             workspace.globals[name] = .classObject(copy)
         }

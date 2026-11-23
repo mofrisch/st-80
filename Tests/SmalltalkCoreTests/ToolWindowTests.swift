@@ -94,6 +94,63 @@ struct ToolWindowTests {
         #expect(element("methodList", in: content)?.selection == "adjusted:")
     }
 
+    @Test func browserSwitchesSidesWithoutLosingDraftsOrMixingProtocols() async throws {
+        let session = SmalltalkSession()
+        let snapshot = await session.snapshot()
+        let browser = try #require(snapshot.windows.first { $0.kind == .browser })
+        var content = try #require(browser.content)
+
+        @discardableResult
+        func perform(_ identifier: String, _ action: (String) -> UIAction) async throws -> EvaluationResult {
+            let control = try #require(element(identifier, in: content))
+            let result = await session.uiAction(action(control.id))
+            try #require(result.error == nil, "\(identifier): \(result.error ?? "")")
+            content = try #require(result.windows.first { $0.id == browser.id }?.content)
+            return result
+        }
+
+        @discardableResult
+        func click(_ identifier: String) async throws -> EvaluationResult {
+            try await perform(identifier) { .click(windowID: browser.id, elementID: $0) }
+        }
+
+        try await perform("methodList") { .select(windowID: browser.id, elementID: $0, value: "value") }
+        try await perform("methodEditor") { .text(windowID: browser.id, elementID: $0, value: "value ^ count + 10") }
+        try await click("classMethodSide")
+        #expect(element("methodList", in: content)?.items == [])
+        #expect(element("methodEditor", in: content)?.text == "")
+
+        try await click("newProtocol")
+        try await perform("organizationName") { .text(windowID: browser.id, elementID: $0, value: "Factories") }
+        try await click("applyOrganizationEdit")
+        try await click("newMethod")
+        try await perform("methodEditor") { .text(windowID: browser.id, elementID: $0, value: "value ^ 73") }
+        let installed = try await click("executeButton")
+        #expect(element("protocolList", in: content)?.items == ["All", "Factories"])
+        #expect(element("methodList", in: content)?.selection == "value")
+        #expect(installed.changes.last?.side == .classSide)
+        let history = try await click("methodVersionsButton")
+        #expect(history.toolRequests.contains {
+            if case .showVersions("Counter", "value", .classSide) = $0 { return true }
+            return false
+        })
+
+        try await click("instanceMethodSide")
+        #expect(element("methodList", in: content)?.selection == "value")
+        #expect(element("methodEditor", in: content)?.text == "value ^ count + 10")
+        #expect(element("protocolList", in: content)?.items.contains("Factories") == false)
+        #expect(await session.evaluate("Counter value + Counter new value").value == "73")
+
+        try await click("classMethodSide")
+        #expect(element("protocolList", in: content)?.selection == "Factories")
+        #expect(element("methodEditor", in: content)?.text == "value ^ 73")
+        let restored = SmalltalkSession()
+        let loaded = try await restored.loadImage(session.imageData())
+        let restoredContent = loaded.evaluation.windows.first { $0.kind == .browser }?.content
+        #expect(element("classMethodSide", in: restoredContent)?.role == "primary")
+        #expect(element("methodEditor", in: restoredContent)?.text == "value ^ 73")
+    }
+
     @Test func browserOrganizationEditsSurviveClosingTheBrowserAndLoadingAnImage() async throws {
         let session = SmalltalkSession()
         let snapshot = await session.snapshot()

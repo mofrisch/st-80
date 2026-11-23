@@ -17,8 +17,11 @@ extension SmalltalkRuntime {
             "subclass:instanceVariableNames:": "Creates a subclass.",
             "subclass:instanceVariableNames:classVariableNames:poolDictionaries:category:": "Creates a subclass. Class variables and pools must be empty.",
             "compile:": "Compiles or replaces an instance method.",
+            "compileClass:": "Compiles or replaces a class method.",
             "methodNames": "Returns selectors of methods defined on the class.",
             "methodSourceAt:": "Returns the stored source code for a method.",
+            "classMethodNames": "Returns selectors of class methods defined on the class.",
+            "classMethodSourceAt:": "Returns the stored source code for a class method.",
             "isPrimitiveAt:": "Tests whether the selector names a VM primitive.",
             "instanceVariableNamesText": "Returns the instance variable names."
         ],
@@ -61,7 +64,7 @@ extension SmalltalkRuntime {
         case "ifNotNil:": return isNil(receiver) ? .nilValue : try invokeBlock(args[0])
         case "respondsTo:":
             let name = try symbol(args[0])
-            return .boolean(classOf(receiver).lookup(name) != nil || primitiveSelectors(classOf(receiver)).contains(name))
+            return .boolean(lookupMethod(name, on: receiver) != nil || primitiveSelectors(classOf(receiver)).contains(name))
         case "perform:": return try send(receiver, symbol(args[0]), [])
         case "perform:with:": return try send(receiver, symbol(args[0]), [args[1]])
         case "error:line:column:":
@@ -183,19 +186,12 @@ extension SmalltalkRuntime {
         case "superclass": return stClass.superclass.map(Value.classObject) ?? .nilValue
         case "subclasses": return try array(classes.values.filter { $0.superclass === stClass }.sorted { $0.name < $1.name }.map(Value.classObject))
         case "compile:": return .symbol(try compile(string(args[0]), in: stClass))
-        case "methodNames":
-            let names = Set(stClass.methods.keys).union(Self.primitiveDescriptions[stClass.name]?.keys.map { $0 } ?? [])
-            return try array(names.sorted().map(Value.string))
-        case "methodSourceAt:":
-            let name = try string(args[0])
-            if let method = stClass.methods[name] { return .string(method.source) }
-            if let description = Self.primitiveDescriptions[stClass.name]?[name] {
-                return .string("\(name)\n\n\"\(description)\"\n\n<primitive>")
-            }
-            return .nilValue
-        case "isPrimitiveAt:":
-            let name = try string(args[0])
-            return .boolean(stClass.methods[name] == nil && Self.primitiveDescriptions[stClass.name]?[name] != nil)
+        case "compileClass:": return .symbol(try compile(string(args[0]), in: stClass, side: .classSide))
+        case "methodNames": return try array(reflectedMethods(on: stClass, side: .instance).map { .string($0.selector) })
+        case "classMethodNames": return try array(reflectedMethods(on: stClass, side: .classSide).map { .string($0.selector) })
+        case "methodSourceAt:": return try reflectedMethodSource(string(args[0]), on: stClass, side: .instance).map(Value.string) ?? .nilValue
+        case "classMethodSourceAt:": return try reflectedMethodSource(string(args[0]), on: stClass, side: .classSide).map(Value.string) ?? .nilValue
+        case "isPrimitiveAt:": return try .boolean(isReflectedPrimitive(string(args[0]), on: stClass, side: .instance))
         case "instanceVariableNamesText": return .string(stClass.fields.isEmpty ? "None" : stClass.fields.joined(separator: " · "))
         case "subclass:instanceVariableNames:", "subclass:instanceVariableNames:classVariableNames:poolDictionaries:category:":
             if args.count == 5 {
@@ -344,6 +340,30 @@ extension SmalltalkRuntime {
     func primitiveSelectors(_ stClass: STClass) -> Set<String> {
         let own = Set((Self.primitiveDescriptions[stClass.name] ?? [:]).keys)
         return own.union(stClass.superclass.map(primitiveSelectors) ?? [])
+    }
+
+    func reflectedMethods(on target: STClass, side: MethodSide) -> [MethodInfo] {
+        var methods = target[side].map { MethodInfo(selector: $0.key, source: $0.value.source, isPrimitive: false) }
+        if side == .instance {
+            for (selector, description) in Self.primitiveDescriptions[target.name] ?? [:] where target.methods[selector] == nil {
+                methods.append(MethodInfo(selector: selector, source: primitiveSource(selector, description), isPrimitive: true))
+            }
+        }
+        return methods.sorted { $0.selector < $1.selector }
+    }
+
+    func reflectedMethodSource(_ selector: String, on target: STClass, side: MethodSide) -> String? {
+        if let method = target[side][selector] { return method.source }
+        guard side == .instance, let description = Self.primitiveDescriptions[target.name]?[selector] else { return nil }
+        return primitiveSource(selector, description)
+    }
+
+    func isReflectedPrimitive(_ selector: String, on target: STClass, side: MethodSide) -> Bool {
+        side == .instance && target.methods[selector] == nil && Self.primitiveDescriptions[target.name]?[selector] != nil
+    }
+
+    private func primitiveSource(_ selector: String, _ description: String) -> String {
+        "\(selector)\n\n\"\(description)\"\n\n<primitive>"
     }
 
     func appendTranscript(_ text: String) throws {

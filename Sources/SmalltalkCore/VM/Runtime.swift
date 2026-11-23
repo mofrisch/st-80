@@ -1,5 +1,14 @@
 import Foundation
 
+public enum MethodSide: String, Codable, CaseIterable, Sendable {
+    case instance
+    case classSide = "class"
+
+    public func displayName(for className: String) -> String {
+        self == .classSide ? "\(className) class" : className
+    }
+}
+
 enum Value {
     case integer(Int64), string(String), symbol(String), boolean(Bool), nilValue
     case classObject(STClass), object(STObject), block(STBlock), array(STArray), transcript
@@ -10,6 +19,7 @@ final class STClass {
     let superclass: STClass?
     let ownFields: [String]
     var methods: [String: Method] = [:]
+    var classMethods: [String: Method] = [:]
     var fields: [String] { (superclass?.fields ?? []) + ownFields }
 
     init(_ name: String, superclass: STClass?, fields: [String] = []) {
@@ -18,9 +28,21 @@ final class STClass {
         ownFields = fields
     }
 
-    func lookup(_ selector: String) -> (Method, STClass)? {
-        if let method = methods[selector] { return (method, self) }
-        return superclass?.lookup(selector)
+    subscript(side: MethodSide) -> [String: Method] {
+        get { side == .instance ? methods : classMethods }
+        set {
+            switch side {
+            case .instance: methods = newValue
+            case .classSide: classMethods = newValue
+            }
+        }
+    }
+
+    func fields(for side: MethodSide) -> [String] { side == .instance ? fields : [] }
+
+    func lookup(_ selector: String, side: MethodSide = .instance) -> (Method, STClass)? {
+        if let method = self[side][selector] { return (method, self) }
+        return superclass?.lookup(selector, side: side)
     }
 }
 
@@ -67,6 +89,13 @@ struct Context {
     let homeClass: STClass?
     let homeID: Int
     let isWorkspace: Bool
+    var methodSide: MethodSide = .instance
+}
+
+enum MessageLookup {
+    case normal
+    case instanceSuper(STClass)
+    case classSuper(STClass?)
 }
 
 final class STBlock {
@@ -100,6 +129,7 @@ public struct ClassInfo: Identifiable, Sendable {
     public let superclass: String?
     public let fields: [String]
     public let methods: [MethodInfo]
+    public let classMethods: [MethodInfo]
 }
 
 public struct BindingInfo: Identifiable, Sendable {
@@ -138,15 +168,15 @@ public actor SmalltalkSession {
 
     public func snapshot() async -> EvaluationResult { await worker.submit { $0.snapshot() } }
 
-    public func compile(_ source: String, in className: String) async -> EvaluationResult {
+    public func compile(_ source: String, in className: String, side: MethodSide = .instance) async -> EvaluationResult {
         await worker.submit { runtime in
             runtime.transcript = ""
             runtime.steps = 0
             runtime.depth = 0
             do {
                 guard let stClass = runtime.classes[className] else { throw SmalltalkError("Class \(className) does not exist.") }
-                let selector = try runtime.compile(source, in: stClass)
-                return runtime.finishEvaluation(value: "\(className) » \(selector)")
+                let selector = try runtime.compile(source, in: stClass, side: side)
+                return runtime.finishEvaluation(value: "\(side.displayName(for: className)) » \(selector)")
             } catch { return runtime.snapshot(error: error.localizedDescription) }
         }
     }
@@ -306,15 +336,15 @@ final class SmalltalkRuntime {
                 try assign(name, value: value, context: context)
                 return value
             case .send(let receiverExpression, let selector, let arguments):
-                let (receiver, startClass) = try messageReceiver(receiverExpression, context: context)
+                let (receiver, lookup) = try messageReceiver(receiverExpression, context: context)
                 let values = try arguments.map { try evaluate($0, context: context) }
-                return try send(receiver, selector, values, startingAt: startClass)
+                return try send(receiver, selector, values, startingAt: lookup)
             case .cascade(let receiverExpression, let messages):
-                let (receiver, startClass) = try messageReceiver(receiverExpression, context: context)
+                let (receiver, lookup) = try messageReceiver(receiverExpression, context: context)
                 var result = receiver
                 for message in messages {
                     let arguments = try message.arguments.map { try evaluate($0, context: context) }
-                    result = try send(receiver, message.selector, arguments, startingAt: startClass)
+                    result = try send(receiver, message.selector, arguments, startingAt: lookup)
                 }
                 return result
             case .block(let parameters, let body):
@@ -329,12 +359,15 @@ final class SmalltalkRuntime {
         }
     }
 
-    func messageReceiver(_ expression: Expression, context: Context) throws -> (Value, STClass?) {
+    func messageReceiver(_ expression: Expression, context: Context) throws -> (Value, MessageLookup) {
         if case .variable("super") = expression.kind {
+            if context.methodSide == .classSide, let home = context.homeClass {
+                return (context.receiver, .classSuper(home.superclass))
+            }
             guard let superclass = context.homeClass?.superclass else { throw SmalltalkError("super is unavailable here.") }
-            return (context.receiver, superclass)
+            return (context.receiver, .instanceSuper(superclass))
         }
-        return (try evaluate(expression, context: context), nil)
+        return (try evaluate(expression, context: context), .normal)
     }
 
     func variable(_ name: String, context: Context) throws -> Value {
@@ -392,18 +425,37 @@ final class SmalltalkRuntime {
         return classes[name]!
     }
 
-    func send(_ receiver: Value, _ selector: String, _ arguments: [Value], startingAt startClass: STClass? = nil) throws -> Value {
+    func lookupMethod(_ selector: String, on receiver: Value, startingAt lookup: MessageLookup = .normal) -> (Method, STClass, MethodSide)? {
+        let classStart: STClass?
+        let instanceStart: STClass
+        switch lookup {
+        case .normal:
+            if case .classObject(let target) = receiver { classStart = target } else { classStart = nil }
+            instanceStart = classOf(receiver)
+        case .classSuper(let parent):
+            classStart = parent
+            instanceStart = classOf(receiver)
+        case .instanceSuper(let parent):
+            classStart = nil
+            instanceStart = parent
+        }
+        if let (method, owner) = classStart?.lookup(selector, side: .classSide) { return (method, owner, .classSide) }
+        if let (method, owner) = instanceStart.lookup(selector) { return (method, owner, .instance) }
+        return nil
+    }
+
+    func send(_ receiver: Value, _ selector: String, _ arguments: [Value], startingAt lookup: MessageLookup = .normal) throws -> Value {
         try enter()
         defer { depth -= 1 }
         guard arguments.count == CodeValidator.arity(of: selector) else { throw SmalltalkError("Wrong number of arguments for \(selector).") }
-        if let (method, owner) = (startClass ?? classOf(receiver)).lookup(selector) {
-            return try invoke(method, owner: owner, receiver: receiver, arguments: arguments)
+        if let (method, owner, side) = lookupMethod(selector, on: receiver, startingAt: lookup) {
+            return try invoke(method, owner: owner, receiver: receiver, arguments: arguments, side: side)
         }
         if let result = try primitive(receiver, selector, arguments) { return result }
         throw SmalltalkError("\(classOf(receiver).name) does not understand \(selector).")
     }
 
-    func invoke(_ method: Method, owner: STClass, receiver: Value, arguments: [Value]) throws -> Value {
+    func invoke(_ method: Method, owner: STClass, receiver: Value, arguments: [Value], side: MethodSide) throws -> Value {
         guard method.parameters.count == arguments.count else { throw SmalltalkError("Wrong number of arguments for \(method.selector).") }
         let environment = try environment()
         for (name, value) in zip(method.parameters, arguments) { environment.values[name] = value }
@@ -411,7 +463,7 @@ final class SmalltalkRuntime {
         let homeID = nextHome
         activeHomes.insert(homeID)
         defer { activeHomes.remove(homeID) }
-        let context = Context(environment: environment, receiver: receiver, homeClass: owner, homeID: homeID, isWorkspace: false)
+        let context = Context(environment: environment, receiver: receiver, homeClass: owner, homeID: homeID, isWorkspace: false, methodSide: side)
         do {
             _ = try evaluate(method.body, context: context)
             return receiver
@@ -425,19 +477,19 @@ final class SmalltalkRuntime {
         defer { depth -= 1 }
         let environment = try environment(parent: block.context.environment)
         for (name, value) in zip(block.parameters, arguments) { environment.values[name] = value }
-        let context = Context(environment: environment, receiver: block.context.receiver, homeClass: block.context.homeClass, homeID: block.context.homeID, isWorkspace: block.context.isWorkspace)
+        let context = Context(environment: environment, receiver: block.context.receiver, homeClass: block.context.homeClass, homeID: block.context.homeID, isWorkspace: block.context.isWorkspace, methodSide: block.context.methodSide)
         return try evaluate(block.body, context: context)
     }
 
     @discardableResult
-    func compile(_ source: String, in stClass: STClass) throws -> String {
+    func compile(_ source: String, in stClass: STClass, side: MethodSide = .instance) throws -> String {
         guard !compilationMode else { throw SmalltalkError("Compilation is already in progress.") }
-        let method = try compileMethod(source, fields: stClass.fields)
-        guard stClass.methods.count < 512 || stClass.methods[method.selector] != nil else { throw SmalltalkError("Too many methods in \(stClass.name).") }
+        let method = try compileMethod(source, fields: stClass.fields(for: side))
+        guard stClass[side].count < 512 || stClass[side][method.selector] != nil else { throw SmalltalkError("Too many methods in \(side.displayName(for: stClass.name)).") }
         if recordingChanges {
-            try journal.append(kind: .method, className: stClass.name, selector: method.selector, source: source)
+            try journal.append(kind: .method, className: stClass.name, selector: method.selector, side: side, source: source)
         }
-        stClass.methods[method.selector] = method
+        stClass[side][method.selector] = method
         catalogDirty = true
         return method.selector
     }
@@ -464,11 +516,8 @@ final class SmalltalkRuntime {
 
     func snapshot(value: String? = nil, error: String? = nil, requests: [NativeToolRequest] = []) -> EvaluationResult {
         let infos = classes.values.sorted { $0.name < $1.name }.map { stClass in
-            var methods = stClass.methods.map { MethodInfo(selector: $0.key, source: $0.value.source, isPrimitive: false) }
-            for (selector, description) in Self.primitiveDescriptions[stClass.name] ?? [:] where stClass.methods[selector] == nil {
-                methods.append(MethodInfo(selector: selector, source: "\(selector)\n\n\"\(description)\"\n\n<primitive>", isPrimitive: true))
-            }
-            return ClassInfo(name: stClass.name, superclass: stClass.superclass?.name, fields: stClass.fields, methods: methods.sorted { $0.selector < $1.selector })
+            ClassInfo(name: stClass.name, superclass: stClass.superclass?.name, fields: stClass.fields,
+                      methods: reflectedMethods(on: stClass, side: .instance), classMethods: reflectedMethods(on: stClass, side: .classSide))
         }
         let bindings = bindingInfos()
         let desktop = projectWindows()

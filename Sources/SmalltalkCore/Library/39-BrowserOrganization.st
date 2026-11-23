@@ -122,17 +122,22 @@ BrowserOrganization compile: 'defaultCategoryOf: name
     ^ ''User Classes'''.
 
 BrowserOrganization compile: 'protocolsOf: target
+    ^ self protocolsOf: target side: #instance'.
+
+BrowserOrganization compile: 'protocolsOf: target side: methodSide
     | grouping entry className |
-    catalogs do: [ :each | (each at: 1) == target ifTrue: [ ^ each at: 2 ] ].
+    catalogs do: [ :each |
+        ((each at: 1) == target and: [ (each at: 2) = methodSide ]) ifTrue: [ ^ each at: 3 ] ].
     grouping := BrowserGrouping new.
-    className := target name asString.
-    systemProtocols do: [ :definition |
-        (definition at: 1) = className ifTrue: [
-            (definition at: 2) do: [ :entrySpec |
-                grouping defineGroup: (entrySpec at: 1) items: (entrySpec at: 2) ] ] ].
+    methodSide = #instance ifTrue: [
+        className := ToolVM classNameOf: target.
+        systemProtocols do: [ :definition |
+            (definition at: 1) = className ifTrue: [
+                (definition at: 2) do: [ :entrySpec |
+                    grouping defineGroup: (entrySpec at: 1) items: (entrySpec at: 2) ] ] ] ].
     grouping defineDefaults: #(''Unclassified'').
-    entry := Array new: 2.
-    entry at: 1 put: target; at: 2 put: grouping.
+    entry := Array new: 3.
+    entry at: 1 put: target; at: 2 put: methodSide; at: 3 put: grouping.
     catalogs := catalogs copyWith: entry.
     ^ grouping'.
 

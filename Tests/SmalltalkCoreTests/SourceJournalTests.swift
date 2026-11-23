@@ -8,6 +8,51 @@ struct SourceJournalTests {
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
     }
+
+    @Test func classMethodsAndTheirLexicalSuperSurviveBothImageFormats() async throws {
+        let folder = try directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("ClassSide.stimage")
+        let log = url.deletingPathExtension().appendingPathExtension("changes")
+        let session = SmalltalkSession()
+        let definitions = await session.evaluate("""
+            Object subclass: #SideBase instanceVariableNames: 'count'.
+            SideBase subclass: #SideChild instanceVariableNames: ''.
+            SideBase compile: 'answer ^ 3'.
+            SideBase compileClass: 'answer ^ 40'.
+            SideBase compileClass: 'make ^ super new'.
+            SideChild compileClass: 'answer ^ super answer + 2'.
+            SideChild compileClass: 'callback ^ [ super answer + 1 ]'.
+            callback := SideChild callback
+            """)
+        #expect(definitions.error == nil)
+        #expect(await session.evaluate("SideChild answer").value == "42")
+        #expect(await session.evaluate("SideChild make answer").value == "3")
+        #expect(await session.evaluate("SideBase respondsTo: #make").value == "true")
+        #expect(await session.evaluate("SideChild classMethodNames").value == "#('answer' 'callback')")
+        #expect(await session.evaluate("SideChild classMethodSourceAt: #answer asString").value == "'answer ^ super answer + 2'")
+        #expect(await session.evaluate("SideChild new respondsTo: #callback").value == "false")
+
+        try await session.saveImage(to: url, workspace: "", transcript: "")
+        let records = try SourceJournal.read(log).records.filter { $0.className == "SideBase" && $0.selector == "answer" }
+        #expect(records.map(\.side) == [.instance, .classSide])
+        let classVersion = try #require(records.first { $0.side == .classSide })
+        let portable = try await session.imageData()
+        let reopened = SmalltalkSession()
+        _ = try await reopened.loadImage(portable)
+        #expect(await reopened.evaluate("callback value").value == "41")
+        #expect(await reopened.evaluate("SideChild answer").value == "42")
+
+        _ = try await reopened.loadImage(from: url)
+        #expect(await reopened.evaluate("callback value").value == "41")
+        #expect(await reopened.evaluate("SideChild make answer").value == "3")
+        #expect(await reopened.compile("answer ^ 99", in: "SideBase", side: .classSide).error == nil)
+        #expect(await reopened.evaluate("SideChild answer").value == "101")
+        #expect(await reopened.restoreChange(classVersion.id).value == "Restored: SideBase class » answer")
+        #expect(await reopened.evaluate("SideChild answer").value == "42")
+        #expect(await reopened.evaluate("SideChild new answer").value == "3")
+    }
+
     @Test func acceptedMethodsAreDurableBeforeSavingAndRejectedEditsNeverInstall() async throws {
         let folder = try directory(); defer { try? FileManager.default.removeItem(at: folder) }
         let log = folder.appendingPathComponent("Unsaved.changes")

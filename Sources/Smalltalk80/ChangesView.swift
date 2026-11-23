@@ -7,11 +7,18 @@ struct ChangesView: View {
         VStack(spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(controller.changeClassFilter.map { "Versions: \($0)\(controller.changeMethodFilter.map { " » \($0)" } ?? "")" } ?? "Code Changes").font(.headline)
+                    Text(controller.changeClassFilter.map { name in
+                        let owner = controller.changeSideFilter?.displayName(for: name) ?? name
+                        return "Versions: \(owner)\(controller.changeMethodFilter.map { " » \($0)" } ?? "")"
+                    } ?? "Code Changes").font(.headline)
                     Text("Accepted code is logged immediately. The image stores the object graph.").font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("All Changes") { controller.changeClassFilter = nil; controller.changeMethodFilter = nil }
+                Button("All Changes") {
+                    controller.changeClassFilter = nil
+                    controller.changeMethodFilter = nil
+                    controller.changeSideFilter = nil
+                }
                 Button("Restore Version") { Task { await controller.restoreSelectedChange() } }
                     .disabled(controller.selectedChange == nil || controller.isRunning).accessibilityIdentifier("restoreChangeButton")
             }.padding(12)
@@ -20,7 +27,7 @@ struct ChangesView: View {
                 List(selection: $controller.selectedChange) {
                     ForEach(controller.filteredChanges) { change in
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(change.className + (change.selector.map { " » \($0)" } ?? " · Class Definition"))
+                            Text(change.side.displayName(for: change.className) + (change.selector.map { " » \($0)" } ?? " · Class Definition"))
                             HStack {
                                 if change.sequence == 0 { Text("Shipped Baseline") }
                                 else { Text(change.timestamp, format: .dateTime.year().month().day().hour().minute().second()) }

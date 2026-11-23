@@ -14,7 +14,7 @@ BrowserOrganization compile: 'shippedProtocols
             (''Instance Creation'' (''new'' ''new:''))
             (''Class Structure'' (''name'' ''superclass'' ''subclasses'' ''instanceVariableNamesText''))
             (''Subclass Definition'' (''subclass:instanceVariableNames:'' ''subclass:instanceVariableNames:classVariableNames:poolDictionaries:category:''))
-            (''Method Dictionary'' (''compile:'' ''methodNames'' ''methodSourceAt:'' ''isPrimitiveAt:''))))
+            (''Method Dictionary'' (''compile:'' ''compileClass:'' ''methodNames'' ''methodSourceAt:'' ''classMethodNames'' ''classMethodSourceAt:'' ''isPrimitiveAt:''))))
         (''Integer'' (
             (''Arithmetic'' (''+'' ''-'' ''*'' ''/'' ''//'' ''\\'' ''negated'' ''abs'' ''squared''))
             (''Comparing'' (''<'' ''>'' ''<='' ''>=''))
@@ -155,7 +155,7 @@ BrowserOrganization compile: 'shippedProtocols
         (''BrowserOrganization'' (
             (''Initialization'' (''initialize'' ''shippedProtocols''))
             (''Class Categories'' (''classCategories'' ''categoryOf:'' ''defaultCategoryOf:''))
-            (''Method Protocols'' (''protocolsOf:''))))
+            (''Method Protocols'' (''protocolsOf:'' ''protocolsOf:side:''))))
         (''BrowserOrganizationForm'' (
             (''Initialization'' (''initialize''))
             (''Presenting Edits'' (''edit:name:do:'' ''move:choices:selected:do:''))
@@ -171,7 +171,8 @@ BrowserOrganization compile: 'shippedProtocols
             (''Initialization'' (''initialize''))
             (''Pane Layout'' (''list:selecting:'' ''organizationItem:id:send:'' ''pane:list:menu:'' ''withAll:''))
             (''Navigation'' (''chooseCategory:'' ''chooseClass:'' ''chooseProtocol:'' ''chooseMethod:''
-                ''filter:'' ''matchesCategory:'' ''selectedClass'' ''protocolOf:in:''))
+                ''filter:'' ''matchesCategory:'' ''selectedClass'' ''protocolOf:in:''
+                ''showInstanceMethods'' ''showClassMethods'' ''chooseMethodSide:''))
             (''Catalog Updates'' (''refreshClasses'' ''refreshMethods'' ''refreshTools'' ''refreshInspector'' ''refreshOrganizationActions''))
             (''Method Editing'' (''acceptMethod'' ''draftChanged:'' ''newMethod'' ''primitiveSelected''
                 ''refreshEditor'' ''showVersions''))

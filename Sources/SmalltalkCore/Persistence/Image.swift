@@ -17,6 +17,7 @@ struct ImageArchive: Codable {
     var workspace: String
     var transcript: String
     var executableMethods: [String: [String: MethodCode]]?
+    var executableClassMethods: [String: [String: MethodCode]]?
 }
 
 struct ImageClass: Codable {
@@ -24,6 +25,17 @@ struct ImageClass: Codable {
     var superclass: String?
     var fields: [String]
     var methods: [String: String]
+    var classMethods: [String: String]?
+
+    subscript(side: MethodSide) -> [String: String] {
+        get { side == .instance ? methods : classMethods ?? [:] }
+        set {
+            switch side {
+            case .instance: methods = newValue
+            case .classSide: classMethods = newValue.isEmpty ? nil : newValue
+            }
+        }
+    }
 }
 
 enum ImageValue: Codable {
@@ -52,6 +64,7 @@ struct ImageBlock: Codable {
     var receiver: ImageValue
     var homeClass: String?
     var isWorkspace: Bool
+    var methodSide: MethodSide?
 }
 
 extension SmalltalkSession {
@@ -151,7 +164,8 @@ enum ImageCodec {
                 nodes.append(.environment(ImageEnvironment(parent: parent, values: values)))
             case .block(let block):
                 let environment = try register(block.context.environment, .environment(block.context.environment))
-                nodes.append(.block(ImageBlock(parameters: block.parameters, body: block.body, environment: environment, receiver: try value(block.context.receiver), homeClass: block.context.homeClass?.name, isWorkspace: block.context.isWorkspace)))
+                let side = block.context.methodSide
+                nodes.append(.block(ImageBlock(parameters: block.parameters, body: block.body, environment: environment, receiver: try value(block.context.receiver), homeClass: block.context.homeClass?.name, isWorkspace: block.context.isWorkspace, methodSide: side == .classSide ? side : nil)))
             }
             index += 1
         }
@@ -160,10 +174,11 @@ enum ImageCodec {
             return nil
         })
         let classes = runtime.classes.values.sorted { $0.name < $1.name }.map {
-            ImageClass(name: $0.name, superclass: $0.superclass?.name, fields: $0.ownFields, methods: $0.methods.mapValues(\.source))
+            ImageClass(name: $0.name, superclass: $0.superclass?.name, fields: $0.ownFields, methods: $0.methods.mapValues(\.source), classMethods: $0.classMethods.isEmpty ? nil : $0.classMethods.mapValues(\.source))
         }
         let code = includesCode ? runtime.classes.mapValues { $0.methods.mapValues(MethodCode.init) }.filter { !$0.value.isEmpty } : nil
-        return ImageArchive(classes: classes, globals: globals, nodes: nodes, workspace: workspace, transcript: transcript, executableMethods: code)
+        let classCode = includesCode ? runtime.classes.mapValues { $0.classMethods.mapValues(MethodCode.init) }.filter { !$0.value.isEmpty } : [:]
+        return ImageArchive(classes: classes, globals: globals, nodes: nodes, workspace: workspace, transcript: transcript, executableMethods: code, executableClassMethods: classCode.isEmpty ? nil : classCode)
     }
 
     static func decode(_ data: Data) throws -> (SmalltalkRuntime, LoadedImage) {
@@ -216,16 +231,20 @@ enum ImageCodec {
             remaining = unresolved
             guard remaining.count < previous else { throw invalid("The class hierarchy contains a cycle or an unknown superclass.") }
         }
-        guard Set(executableMethods.keys) == Set(image.classes.filter { !$0.methods.isEmpty }.map(\.name)) else {
-            throw invalid("The executable methods do not match the class table.")
-        }
-        for record in image.classes {
-            let code = executableMethods[record.name] ?? [:]
-            guard record.methods.count <= 512, let stClass = runtime.classes[record.name],
-                  Set(code.keys) == Set(record.methods.keys) else { throw invalid("Invalid method table.") }
-            for (selector, source) in record.methods {
-                guard let executable = code[selector] else { throw invalid("Executable method is missing.") }
-                stClass.methods[selector] = try executable.validatedMethod(selector: selector, source: source, fields: stClass.fields)
+        for side in MethodSide.allCases {
+            let executable = side == .instance ? executableMethods : image.executableClassMethods ?? [:]
+            guard Set(executable.keys) == Set(image.classes.filter { !$0[side].isEmpty }.map(\.name)) else {
+                throw invalid("The executable methods do not match the class table.")
+            }
+            for record in image.classes {
+                let code = executable[record.name] ?? [:]
+                let sources = record[side]
+                guard sources.count <= 512, let stClass = runtime.classes[record.name],
+                      Set(code.keys) == Set(sources.keys) else { throw invalid("Invalid method table.") }
+                for (selector, source) in sources {
+                    guard let methodCode = code[selector] else { throw invalid("Executable method is missing.") }
+                    stClass[side][selector] = try methodCode.validatedMethod(selector: selector, source: source, fields: stClass.fields(for: side))
+                }
             }
         }
         try runtime.validateCompilerClasses()
@@ -304,7 +323,15 @@ enum ImageCodec {
                     guard let stClass = runtime.classes[name] else { throw invalid("Unknown home class.") }
                     return stClass
                 }
-                block.context = Context(environment: try environment(record.environment), receiver: try value(record.receiver), homeClass: homeClass, homeID: 0, isWorkspace: record.isWorkspace)
+                let side = record.methodSide ?? .instance
+                let receiver = try value(record.receiver)
+                if side == .classSide {
+                    guard case .classObject(let target) = receiver, let homeClass, !record.isWorkspace else { throw invalid("Invalid class method context.") }
+                    var ancestor: STClass? = target
+                    while let current = ancestor, current !== homeClass { ancestor = current.superclass }
+                    guard ancestor != nil else { throw invalid("Invalid class method home class.") }
+                }
+                block.context = Context(environment: try environment(record.environment), receiver: receiver, homeClass: homeClass, homeID: 0, isWorkspace: record.isWorkspace, methodSide: side)
             default: throw invalid("The object table is inconsistent.")
             }
         }

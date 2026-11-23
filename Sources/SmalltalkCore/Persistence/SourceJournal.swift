@@ -12,6 +12,8 @@ public struct ChangeInfo: Identifiable, Codable, Sendable {
     public let superclass: String?
     public let fields: [String]?
     public let source: String
+    var methodSide: MethodSide?
+    public var side: MethodSide { methodSide ?? .instance }
 }
 
 /// Append before installing accepted code. Each complete JSON line is an
@@ -50,9 +52,9 @@ final class SourceJournal {
         self.url = url; physicalSize = UInt64(bytes.count); validSize = physicalSize
     }
     @discardableResult
-    func append(kind: ChangeInfo.Kind, className: String, selector: String? = nil, superclass: String? = nil, fields: [String]? = nil, source: String) throws -> ChangeInfo {
+    func append(kind: ChangeInfo.Kind, className: String, selector: String? = nil, superclass: String? = nil, fields: [String]? = nil, side: MethodSide = .instance, source: String) throws -> ChangeInfo {
         guard records.count < 100_000 else { throw SmalltalkError("The changes log contains too many entries.") }
-        let record = ChangeInfo(id: UUID().uuidString, sequence: sequence + 1, timestamp: Date(), kind: kind, className: className, selector: selector, superclass: superclass, fields: fields, source: source)
+        let record = ChangeInfo(id: UUID().uuidString, sequence: sequence + 1, timestamp: Date(), kind: kind, className: className, selector: selector, superclass: superclass, fields: fields, source: source, methodSide: side == .classSide ? side : nil)
         let bytes = try Self.line(record)
         guard validSize + UInt64(bytes.count) <= Self.maxBytes, memoryBytes + bytes.count <= Self.maxBytes else { throw SmalltalkError("The changes log exceeds the 64 MiB limit.") }
         if let url {
@@ -119,9 +121,14 @@ final class SourceJournal {
 }
 
 extension SmalltalkSession {
-    public func baseVersion(of selector: String, in className: String) -> ChangeInfo? {
-        guard let library = try? SystemLibrary.shared.get(), let source = library.methods[className]?[selector] else { return nil }
-        return ChangeInfo(id: "sources:\(className)>>\(selector)", sequence: 0, timestamp: Date(timeIntervalSince1970: 0), kind: .method, className: className, selector: selector, superclass: nil, fields: nil, source: source)
+    public func baseVersion(of selector: String, in className: String, side: MethodSide = .instance) -> ChangeInfo? {
+        Self.baselineVersion(of: selector, in: className, side: side)
+    }
+
+    private nonisolated static func baselineVersion(of selector: String, in className: String, side: MethodSide) -> ChangeInfo? {
+        guard let library = try? SystemLibrary.shared.get(), let source = library.sources[side][className]?[selector] else { return nil }
+        let prefix = side == .classSide ? "class-sources:" : "sources:"
+        return ChangeInfo(id: "\(prefix)\(className)>>\(selector)", sequence: 0, timestamp: Date(timeIntervalSince1970: 0), kind: .method, className: className, selector: selector, superclass: nil, fields: nil, source: source, methodSide: side == .classSide ? side : nil)
     }
     public func startChangeLog(at url: URL) async throws {
         try await worker.submitThrowing { try $0.journal.attach(to: url) }
@@ -131,7 +138,7 @@ extension SmalltalkSession {
         try await worker.submitThrowing { runtime in
             let imported = try SourceJournal.read(url)
             for record in imported.records {
-                try runtime.journal.append(kind: record.kind, className: record.className, selector: record.selector, superclass: record.superclass, fields: record.fields, source: record.source)
+                try runtime.journal.append(kind: record.kind, className: record.className, selector: record.selector, superclass: record.superclass, fields: record.fields, side: record.side, source: record.source)
             }
             return runtime.snapshot(value: "\(imported.records.count) changes imported for review.")
         }
@@ -142,15 +149,19 @@ extension SmalltalkSession {
             do {
                 let record: ChangeInfo
                 if let saved = runtime.journal.records.first(where: { $0.id == id }) { record = saved }
-                else if id.hasPrefix("sources:") {
-                    let parts = String(id.dropFirst(8)).components(separatedBy: ">>")
-                    guard parts.count == 2, let source = try SystemLibrary.shared.get().methods[parts[0]]?[parts[1]] else { throw SmalltalkError("This baseline version does not exist.") }
-                    record = ChangeInfo(id: id, sequence: 0, timestamp: Date(timeIntervalSince1970: 0), kind: .method, className: parts[0], selector: parts[1], superclass: nil, fields: nil, source: source)
+                else if id.hasPrefix("sources:") || id.hasPrefix("class-sources:") {
+                    let side: MethodSide = id.hasPrefix("class-sources:") ? .classSide : .instance
+                    let nameAndSelector = id.drop(while: { $0 != ":" }).dropFirst()
+                    guard let separator = nameAndSelector.range(of: ">>"),
+                          let baseline = Self.baselineVersion(of: String(nameAndSelector[separator.upperBound...]), in: String(nameAndSelector[..<separator.lowerBound]), side: side) else {
+                        throw SmalltalkError("This baseline version does not exist.")
+                    }
+                    record = baseline
                 } else { throw SmalltalkError("This source version does not exist.") }
                 switch record.kind {
                 case .method:
                     guard let stClass = runtime.classes[record.className] else { throw SmalltalkError("Class \(record.className) is missing. Restore its definition first.") }
-                    try runtime.compile(record.source, in: stClass)
+                    try runtime.compile(record.source, in: stClass, side: record.side)
                 case .classDefinition:
                     if let existing = runtime.classes[record.className] {
                         guard existing.superclass?.name == record.superclass, existing.ownFields == record.fields else { throw SmalltalkError("The class already exists with a different layout.") }
@@ -159,7 +170,7 @@ extension SmalltalkSession {
                         _ = try runtime.subclass(of: parent, name: record.className, fields: fields.joined(separator: " "))
                     }
                 }
-                return runtime.finishEvaluation(value: "Restored: \(record.className)\(record.selector.map { " » \($0)" } ?? "")")
+                return runtime.finishEvaluation(value: "Restored: \(record.side.displayName(for: record.className))\(record.selector.map { " » \($0)" } ?? "")")
             } catch { return runtime.finishEvaluation(error: error.localizedDescription) }
         }
     }

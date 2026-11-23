@@ -98,7 +98,7 @@ WorkspaceWindow compile: 'exampleButton: aTitle key: exampleKey
         workspace := Desktop openWorkspace.
         workspace notNil ifTrue: [ workspace text: (ToolVM exampleAt: exampleKey) ] ]; yourself'.
 
-DevelopmentWindow subclass: #BrowserWindow instanceVariableNames: 'categoryList classList protocolList methodList queryField editor category className protocolName selector originalSource header hint accept versions inspector inspectorPane creation nameField fieldsField organizationForm renameCategoryItem moveClassItem newProtocolItem renameProtocolItem moveMethodItem methodSide instanceSideButton classSideButton otherSideState'.
+DevelopmentWindow subclass: #BrowserWindow instanceVariableNames: 'categoryList classList protocolList methodList queryField editor category className protocolName selector originalSource header hint accept versions inspector inspectorPane creation nameField fieldsField organizationForm renameCategoryItem moveClassItem newProtocolItem renameProtocolItem moveMethodItem methodSide instanceSideButton classSideButton otherSideState editingDefinition definitionButton'.
 
 BrowserWindow compile: 'initialize
     | root navigation split source actions toolbar categoryMenu protocolMenu sideBar |
@@ -109,6 +109,7 @@ BrowserWindow compile: 'initialize
     className := ''Counter''.
     protocolName := ''All''.
     methodSide := #instance.
+    editingDefinition := true.
     categoryList := self list: ''categoryList'' selecting: #chooseCategory:.
     classList := self list: ''classList'' selecting: #chooseClass:.
     protocolList := self list: ''protocolList'' selecting: #chooseProtocol:.
@@ -119,11 +120,13 @@ BrowserWindow compile: 'initialize
     hint := self caption: ''''.
     accept := UIButton new title: ''Accept''; identifier: ''executeButton''; role: #primary; command: #acceptMethod; onClickSend: #acceptMethod to: self; yourself.
     versions := UIButton new title: ''Versions …''; identifier: ''methodVersionsButton''; onClickSend: #showVersions to: self; yourself.
+    definitionButton := UIButton new title: ''Definition''; identifier: ''classDefinition''; onClickSend: #showDefinition to: self; yourself.
 
     actions := UIRow new padding: 8; yourself.
     actions add: queryField; add: UISpacer new.
     actions add: (UIButton new title: ''Create Class …''; onClickSend: #showCreation to: self; yourself).
     actions add: (UIButton new title: ''New Method''; identifier: ''newMethod''; onClickSend: #newMethod to: self; yourself).
+    actions add: definitionButton.
     actions add: (UIButton new title: ''Details''; action: [ inspectorPane visible: inspectorPane visible not ]; yourself).
 
     renameCategoryItem := self organizationItem: ''Rename Category …'' id: ''renameCategory'' send: #renameCategory.
@@ -161,8 +164,8 @@ BrowserWindow compile: 'initialize
     root add: (self resultPane heightFrom: 52 to: 78; yourself); add: UIDivider new; add: self imageBar.
     self content: root.
     self result: (ToolVM success: ''Ready.'').
-    self refreshTools.
-    self refreshEditor'.
+    self showDefinition.
+    self refreshTools'.
 
 BrowserWindow compile: 'list: identifier selecting: message
     ^ UIList new identifier: identifier; role: #pane; onSelectSend: message to: self; yourself'.
@@ -232,8 +235,10 @@ BrowserWindow compile: 'refreshTools
     self refreshClasses.
     self refreshMethods.
     target := self selectedClass.
-    (selector notNil and: [ target notNil ]) ifTrue: [
-        textValue := ToolVM methodSourceAt: selector in: target side: methodSide.
+    target notNil ifTrue: [
+        editingDefinition
+            ifTrue: [ textValue := ToolVM definitionOf: target ]
+            ifFalse: [ selector notNil ifTrue: [ textValue := ToolVM methodSourceAt: selector in: target side: methodSide ] ].
         (textValue notNil and: [ textValue ~= originalSource and: [ editor text = originalSource ] ]) ifTrue: [
             editor text: textValue. originalSource := textValue. self refreshEditor ] ].
     self refreshOrganizationActions.
@@ -250,21 +255,29 @@ BrowserWindow compile: 'refreshInspector
     inspector text: (description , ''SHARED VARIABLES'' , ToolVM lineBreak , ToolVM bindingSummary)'.
 
 BrowserWindow compile: 'refreshEditor
-    | primitive name |
+    | primitive name target |
     primitive := self primitiveSelected.
+    target := self selectedClass.
     name := className isNil ifTrue: [ ''No Class Selected'' ] ifFalse: [ className ].
-    (className notNil and: [ methodSide = #class ]) ifTrue: [ name := name , '' class'' ].
+    (className notNil and: [ editingDefinition not and: [ methodSide = #class ] ]) ifTrue: [ name := name , '' class'' ].
     header text: (selector isNil ifTrue: [ name ] ifFalse: [ name , '' » '' , selector ]).
-    hint text: (primitive ifTrue: [ ''VM Primitive'' ] ifFalse: [ methodSide = #class ifTrue: [ ''Class Side'' ] ifFalse: [ ''Instance Side'' ] ]).
+    hint text: (editingDefinition ifTrue: [ ''Class Definition'' ] ifFalse: [
+        primitive ifTrue: [ ''VM Primitive'' ] ifFalse: [ methodSide = #class ifTrue: [ ''Class Side'' ] ifFalse: [ ''Instance Side'' ] ] ]).
     instanceSideButton role: (methodSide = #instance ifTrue: [ #primary ] ifFalse: [ #secondary ]).
     classSideButton role: (methodSide = #class ifTrue: [ #primary ] ifFalse: [ #secondary ]).
-    editor readOnly: (primitive or: [ className isNil ]).
+    editor label: (editingDefinition ifTrue: [ ''Class Definition'' ] ifFalse: [ ''Method Source'' ]).
+    editor readOnly: (target isNil or: [ primitive or: [ editingDefinition and: [ (ToolVM canRedefine: target) not ] ] ]).
     versions enabled: (selector notNil and: [ primitive not ]).
     self refreshOrganizationActions.
     self draftChanged: editor text'.
 
 BrowserWindow compile: 'draftChanged: aString
-    accept enabled: (className notNil and: [ self primitiveSelected not and: [ aString size > 0 ] ])'.
+    | target |
+    target := self selectedClass.
+    definitionButton enabled: (target notNil and: [ editingDefinition not or: [ aString ~= originalSource ] ]).
+    accept enabled: (target notNil and: [ aString size > 0 and: [ editingDefinition
+        ifTrue: [ (ToolVM canRedefine: target) and: [ aString ~= originalSource ] ]
+        ifFalse: [ self primitiveSelected not ] ] ])'.
 
 BrowserWindow compile: 'chooseCategory: name
     category := name isNil ifTrue: [ ''All'' ] ifFalse: [ name ].
@@ -287,11 +300,23 @@ BrowserWindow compile: 'chooseProtocol: name
     self refreshOrganizationActions'.
 
 BrowserWindow compile: 'chooseMethod: name
+    name isNil ifTrue: [ ^ self showDefinition ].
+    editingDefinition := false.
     selector := name.
-    originalSource := selector isNil ifTrue: [ '''' ] ifFalse: [ ToolVM methodSourceAt: selector in: self selectedClass side: methodSide ].
+    originalSource := ToolVM methodSourceAt: selector in: self selectedClass side: methodSide.
     originalSource isNil ifTrue: [ originalSource := '''' ].
     editor text: originalSource.
     methodList selection: selector.
+    self refreshEditor'.
+
+BrowserWindow compile: 'showDefinition
+    | target |
+    editingDefinition := true.
+    selector := nil.
+    methodList selection: nil.
+    target := self selectedClass.
+    originalSource := target isNil ifTrue: [ '''' ] ifFalse: [ ToolVM definitionOf: target ].
+    editor text: originalSource.
     self refreshEditor'.
 
 BrowserWindow compile: 'showInstanceMethods self chooseMethodSide: #instance'.
@@ -303,20 +328,25 @@ BrowserWindow compile: 'chooseMethodSide: side
     methodSide = side ifTrue: [ ^ self ].
     organizationForm cancel.
     saved := otherSideState.
-    otherSideState := Array new: 4.
-    otherSideState at: 1 put: protocolName; at: 2 put: selector; at: 3 put: originalSource; at: 4 put: editor text.
+    otherSideState := Array new: 5.
+    otherSideState at: 1 put: protocolName; at: 2 put: selector; at: 3 put: originalSource;
+        at: 4 put: editor text; at: 5 put: editingDefinition.
     methodSide := side.
     saved isNil ifTrue: [ protocolName := ''All''. self chooseMethod: nil ] ifFalse: [
         protocolName := saved at: 1.
         selector := saved at: 2.
         originalSource := saved at: 3.
+        editingDefinition := saved at: 5.
         editor text: (saved at: 4) ].
     self refreshTools.
     self refreshEditor'.
 
 BrowserWindow compile: 'newMethod
     className isNil ifTrue: [ ^ self ].
-    self chooseMethod: nil.
+    editingDefinition := false.
+    selector := nil.
+    methodList selection: nil.
+    originalSource := ''''.
     editor text: ''newMethod'' , ToolVM lineBreak , ''    ^ self''.
     self refreshEditor'.
 
@@ -324,6 +354,7 @@ BrowserWindow compile: 'acceptMethod
     | outcome target |
     target := self selectedClass.
     (target isNil or: [ self primitiveSelected or: [ editor text size = 0 ] ]) ifTrue: [ ^ self ].
+    editingDefinition ifTrue: [ ^ self acceptDefinition ].
     outcome := ToolVM compileSource: editor text in: target side: methodSide.
     (outcome at: 1) ifTrue: [
         selector := outcome at: 2.
@@ -333,6 +364,12 @@ BrowserWindow compile: 'acceptMethod
         self refreshEditor.
         self result: (ToolVM success: className , (methodSide = #class ifTrue: [ '' class'' ] ifFalse: [ '''' ]) , '' » '' , selector)
     ] ifFalse: [ self result: outcome ]'.
+
+BrowserWindow compile: 'acceptDefinition
+    | outcome |
+    outcome := ToolVM acceptDefinition: editor text in: self selectedClass basedOn: originalSource.
+    (outcome at: 1) ifTrue: [ self showDefinition. self refreshTools ].
+    self result: outcome'.
 
 BrowserWindow compile: 'showVersions
     (selector notNil and: [ self primitiveSelected not ]) ifTrue: [ ToolVM requestVersionsFor: className selector: selector side: methodSide ]'.
@@ -364,8 +401,7 @@ BrowserWindow compile: 'createClass
             ifTrue: [ category := SystemOrganization categoryOf: created ]
             ifFalse: [ SystemOrganization classCategories move: created to: category ].
         queryField text: ''''.
-        self chooseClass: created.
-        self newMethod ].
+        self chooseClass: created ].
     self result: outcome'.
 
 BrowserWindow compile: 'refreshOrganizationActions

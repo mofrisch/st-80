@@ -9,6 +9,194 @@ struct SourceJournalTests {
         return url
     }
 
+    private func redefine(_ name: String, superclass: String = "Object", fields: String = "", in session: SmalltalkSession) async -> EvaluationResult {
+        let definition = "\(superclass) subclass: #\(name) instanceVariableNames: '\(fields)'"
+            .replacingOccurrences(of: "'", with: "''")
+        return await session.evaluate("ToolVM acceptDefinition: '\(definition)' in: \(name) basedOn: (ToolVM definitionOf: \(name))")
+    }
+
+    @Test func superclassChangesProtectRetainedClassBlocksAndBothImageFormats() async throws {
+        let folder = try directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("ClassBlocks.stimage")
+        let log = folder.appendingPathComponent("ClassBlocks.changes")
+        let session = SmalltalkSession()
+        let setup = await session.evaluate("""
+            Object subclass: #BlockHome instanceVariableNames: ''.
+            BlockHome subclass: #BlockBranch instanceVariableNames: 'kept'.
+            BlockBranch subclass: #BlockReceiver instanceVariableNames: 'extra'.
+            BlockHome compileClass: 'callback ^ [ 42 ]'.
+            live := BlockReceiver new.
+            holder := Array new: 2.
+            holder at: 1 put: BlockReceiver callback; at: 2 put: holder
+            """)
+        #expect(setup.error == nil)
+        try await session.saveImage(to: url, workspace: "", transcript: "")
+        let before = try Data(contentsOf: log)
+        let rejected = await redefine("BlockBranch", fields: "kept added", in: session)
+        #expect(rejected.value?.hasPrefix("#(false ") == true)
+        #expect(rejected.value?.contains("BlockHome") == true)
+        #expect(rejected.changes.map(\.id) == setup.changes.map(\.id))
+        #expect(try Data(contentsOf: log) == before)
+        #expect(rejected.classes.first { $0.name == "BlockBranch" }?.superclass == "BlockHome")
+        #expect(rejected.classes.first { $0.name == "BlockReceiver" }?.fields == ["kept", "extra"])
+        #expect(await session.evaluate("live printString").value == "'a BlockReceiver (kept: nil, extra: nil)'")
+        #expect(await session.evaluate("(holder at: 1) value").value == "42")
+
+        try await session.saveImage(to: url, workspace: "", transcript: "")
+        let restored = SmalltalkSession()
+        _ = try await restored.loadImage(session.imageData())
+        #expect(await restored.evaluate("(holder at: 1) value").value == "42")
+        _ = try await restored.loadImage(from: url)
+        #expect(await restored.evaluate("(holder at: 1) value").value == "42")
+        #expect(await restored.evaluate("(holder at: 2) == holder").value == "true")
+
+        // The arena still retains the unreachable array. It must not veto edits.
+        _ = await session.evaluate("holder := nil")
+        let accepted = await redefine("BlockBranch", fields: "kept added", in: session)
+        #expect(accepted.value?.hasPrefix("#(true ") == true)
+        #expect(await session.evaluate("BlockBranch superclass name").value == "#Object")
+        _ = try await restored.loadImage(session.imageData())
+        #expect(await restored.evaluate("live printString").value == "'a BlockReceiver (kept: nil, added: nil, extra: nil)'")
+    }
+
+    @Test func fieldRemovalAndHistoryRestorationProtectCapturedBlockCode() async throws {
+        let session = SmalltalkSession()
+        let created = await session.evaluate("Object subclass: #FieldOwner instanceVariableNames: ''")
+        let emptyLayout = try #require(created.changes.first { $0.className == "FieldOwner" && $0.kind == .classDefinition })
+        #expect(await redefine("FieldOwner", fields: "count", in: session).value?.hasPrefix("#(true ") == true)
+        let setup = await session.evaluate("""
+            | captured |
+            FieldOwner subclass: #FieldChild instanceVariableNames: ''.
+            FieldOwner compile: 'deferred ^ [ count ]'.
+            captured := FieldChild new deferred.
+            heldBlock := [ captured ].
+            FieldOwner compile: 'deferred ^ [ 42 ]'
+            """)
+        #expect(setup.error == nil)
+        let rejected = await redefine("FieldOwner", in: session)
+        #expect(rejected.value?.hasPrefix("#(false ") == true)
+        #expect(rejected.value?.contains("instance variable count") == true)
+        #expect(rejected.changes.map(\.id) == setup.changes.map(\.id))
+        #expect(rejected.classes.first { $0.name == "FieldChild" }?.fields == ["count"])
+        #expect(await session.evaluate("heldBlock value value").value == "nil")
+
+        let history = await session.restoreChange(emptyLayout.id)
+        #expect(history.error?.contains("instance variable count") == true)
+        #expect(history.changes.map(\.id) == setup.changes.map(\.id))
+        let restored = SmalltalkSession()
+        _ = try await restored.loadImage(session.imageData())
+        #expect(await restored.evaluate("heldBlock value value").value == "nil")
+        _ = await session.evaluate("heldBlock := nil")
+        #expect(await redefine("FieldOwner", in: session).value?.hasPrefix("#(true ") == true)
+    }
+
+    @Test(arguments: [
+        "deferred ^ [ :count | [ count ] ] value: 42",
+        "deferred ^ [ | count | count := 42. [ count ] ] value",
+        "deferred ^ [ [ :count | count ] value: 42 ]",
+        "deferred ^ [ | count | count := 42. count ]",
+    ])
+    func shadowedBlockVariablesDoNotPreventFieldRemoval(_ source: String) async throws {
+        let session = SmalltalkSession()
+        #expect(await session.evaluate("Object subclass: #ShadowOwner instanceVariableNames: 'count'").error == nil)
+        #expect(await session.compile(source, in: "ShadowOwner").error == nil)
+        #expect(await session.evaluate("heldBlock := ShadowOwner new deferred").error == nil)
+        #expect(await session.compile("deferred ^ 0", in: "ShadowOwner").error == nil)
+        #expect(await redefine("ShadowOwner", in: session).value?.hasPrefix("#(true ") == true)
+        #expect(await session.evaluate("heldBlock value").value == "42")
+    }
+
+    @Test func activeClassMethodsCannotInvalidateBlocksCreatedAfterRedefinition() async throws {
+        let session = SmalltalkSession()
+        let setup = await session.evaluate("""
+            Object subclass: #ActiveHome instanceVariableNames: ''.
+            ActiveHome subclass: #ActiveReceiver instanceVariableNames: ''.
+            attempt := nil
+            """)
+        #expect(setup.error == nil)
+        let compiled = await session.compile("""
+            moveAndReturnBlock
+                attempt := ToolVM acceptDefinition: 'Object subclass: #ActiveReceiver instanceVariableNames: '''''
+                    in: self basedOn: (ToolVM definitionOf: self).
+                ^ [ 42 ]
+            """, in: "ActiveHome", side: .classSide)
+        #expect(compiled.error == nil)
+        #expect(await session.evaluate("heldBlock := ActiveReceiver moveAndReturnBlock").error == nil)
+        #expect(await session.evaluate("attempt at: 1").value == "false")
+        #expect(await session.evaluate("ActiveReceiver superclass name").value == "#ActiveHome")
+        let restored = SmalltalkSession()
+        _ = try await restored.loadImage(session.imageData())
+        #expect(await restored.evaluate("heldBlock value").value == "42")
+    }
+
+    @Test(arguments: ["receiver", "argument", "cascade", "collection", "super"])
+    func inFlightMessagesAndCollectionResultsProtectClassBlocks(_ location: String) async throws {
+        let session = SmalltalkSession()
+        #expect(await session.evaluate("""
+            Object subclass: #TransientHome instanceVariableNames: ''.
+            TransientHome subclass: #TransientReceiver instanceVariableNames: ''.
+            TransientHome compileClass: 'callback ^ [ 42 ]'.
+            TransientHome compileClass: 'ignore: unused ^ [ 42 ]'.
+            BlockClosure compile: 'after: ignored ^ self'.
+            Object compile: 'first: aBlock second: ignored ^ aBlock'.
+            attempt := nil
+            """).error == nil)
+        let change = "ToolVM acceptDefinition: 'Object subclass: #TransientReceiver instanceVariableNames: ''''' in: TransientReceiver basedOn: (ToolVM definitionOf: TransientReceiver)"
+        let source: String
+        switch location {
+        case "receiver": source = "heldBlock := TransientReceiver callback after: (attempt := \(change))"
+        case "argument": source = "heldBlock := Object new first: TransientReceiver callback second: (attempt := \(change))"
+        case "cascade": source = "heldBlock := TransientReceiver callback yourself; after: (attempt := \(change))"
+        case "collection": source = "holder := #(1 2) collect: [ :each | each = 1 ifTrue: [ TransientReceiver callback ] ifFalse: [ attempt := \(change). nil ] ]. heldBlock := holder at: 1"
+        default:
+            #expect(await session.compile("callbackAfterMove ^ super ignore: (attempt := \(change))", in: "TransientReceiver", side: .classSide).error == nil)
+            source = "heldBlock := TransientReceiver callbackAfterMove"
+        }
+        #expect(await session.evaluate(source).error == nil)
+        #expect(await session.evaluate("attempt at: 1").value == "false")
+        #expect(await session.evaluate("TransientReceiver superclass name").value == "#TransientHome")
+        let restored = SmalltalkSession()
+        _ = try await restored.loadImage(session.imageData())
+        #expect(await restored.evaluate("heldBlock value").value == "42")
+
+        _ = await session.evaluate("heldBlock := nil. holder := nil")
+        #expect(await session.evaluate("TransientReceiver callback after: (1 / 0)").error != nil)
+        #expect(await redefine("TransientReceiver", in: session).value?.hasPrefix("#(true ") == true)
+    }
+
+    @Test func classDefinitionHistoryRestoresLayoutsAndRejectsFailedJournalWrites() async throws {
+        let folder = try directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("Layout.stimage")
+        let session = SmalltalkSession()
+        let created = await session.evaluate("Object subclass: #Editable instanceVariableNames: 'count'. object := Editable new")
+        let original = try #require(created.changes.first { $0.kind == .classDefinition && $0.className == "Editable" })
+        let change = "ToolVM acceptDefinition: 'Object subclass: #Editable instanceVariableNames: ''count label''' in: Editable basedOn: (ToolVM definitionOf: Editable)"
+        let edited = await session.evaluate(change)
+        #expect(edited.changes.last?.fields == ["count", "label"])
+        try await session.saveImage(to: url, workspace: "", transcript: "")
+        let restored = SmalltalkSession()
+        let loaded = try await restored.loadImage(from: url)
+        #expect(loaded.evaluation.classes.first { $0.name == "Editable" }?.fields == ["count", "label"])
+        let reverted = await restored.restoreChange(original.id)
+        #expect(reverted.error == nil)
+        #expect(reverted.classes.first { $0.name == "Editable" }?.fields == ["count"])
+        #expect(reverted.changes.last?.fields == ["count"])
+
+        let log = url.deletingPathExtension().appendingPathExtension("changes")
+        let writer = try FileHandle(forWritingTo: log)
+        defer { try? writer.close() }
+        try writer.seekToEnd()
+        try writer.write(contentsOf: Data("partial".utf8))
+        let rejected = await restored.evaluate(change)
+        #expect(rejected.value?.contains("outside this session") == true)
+        #expect(rejected.classes.first { $0.name == "Editable" }?.fields == ["count"])
+        #expect(rejected.changes.last?.id == reverted.changes.last?.id)
+        #expect(await restored.evaluate("object printString").value == "'a Editable (count: nil)'")
+    }
+
+
     @Test func classMethodsAndTheirLexicalSuperSurviveBothImageFormats() async throws {
         let folder = try directory()
         defer { try? FileManager.default.removeItem(at: folder) }

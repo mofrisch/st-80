@@ -176,7 +176,7 @@ BrowserOrganization compile: 'shippedProtocols
             (''Catalog Updates'' (''refreshClasses'' ''refreshMethods'' ''refreshTools'' ''refreshInspector'' ''refreshOrganizationActions''))
             (''Method Editing'' (''acceptMethod'' ''draftChanged:'' ''newMethod'' ''primitiveSelected''
                 ''refreshEditor'' ''showVersions''))
-            (''Class Creation'' (''classForm'' ''showCreation'' ''hideCreation'' ''createClass''))
+            (''Class Definitions'' (''showDefinition'' ''acceptDefinition'' ''classForm'' ''showCreation'' ''hideCreation'' ''createClass''))
             (''Organization Editing'' (''editGroupIn:named:prompt:selecting:'' ''moveItem:in:from:prompt:selecting:''
                 ''newCategory'' ''renameCategory'' ''moveClass'' ''newProtocol'' ''renameProtocol'' ''moveMethod'' ''organizationEdited:''))))
         (''TranscriptModel'' (

@@ -16,8 +16,8 @@ enum Value {
 
 final class STClass {
     let name: String
-    let superclass: STClass?
-    let ownFields: [String]
+    var superclass: STClass?
+    var ownFields: [String]
     var methods: [String: Method] = [:]
     var classMethods: [String: Method] = [:]
     var fields: [String] { (superclass?.fields ?? []) + ownFields }
@@ -206,6 +206,9 @@ final class SmalltalkRuntime {
     var depth = 0
     var nextHome = 0
     var activeHomes: Set<Int> = []
+    var activations: [(body: Body, context: Context)] = []
+    var evaluationRoots: [Value] = []
+    var pendingMessages: [(receiver: Value, lookup: MessageLookup)] = []
     let compilationMode: Bool
     var arrayLimit: Int { compilationMode ? 524_288 : 4_096 }
     private var allocationLimit: Int { compilationMode ? 524_288 : 20_000 }
@@ -318,6 +321,8 @@ final class SmalltalkRuntime {
     }
 
     func evaluate(_ body: Body, context: Context) throws -> Value {
+        activations.append((body, context))
+        defer { activations.removeLast() }
         for name in body.temporaries { context.environment.values[name] = .nilValue }
         var result: Value = .nilValue
         for expression in body.expressions { result = try evaluate(expression, context: context) }
@@ -337,14 +342,12 @@ final class SmalltalkRuntime {
                 return value
             case .send(let receiverExpression, let selector, let arguments):
                 let (receiver, lookup) = try messageReceiver(receiverExpression, context: context)
-                let values = try arguments.map { try evaluate($0, context: context) }
-                return try send(receiver, selector, values, startingAt: lookup)
+                return try evaluateMessage(receiver, selector, arguments, context: context, startingAt: lookup)
             case .cascade(let receiverExpression, let messages):
                 let (receiver, lookup) = try messageReceiver(receiverExpression, context: context)
                 var result = receiver
                 for message in messages {
-                    let arguments = try message.arguments.map { try evaluate($0, context: context) }
-                    result = try send(receiver, message.selector, arguments, startingAt: lookup)
+                    result = try evaluateMessage(receiver, message.selector, message.arguments, context: context, startingAt: lookup)
                 }
                 return result
             case .block(let parameters, let body):
@@ -357,6 +360,24 @@ final class SmalltalkRuntime {
             if error.position == nil { error.position = expression.position }
             throw error
         }
+    }
+
+    private func evaluateMessage(_ receiver: Value, _ selector: String, _ arguments: [Expression], context: Context, startingAt lookup: MessageLookup) throws -> Value {
+        // Earlier operands stay live while a later argument may redefine a class.
+        let rootCount = evaluationRoots.count
+        evaluationRoots.append(receiver)
+        pendingMessages.append((receiver, lookup))
+        defer {
+            evaluationRoots.removeSubrange(rootCount...)
+            pendingMessages.removeLast()
+        }
+        var values: [Value] = []
+        for argument in arguments {
+            let value = try evaluate(argument, context: context)
+            values.append(value)
+            evaluationRoots.append(value)
+        }
+        return try send(receiver, selector, values, startingAt: lookup)
     }
 
     func messageReceiver(_ expression: Expression, context: Context) throws -> (Value, MessageLookup) {

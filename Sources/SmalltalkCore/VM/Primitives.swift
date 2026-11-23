@@ -153,11 +153,24 @@ extension SmalltalkRuntime {
             case "at:put:":
                 array.elements[try index(args[0], count: array.elements.count)] = args[1]
                 return args[1]
-            case "do:":
-                for element in array.elements { _ = try invokeBlock(args[0], [element]) }
-                return receiver
-            case "collect:": return try self.array(array.elements.map { try invokeBlock(args[0], [$0]) })
-            case "select:": return try self.array(array.elements.filter { try boolean(invokeBlock(args[0], [$0])) })
+            case "do:", "collect:", "select:":
+                let elements = array.elements
+                let rootCount = evaluationRoots.count
+                evaluationRoots.append(contentsOf: elements)
+                defer { evaluationRoots.removeSubrange(rootCount...) }
+                switch selector {
+                case "do:":
+                    for element in elements { _ = try invokeBlock(args[0], [element]) }
+                    return receiver
+                case "collect:":
+                    return try self.array(elements.map {
+                        let result = try invokeBlock(args[0], [$0])
+                        evaluationRoots.append(result)
+                        return result
+                    })
+                default:
+                    return try self.array(elements.filter { try boolean(invokeBlock(args[0], [$0])) })
+                }
             default: return nil
             }
         case .block:
@@ -219,16 +232,14 @@ extension SmalltalkRuntime {
     }
 
     func subclass(of superclass: STClass, name: String, fields source: String) throws -> STClass {
-        guard superclass.name == "Object" || !Self.builtinNames.contains(superclass.name) else { throw SmalltalkError("Subclassing primitive classes is not implemented.") }
+        try validateSuperclass(superclass)
         guard name.first?.isUppercase == true && name.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" }) else {
             throw SmalltalkError("Class names must begin with an uppercase letter.")
         }
         guard globals[name] == nil else { throw SmalltalkError("\(name) already exists.") }
         guard classes.count < 128 else { throw SmalltalkError("A session can contain at most 128 classes.") }
         let fields = source.split(whereSeparator: \.isWhitespace).map(String.init)
-        guard CodeValidator.validNames(fields), Set(fields).isDisjoint(with: superclass.fields), fields.count + superclass.fields.count <= 64 else {
-            throw SmalltalkError("Instance variable names must be valid and unique, with at most 64 variables.")
-        }
+        try validateFields(fields, inherited: superclass.fields)
         if recordingChanges {
             let escaped = source.replacingOccurrences(of: "'", with: "''")
             try journal.append(kind: .classDefinition, className: name, superclass: superclass.name, fields: fields, source: "\(superclass.name) subclass: #\(name) instanceVariableNames: '\(escaped)'")
@@ -238,6 +249,18 @@ extension SmalltalkRuntime {
         catalogDirty = true
         globals[name] = .classObject(stClass)
         return stClass
+    }
+
+    func validateSuperclass(_ superclass: STClass) throws {
+        guard superclass.name == "Object" || !Self.builtinNames.contains(superclass.name) else {
+            throw SmalltalkError("Subclassing primitive classes is not implemented.")
+        }
+    }
+
+    func validateFields(_ fields: [String], inherited: [String]) throws {
+        guard CodeValidator.validNames(fields), Set(fields).isDisjoint(with: inherited), fields.count + inherited.count <= 64 else {
+            throw SmalltalkError("Instance variable names must be valid and unique, with at most 64 variables.")
+        }
     }
 
     static let builtinNames: Set<String> = ["Object", "Class", "UndefinedObject", "Boolean", "True", "False", "Number", "Integer", "SmallInteger", "String", "Symbol", "Array", "BlockClosure", "Transcript"]

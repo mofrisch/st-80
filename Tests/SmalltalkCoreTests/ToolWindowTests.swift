@@ -118,7 +118,7 @@ struct ToolWindowTests {
         try await perform("methodEditor") { .text(windowID: browser.id, elementID: $0, value: "value ^ count + 10") }
         try await click("classMethodSide")
         #expect(element("methodList", in: content)?.items == [])
-        #expect(element("methodEditor", in: content)?.text == "")
+        #expect(element("methodEditor", in: content)?.text == "Object subclass: #Counter\n    instanceVariableNames: 'count'")
 
         try await click("newProtocol")
         try await perform("organizationName") { .text(windowID: browser.id, elementID: $0, value: "Factories") }
@@ -205,6 +205,7 @@ struct ToolWindowTests {
         try await submitName("Reading")
         #expect(element("protocolList", in: content)?.selection == "Reading")
         #expect(element("methodList", in: content)?.items == [])
+        try await click("newMethod")
         try await edit("methodEditor", "answer ^ 42")
         try await click("executeButton")
         #expect(element("methodList", in: content)?.items == ["answer"])
@@ -266,7 +267,9 @@ struct ToolWindowTests {
 
         _ = await session.uiAction(.select(windowID: browser.id, elementID: classes.id, value: "ToolExample"))
         let methodEditor = try #require(element("methodEditor", in: browser.content))
+        let newMethod = try #require(element("newMethod", in: browser.content))
         let accept = try #require(element("executeButton", in: browser.content))
+        _ = await session.uiAction(.click(windowID: browser.id, elementID: newMethod.id))
         _ = await session.uiAction(.text(windowID: browser.id, elementID: methodEditor.id, value: "answer ^ 73"))
         let accepted = await session.uiAction(.click(windowID: browser.id, elementID: accept.id))
         #expect(accepted.error == nil)
@@ -280,5 +283,58 @@ struct ToolWindowTests {
         let loaded = try await restored.loadImage(session.imageData())
         #expect(element("transcriptOutput", in: loaded.evaluation.windows.first(where: { $0.id == transcript.id })?.content)?.text == "live")
         #expect(element("methodList", in: loaded.evaluation.windows.first(where: { $0.id == browser.id })?.content)?.selection == "answer")
+    }
+
+    @Test func browserEditsTheSelectedClassDefinitionAndPreservesLiveInstances() async throws {
+        let session = SmalltalkSession()
+        let setup = await session.evaluate("""
+            Object subclass: #DefinitionParent instanceVariableNames: 'inherited'.
+            Object subclass: #DefinitionExample instanceVariableNames: 'count'.
+            DefinitionExample subclass: #DefinitionChild instanceVariableNames: 'child'.
+            DefinitionExample compile: 'count ^ count'.
+            DefinitionExample compile: 'count: value count := value'.
+            live := DefinitionChild new count: 42; yourself.
+            identity := DefinitionExample
+            """)
+        #expect(setup.error == nil)
+        let browser = try #require(setup.windows.first { $0.kind == .browser })
+        let classes = try #require(element("classList", in: browser.content))
+        let selected = await session.uiAction(.select(windowID: browser.id, elementID: classes.id, value: "DefinitionExample"))
+        let content = selected.windows.first { $0.id == browser.id }?.content
+        let editor = try #require(element("methodEditor", in: content))
+        let accept = try #require(element("executeButton", in: content))
+        #expect(editor.label == "Class Definition")
+        #expect(editor.text == "Object subclass: #DefinitionExample\n    instanceVariableNames: 'count'")
+        #expect(!accept.enabled)
+
+        func submit(_ source: String) async -> EvaluationResult {
+            _ = await session.uiAction(.text(windowID: browser.id, elementID: editor.id, value: source))
+            return await session.uiAction(.click(windowID: browser.id, elementID: accept.id))
+        }
+
+        let cycle = await submit("DefinitionChild subclass: #DefinitionExample instanceVariableNames: 'count'")
+        let cycleContent = cycle.windows.first { $0.id == browser.id }?.content
+        #expect(element("evaluationResult", in: cycleContent)?.text.contains("inherit from itself") == true)
+        #expect(cycle.changes.count == setup.changes.count)
+        let removal = await submit("Object subclass: #DefinitionExample instanceVariableNames: ''")
+        #expect(element("evaluationResult", in: removal.windows.first { $0.id == browser.id }?.content)?.text.contains("still uses instance variable count") == true)
+        #expect(removal.changes.count == setup.changes.count)
+
+        let changed = await submit("DefinitionParent subclass: #DefinitionExample instanceVariableNames: 'label count'")
+        #expect(changed.error == nil)
+        #expect(changed.changes.last?.kind == .classDefinition)
+        #expect(changed.classes.first { $0.name == "DefinitionChild" }?.fields == ["inherited", "label", "count", "child"])
+        #expect(await session.evaluate("identity == DefinitionExample and: [ live count = 42 ]").value == "true")
+
+        let restored = SmalltalkSession()
+        let loaded = try await restored.loadImage(session.imageData())
+        #expect(await restored.evaluate("live count").value == "42")
+        #expect(await restored.evaluate("DefinitionExample superclass name").value == "#DefinitionParent")
+        let restoredContent = loaded.evaluation.windows.first { $0.id == browser.id }?.content
+        let restoredClasses = try #require(element("classList", in: restoredContent))
+        let selectedPrimitive = await restored.uiAction(.select(windowID: browser.id, elementID: restoredClasses.id, value: "Integer"))
+        let primitiveSource = element("methodEditor", in: selectedPrimitive.windows.first { $0.id == browser.id }?.content)
+        #expect(primitiveSource?.text.contains("Number subclass: #Integer") == true)
+        #expect(primitiveSource?.readOnly == true)
     }
 }

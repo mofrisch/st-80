@@ -3,6 +3,42 @@ import XCTest
 
 @MainActor
 final class Smalltalk80UITests: XCTestCase {
+    func testBrowserShowsAndAcceptsClassDefinitions() {
+        let app = launchFreshApp()
+        let workspace = app.windows["toolWindow-1"]
+        let workspaceEditor = workspace.textViews["workspaceEditor"]
+        XCTAssertTrue(workspaceEditor.waitForExistence(timeout: 10))
+        replaceText(in: workspaceEditor, with: "live := Counter new add: 9; yourself. live value")
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(workspace.staticTexts["9"].waitForExistence(timeout: 5))
+        workspaceEditor.typeKey("2", modifierFlags: .command)
+
+        let browser = app.windows["toolWindow-2"]
+        let editor = browser.textViews["methodEditor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        browser.staticTexts["Array"].firstMatch.click()
+        XCTAssertEqual(editor.value as? String, "Object subclass: #Array\n    instanceVariableNames: ''")
+        browser.staticTexts["Examples"].firstMatch.click()
+        let counter = browser.staticTexts["Counter"].firstMatch
+        let visibleCounter = expectation(for: NSPredicate(format: "hittable == true"), evaluatedWith: counter)
+        wait(for: [visibleCounter], timeout: 5)
+        counter.click()
+        let counterDefinition = expectation(for: NSPredicate(format: "value == %@", "Object subclass: #Counter\n    instanceVariableNames: 'count'"), evaluatedWith: editor)
+        wait(for: [counterDefinition], timeout: 5)
+        browser.staticTexts["value"].firstMatch.click()
+        XCTAssertEqual(editor.value as? String, "value ^ count")
+        browser.buttons["classDefinition"].click()
+        let definition = "Object subclass: #Counter\n    instanceVariableNames: 'count label'"
+        replaceText(in: editor, with: definition)
+        editor.typeKey("s", modifierFlags: .command)
+        XCTAssertTrue(browser.staticTexts["Counter definition accepted."].waitForExistence(timeout: 5))
+        XCTAssertEqual(editor.value as? String, definition)
+        editor.typeKey("1", modifierFlags: .command)
+        replaceText(in: workspaceEditor, with: "live value + Counter new value")
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(workspace.staticTexts["9"].waitForExistence(timeout: 5))
+    }
+
     func testBrowserCreatesAndEditsClassMethodsIndependently() {
         let app = launchFreshApp()
         let workspace = app.windows["toolWindow-1"]

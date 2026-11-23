@@ -27,6 +27,17 @@ extension SmalltalkRuntime {
         case "classNames": return try array(classes.keys.sorted().map(Value.string))
         case "classNamed:": return try classes[string(args[0])].map(Value.classObject) ?? .nilValue
         case "classNameOf:": return try .string(target(args[0]).name)
+        case "definitionOf:": return try .string(definitionSource(for: target(args[0])))
+        case "canRedefine:": return try .boolean(!Self.builtinNames.contains(target(args[0]).name))
+        case "acceptDefinition:in:basedOn:":
+            let stClass = try target(args[1])
+            return try outcome {
+                guard try definitionSource(for: stClass) == string(args[2]) else {
+                    throw SmalltalkError("The class definition changed. Reopen it before accepting your edits.")
+                }
+                try acceptDefinition(string(args[0]), for: stClass)
+                return "\(stClass.name) definition accepted."
+            }
         case "classDetails:":
             let stClass = try target(args[0])
             return try array([.string(stClass.superclass?.name ?? ""), .string(stClass.fields.isEmpty ? "None" : stClass.fields.joined(separator: " · "))])

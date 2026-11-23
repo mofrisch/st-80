@@ -163,10 +163,10 @@ extension SmalltalkSession {
                     guard let stClass = runtime.classes[record.className] else { throw SmalltalkError("Class \(record.className) is missing. Restore its definition first.") }
                     try runtime.compile(record.source, in: stClass, side: record.side)
                 case .classDefinition:
+                    guard let parent = record.superclass.flatMap({ runtime.classes[$0] }), let fields = record.fields else { throw SmalltalkError("The superclass of the class being restored is missing.") }
                     if let existing = runtime.classes[record.className] {
-                        guard existing.superclass?.name == record.superclass, existing.ownFields == record.fields else { throw SmalltalkError("The class already exists with a different layout.") }
+                        try runtime.redefineClass(existing, superclass: parent, fields: fields, source: record.source)
                     } else {
-                        guard let parent = record.superclass.flatMap({ runtime.classes[$0] }), let fields = record.fields else { throw SmalltalkError("The superclass of the class being restored is missing.") }
                         _ = try runtime.subclass(of: parent, name: record.className, fields: fields.joined(separator: " "))
                     }
                 }

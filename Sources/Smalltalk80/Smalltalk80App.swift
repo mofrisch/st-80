@@ -35,7 +35,7 @@ struct Smalltalk80App: App {
             CommandGroup(replacing: .newItem) {
                 Button("New Workspace") { Task { await controller.openTool(.workspace) } }.keyboardShortcut("n").disabled(controller.isRunning)
                 Button("Open Workspace …") { Task { await controller.openWorkspace() } }.keyboardShortcut("o").disabled(controller.isRunning)
-                Button(controller.activeKind == .browser ? "Accept Method" : "Save Workspace …") {
+                Button(controller.activeKind == .browser ? "Accept" : "Save Workspace …") {
                     Task {
                         if controller.activeKind == .browser { await controller.performCommand("acceptMethod") }
                         else { await controller.saveWorkspace() }

@@ -5,35 +5,17 @@ import UniformTypeIdentifiers
 
 @MainActor
 @Observable
-final class ToolWindowState {
-    let id: Int64
-    let kind: ToolKind
-    let identity: String
-    var text: String
-    var documentURL: URL?
-    var error: String?
-    var content: UIElementInfo?
-
-    init(_ info: ToolWindowInfo) {
-        id = info.id
-        kind = info.kind
-        identity = info.identity
-        text = info.text
-        content = info.content
-    }
-}
-
-@MainActor
-@Observable
 final class AppController {
-    var states: [Int64: ToolWindowState] = [:]
-    var windowInfos: [ToolWindowInfo] = []
-    var activeWindowID: Int64?
+    private var windowPresentation = WindowPresentation()
+    private var controlEdits = ControlEdits()
     var result = "Bereit."
     var error: String?
     var isRunning = false {
         didSet {
-            if !isRunning { scheduleSynchronization(); scheduleInputSynchronization() }
+            if !isRunning {
+                scheduleWindowSynchronization()
+                scheduleInputSynchronization()
+            }
         }
     }
     var imageURL: URL?
@@ -41,22 +23,13 @@ final class AppController {
     private let session = SmalltalkSession()
     private let preferences: UserDefaults
     private var hasLoaded = false
-    private struct InputAddress: Hashable {
-        let windowID: Int64
-        let elementID: String
-    }
-    private var editorSelections: [InputAddress: NSRange] = [:]
-    private var pendingInputs: [InputAddress: String] = [:]
-    private var inputOrder: [InputAddress: UInt64] = [:]
-    @ObservationIgnored private var inputSequence: UInt64 = 0
-    private var liveInputs: Set<InputAddress> = []
     @ObservationIgnored private var inputDebounce: Task<Void, Never>?
     @ObservationIgnored private var inputFlush: (id: UUID, task: Task<Bool, Never>)?
     @ObservationIgnored private var inputEpoch = 0
     private var pendingWindowEvents: [NativeWindowEvent] = []
     @ObservationIgnored private var windowFlush: (id: UUID, task: Task<Bool, Never>)?
     @ObservationIgnored private var windowEpoch = 0
-    private var synchronization: Task<Void, Never>?
+    private var windowDebounce: Task<Void, Never>?
     private var currentEpoch: String?
     private var latestRevision: Int64 = 0
     var changes: [ChangeInfo] = []
@@ -75,11 +48,10 @@ final class AppController {
         preferences = suite.flatMap { UserDefaults(suiteName: $0) } ?? .standard
     }
 
-    var activeKind: ToolKind? { activeWindowID.flatMap { states[$0]?.kind } }
-    var workspaceState: ToolWindowState? {
-        if let id = activeWindowID, let state = states[id], state.kind == .workspace { return state }
-        return windowInfos.last(where: { $0.kind == .workspace }).flatMap { states[$0.id] }
-    }
+    var activeKind: ToolKind? { windowPresentation.activeWindow?.info.kind }
+
+    func presentedWindow(_ id: Int64) -> PresentedWindow? { windowPresentation.window(id) }
+
     func load() async {
         guard !hasLoaded else { return }
         hasLoaded = true
@@ -98,25 +70,25 @@ final class AppController {
         }
         do { try await startUnsavedChangeLog() } catch { self.error = error.localizedDescription }
         let failure = error
-        apply(await session.snapshot(), replaceBuffers: true)
+        apply(await session.snapshot(), replacingWindows: true)
         error = failure
     }
 
     private func received(_ event: NativeWindowEvent) {
         pendingWindowEvents.append(event)
-        if case .activated(let id) = event.kind, states[id] != nil {
-            activeWindowID = id
+        if case .activated(let id) = event.kind, presentedWindow(id) != nil {
+            windowPresentation.activeID = id
         }
         imageHasChanges = true
-        scheduleSynchronization()
+        scheduleWindowSynchronization()
     }
 
-    private func scheduleSynchronization() {
-        guard hasLoaded, !isRunning, synchronization == nil, !pendingWindowEvents.isEmpty else { return }
-        synchronization = Task { [weak self] in
+    private func scheduleWindowSynchronization() {
+        guard hasLoaded, !isRunning, windowDebounce == nil, !pendingWindowEvents.isEmpty else { return }
+        windowDebounce = Task { [weak self] in
             do { try await Task.sleep(for: .milliseconds(40)) } catch { return }
             guard let self else { return }
-            self.synchronization = nil
+            self.windowDebounce = nil
             guard !self.isRunning else { return }
             _ = await self.synchronizeWindowEvents()
         }
@@ -144,54 +116,19 @@ final class AppController {
         }
     }
 
-    private func apply(_ evaluation: EvaluationResult, replaceBuffers: Bool = false) {
-        if !replaceBuffers, let currentEpoch {
+    private func apply(_ evaluation: EvaluationResult, replacingWindows: Bool = false) {
+        if !replacingWindows, let currentEpoch {
             guard evaluation.windowCommands.epoch == currentEpoch, evaluation.windowCommands.revision > latestRevision else { return }
         }
-        currentEpoch = evaluation.windowCommands.epoch; latestRevision = evaluation.windowCommands.revision
-        changes = evaluation.changes; savedChangeSequence = evaluation.savedChangeSequence; changesPath = evaluation.changesPath
+        currentEpoch = evaluation.windowCommands.epoch
+        latestRevision = evaluation.windowCommands.revision
+        changes = evaluation.changes
+        savedChangeSequence = evaluation.savedChangeSequence
+        changesPath = evaluation.changesPath
         error = evaluation.error
         if let value = evaluation.value { result = value }
-        let previous = windowInfos
-        let ids = Set(evaluation.windows.map(\.id))
-        states = states.filter { ids.contains($0.key) }
-        for info in evaluation.windows {
-            if let state = states[info.id], state.kind == info.kind, state.identity == info.identity, !replaceBuffers {
-                state.text = info.text
-                state.content = info.content
-            } else {
-                states[info.id] = ToolWindowState(info)
-            }
-        }
-        var visibleInputs: Set<InputAddress> = []
-        var visibleLiveInputs: Set<InputAddress> = []
-        var visibleEditors: Set<InputAddress> = []
-        func collectInputs(_ node: UIElementInfo, windowID: Int64) {
-            if node.kind == .textField || node.kind == .codeEditor {
-                let address = InputAddress(windowID: windowID, elementID: node.id)
-                visibleInputs.insert(address)
-                if node.liveInput { visibleLiveInputs.insert(address) }
-                if node.kind == .codeEditor {
-                    visibleEditors.insert(address)
-                    let oldRoot = previous.first { $0.id == windowID }?.content
-                    if pendingInputs[address] == nil, let old = element(in: oldRoot, where: { $0.id == node.id }),
-                       old.text != node.text, let selection = editorSelections[address],
-                       NSMaxRange(selection) > (node.text as NSString).length {
-                        editorSelections.removeValue(forKey: address)
-                    }
-                }
-            }
-            for child in node.children { collectInputs(child, windowID: windowID) }
-        }
-        for info in evaluation.windows {
-            if let content = info.content { collectInputs(content, windowID: info.id) }
-        }
-        pendingInputs = pendingInputs.filter { visibleInputs.contains($0.key) }
-        inputOrder = inputOrder.filter { visibleInputs.contains($0.key) }
-        liveInputs = visibleLiveInputs
-        editorSelections = editorSelections.filter { visibleEditors.contains($0.key) }
-        windowInfos = evaluation.windows
-        activeWindowID = evaluation.activeWindowID
+        windowPresentation.update(from: evaluation, replacingWindows: replacingWindows)
+        controlEdits.reconcile(with: evaluation.windows)
         nativeWindows?.execute(evaluation.windowCommands)
         for request in evaluation.toolRequests {
             Task { [weak self] in
@@ -206,7 +143,7 @@ final class AppController {
 
     private func scheduleInputSynchronization() {
         inputDebounce?.cancel()
-        guard hasLoaded, !isRunning, pendingInputs.keys.contains(where: { liveInputs.contains($0) }) else { return }
+        guard hasLoaded, !isRunning, controlEdits.hasLiveEdits else { return }
         inputDebounce = Task { [weak self] in
             do { try await Task.sleep(for: .milliseconds(80)) } catch { return }
             guard let self, !self.isRunning else { return }
@@ -222,7 +159,7 @@ final class AppController {
                 let success = await running.task.value
                 if inputFlush?.id == running.id { inputFlush = nil }
                 if !success { return false }
-            } else if pendingInputs.isEmpty {
+            } else if !controlEdits.hasPendingEdits {
                 return true
             } else {
                 let id = UUID()
@@ -237,30 +174,25 @@ final class AppController {
         var latestInput: EvaluationResult?
         var failures: [Int64: String] = [:]
         var editedWindows: Set<Int64> = []
-        var acknowledged: [(InputAddress, String)] = []
-        for (address, text) in pendingInputs.sorted(by: { (inputOrder[$0.key] ?? 0) < (inputOrder[$1.key] ?? 0) }) {
+        var acknowledged: [ControlEdits.TextEdit] = []
+        for edit in controlEdits.pendingEdits {
+            let address = edit.address
             // Editors must remain usable for repairing a rejected form input.
-            if !failures.isEmpty {
-                let control = element(in: states[address.windowID]?.content, where: { $0.id == address.elementID })
-                if control?.kind != .codeEditor { continue }
-            }
-            let evaluation = await session.uiAction(.text(windowID: address.windowID, elementID: address.elementID, value: text))
+            if !failures.isEmpty && !controlEdits.isCodeEditor(address) { continue }
+            let evaluation = await session.uiAction(.text(windowID: address.windowID, elementID: address.elementID, value: edit.text))
             guard inputEpoch == epoch else { return true }
             latestInput = evaluation
             editedWindows.insert(address.windowID)
             if let error = evaluation.executionError {
                 failures[address.windowID] = error
             } else {
-                acknowledged.append((address, text))
+                acknowledged.append(edit)
             }
             if !evaluation.toolRequests.isEmpty { apply(evaluation) }
         }
-        for (address, text) in acknowledged where pendingInputs[address] == text {
-            pendingInputs.removeValue(forKey: address)
-            inputOrder.removeValue(forKey: address)
-        }
+        for edit in acknowledged { controlEdits.acknowledge(edit) }
         if let latestInput { apply(latestInput) }
-        for id in editedWindows { states[id]?.error = failures[id] }
+        for id in editedWindows { windowPresentation.setInputError(failures[id], for: id) }
         return failures.isEmpty
     }
 
@@ -273,60 +205,52 @@ final class AppController {
         return await synchronizeInputs() || allowInputFailure
     }
 
-    private func element(in root: UIElementInfo?, where predicate: (UIElementInfo) -> Bool) -> UIElementInfo? {
-        guard let root, root.visible else { return nil }
-        if predicate(root) { return root }
-        for child in root.children {
-            if let found = element(in: child, where: predicate) { return found }
-        }
-        return nil
-    }
-
     func editorSelection(windowID: Int64, elementID: String) -> NSRange {
-        editorSelections[InputAddress(windowID: windowID, elementID: elementID)] ?? NSRange(location: 0, length: 0)
+        controlEdits.selection(at: ControlAddress(windowID: windowID, elementID: elementID))
     }
 
     func setEditorSelection(_ range: NSRange, windowID: Int64, elementID: String) {
-        let address = InputAddress(windowID: windowID, elementID: elementID)
-        if editorSelections[address] != range { editorSelections[address] = range }
+        controlEdits.recordSelection(range, at: ControlAddress(windowID: windowID, elementID: elementID))
     }
 
-    func hasCommand(_ command: String) -> Bool {
-        guard let id = activeWindowID else { return false }
-        return element(in: states[id]?.content, where: { $0.command == command && $0.enabled }) != nil
+    private func activeButton(for command: String) -> (windowID: Int64, button: UIElementInfo)? {
+        guard let window = windowPresentation.activeWindow?.info,
+              let button = window.content?.firstVisible(where: { $0.command == command && $0.enabled }) else { return nil }
+        return (window.id, button)
     }
+
+    func hasCommand(_ command: String) -> Bool { activeButton(for: command) != nil }
 
     func performCommand(_ command: String) async {
-        guard let id = activeWindowID,
-              let button = element(in: states[id]?.content, where: { $0.command == command && $0.enabled }) else { return }
-        await clickControl(windowID: id, elementID: button.id)
+        guard let target = activeButton(for: command) else { return }
+        await clickControl(windowID: target.windowID, elementID: target.button.id)
     }
 
     func inputText(windowID: Int64, element: UIElementInfo) -> String {
-        pendingInputs[InputAddress(windowID: windowID, elementID: element.id)] ?? element.text
+        controlEdits.text(at: ControlAddress(windowID: windowID, elementID: element.id), fallback: element.text)
     }
 
     func editInput(windowID: Int64, elementID: String, text: String) {
-        let address = InputAddress(windowID: windowID, elementID: elementID)
-        pendingInputs[address] = text
-        inputSequence &+= 1
-        inputOrder[address] = inputSequence
+        controlEdits.recordText(text, at: ControlAddress(windowID: windowID, elementID: elementID))
         imageHasChanges = true
         scheduleInputSynchronization()
     }
 
     func clickControl(windowID: Int64, elementID: String) async {
-        let root = states[windowID]?.content
-        let button = element(in: root, where: { $0.id == elementID })
-        var selection = ""
-        if let source = button?.selectionSource, let editor = element(in: root, where: { $0.id == source }) {
-            let range = editorSelection(windowID: windowID, elementID: source)
-            let text = inputText(windowID: windowID, element: editor) as NSString
-            if range.location <= text.length && range.length <= text.length - range.location {
-                selection = text.substring(with: range)
-            }
-        }
-        await sendControl(.click(windowID: windowID, elementID: elementID, selection: selection), windowID: windowID, allowInputFailure: states[windowID]?.kind == .workspace || states[windowID]?.kind == .browser)
+        guard let window = presentedWindow(windowID)?.info,
+              let root = window.content, let button = root.firstVisible(where: { $0.id == elementID }) else { return }
+        let selection = selectedText(for: button, in: windowID, root: root)
+        let acceptsRejectedInput = window.kind == .workspace || window.kind == .browser
+        await sendControl(.click(windowID: windowID, elementID: elementID, selection: selection),
+                          windowID: windowID, allowInputFailure: acceptsRejectedInput)
+    }
+
+    private func selectedText(for button: UIElementInfo, in windowID: Int64, root: UIElementInfo) -> String {
+        guard let source = button.selectionSource, let editor = root.firstVisible(where: { $0.id == source }) else { return "" }
+        let text = inputText(windowID: windowID, element: editor) as NSString
+        let range = editorSelection(windowID: windowID, elementID: source)
+        guard range.location <= text.length, range.length <= text.length - range.location else { return "" }
+        return text.substring(with: range)
     }
 
     func selectControl(windowID: Int64, elementID: String, value: String?) async {
@@ -340,25 +264,21 @@ final class AppController {
         guard await flushWindowState(allowInputFailure: allowInputFailure) else { return }
         let evaluation = await session.uiAction(action)
         apply(evaluation)
-        states[windowID]?.error = evaluation.error
+        windowPresentation.setInputError(evaluation.error, for: windowID)
         imageHasChanges = true
     }
 
-    func openTool(_ kind: ToolKind) async {
+    func openTool(_ kind: ToolKind) async { await sendWindowAction(.open(kind), marksImageDirty: true) }
+
+    func showWorkspace() async { await sendWindowAction(.showWorkspace, marksImageDirty: false) }
+
+    private func sendWindowAction(_ action: WindowAction, marksImageDirty: Bool) async {
         guard !isRunning else { return }
         isRunning = true
         defer { isRunning = false }
         guard await flushWindowState(allowInputFailure: true) else { return }
-        apply(await session.windowAction(.open(kind)))
-        imageHasChanges = true
-    }
-
-    func showWorkspace() async {
-        guard !isRunning else { return }
-        isRunning = true
-        defer { isRunning = false }
-        guard await flushWindowState(allowInputFailure: true) else { return }
-        apply(await session.windowAction(.showWorkspace))
+        apply(await session.windowAction(action))
+        if marksImageDirty { imageHasChanges = true }
     }
 
     func reset() async {
@@ -368,13 +288,15 @@ final class AppController {
         clearPending()
         _ = await session.reset()
         do { try await startUnsavedChangeLog() } catch { self.error = error.localizedDescription }
-        apply(await session.snapshot(), replaceBuffers: true)
+        apply(await session.snapshot(), replacingWindows: true)
         imageURL = nil; imageHasChanges = true
         preferences.removeObject(forKey: Self.lastImageKey)
     }
 
     func openWorkspace() async {
         guard !isRunning else { return }
+        isRunning = true
+        defer { isRunning = false }
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.plainText, UTType(filenameExtension: "st") ?? .plainText]
         panel.allowsOtherFileTypes = true
@@ -382,25 +304,37 @@ final class AppController {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             let source = try String(contentsOf: url, encoding: .utf8)
-            await openTool(.workspace)
-            if let state = workspaceState {
-                apply(await session.windowAction(.text(state.id, source)))
-                state.documentURL = url
+            guard await flushWindowState(allowInputFailure: true) else { return }
+            let opened = await session.windowAction(.open(.workspace))
+            let workspaceID = opened.activeWindowID
+            let wasOpen = workspaceID.flatMap { presentedWindow($0) } != nil
+            apply(opened)
+            guard opened.executionError == nil, !wasOpen, let workspaceID,
+                  presentedWindow(workspaceID)?.info.kind == .workspace else { return }
+            let loaded = await session.windowAction(.text(workspaceID, source))
+            apply(loaded)
+            if loaded.executionError == nil {
+                windowPresentation.setDocumentURL(url, for: workspaceID)
+                imageHasChanges = true
             }
         } catch { self.error = error.localizedDescription }
     }
 
     func saveWorkspace() async {
-        guard !isRunning, let state = workspaceState else { return }
+        guard !isRunning, let workspace = windowPresentation.workspace else { return }
         isRunning = true
         defer { isRunning = false }
-        guard await flushWindowState() else { return }
+        guard await flushWindowState(),
+              let current = presentedWindow(workspace.info.id), current.info.identity == workspace.info.identity else { return }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [UTType(filenameExtension: "st") ?? .plainText]
-        panel.nameFieldStringValue = state.documentURL?.lastPathComponent ?? "Workspace.st"
+        panel.nameFieldStringValue = current.documentURL?.lastPathComponent ?? "Workspace.st"
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        do { try state.text.write(to: url, atomically: true, encoding: .utf8); state.documentURL = url; error = nil }
-        catch { self.error = error.localizedDescription }
+        do {
+            try current.info.text.write(to: url, atomically: true, encoding: .utf8)
+            windowPresentation.setDocumentURL(url, for: current.info.id)
+            error = nil
+        } catch { self.error = error.localizedDescription }
     }
 
     func openImage() async {
@@ -434,24 +368,23 @@ final class AppController {
         }
         guard await flushWindowState() else { return }
         do {
-            try await session.saveImage(to: url, workspace: workspaceState?.text ?? "", transcript: "")
+            try await session.saveImage(to: url, workspace: windowPresentation.workspace?.info.text ?? "", transcript: "")
             apply(await session.snapshot())
             imageURL = url; preferences.set(url.path, forKey: Self.lastImageKey)
-            imageHasChanges = !pendingInputs.isEmpty || !pendingWindowEvents.isEmpty
+            imageHasChanges = controlEdits.hasPendingEdits || !pendingWindowEvents.isEmpty
             result = "Image gespeichert: \(url.lastPathComponent)"; error = nil
         } catch { self.error = "Image konnte nicht gespeichert werden: \(error.localizedDescription)" }
     }
 
     private func clearPending() {
-        synchronization?.cancel(); synchronization = nil
+        windowDebounce?.cancel()
+        windowDebounce = nil
         inputEpoch += 1
-        inputDebounce?.cancel(); inputDebounce = nil
+        inputDebounce?.cancel()
+        inputDebounce = nil
         windowEpoch += 1
         pendingWindowEvents.removeAll()
-        editorSelections.removeAll()
-        pendingInputs.removeAll()
-        inputOrder.removeAll()
-        liveInputs.removeAll()
+        controlEdits = ControlEdits()
     }
 
     private func startUnsavedChangeLog() async throws {
@@ -503,7 +436,7 @@ final class AppController {
     private func restoreImage(from url: URL) async throws {
         let image = try await session.loadImage(from: url)
         clearPending()
-        apply(image.evaluation, replaceBuffers: true)
+        apply(image.evaluation, replacingWindows: true)
         imageURL = url; imageHasChanges = false
         preferences.set(url.path, forKey: Self.lastImageKey)
         result = "Image geladen: \(url.lastPathComponent)"; error = nil

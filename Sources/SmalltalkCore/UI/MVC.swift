@@ -59,7 +59,7 @@ extension SmalltalkRuntime {
     }
 
     private func mountedBindingIDs() throws -> Set<ObjectIdentifier> {
-        guard case .object(let desktop)? = globals["Desktop"], case .object(let model)? = desktop.fields["model"], case .array(let windows)? = model.fields["windows"] else { return [] }
+        guard let windows = desktopWindows else { return [] }
         var mounted: Set<ObjectIdentifier> = []
         for value in windows.elements.prefix(128) {
             guard case .object(let window) = value,

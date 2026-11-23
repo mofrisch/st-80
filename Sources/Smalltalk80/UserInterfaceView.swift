@@ -7,16 +7,16 @@ struct ToolContentView: View {
 
     var body: some View {
         Group {
-            if let state = controller.states[windowID] {
-                if state.kind == .changes {
+            if let window = controller.presentedWindow(windowID) {
+                if window.info.kind == .changes {
                     ChangesView(controller: controller)
                 } else {
                     VStack(spacing: 0) {
-                        if let content = state.content {
+                        if let content = window.info.content {
                             UIElementView(controller: controller, windowID: windowID, element: content)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                         }
-                        if let error = state.error ?? controller.error {
+                        if let error = window.inputError ?? controller.error {
                             Divider()
                             Text(error).foregroundStyle(.red)
                                 .textSelection(.enabled).padding(12)

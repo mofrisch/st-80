@@ -188,13 +188,7 @@ extension SmalltalkRuntime {
             }
             // A callback from a removed control/window or a previous image must
             // never be retargeted to a different object at the same tree position.
-            guard case .object(let desktop)? = globals["Desktop"],
-                  case .object(let model)? = desktop.fields["model"],
-                  case .array(let windows)? = model.fields["windows"],
-                  let window = windows.elements.prefix(128).compactMap({ value -> STObject? in
-                      guard case .object(let object) = value, case .integer(windowID)? = object.fields["id"] else { return nil }
-                      return object
-                  }).first,
+            guard let window = projectedWindow(withID: windowID),
                   let content = window.fields["content"] else { return snapshot() }
             let projection = try projectInterface(content)
             guard let control = projection.controls[elementID], control.enabled else { return snapshot() }

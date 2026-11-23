@@ -45,6 +45,24 @@ def configurations(name, settings):
     return add(f"{name}.Configurations", "XCConfigurationList", buildConfigurations=refs, defaultConfigurationIsVisible=0, defaultConfigurationName="Release")
 
 
+def swift_sources(target, directory, resource_folders, subdirectory=Path()):
+    folder = directory / subdirectory
+    refs, builds = [], []
+    for source in sorted((ROOT / folder).glob("*.swift")):
+        ref = add(f"File.{folder / source.name}", "PBXFileReference", lastKnownFileType="sourcecode.swift", path=source.name, sourceTree="<group>")
+        refs.append(ref)
+        builds.append(add(f"Build.{target}.{subdirectory / source.name}", "PBXBuildFile", fileRef=ref))
+    for child in sorted((ROOT / folder).glob("*")):
+        child_path = subdirectory / child.name
+        if child_path in resource_folders or child.name.startswith(".") or child.is_symlink() or not child.is_dir():
+            continue
+        child_refs, child_builds = swift_sources(target, directory, resource_folders, child_path)
+        if child_refs:
+            refs.append(add(f"Group.{target}.{child_path}", "PBXGroup", children=child_refs, path=child.name, sourceTree="<group>"))
+            builds.extend(child_builds)
+    return refs, builds
+
+
 products = {
     "Smalltalk80": ("Smalltalk80.app", "wrapper.application", "com.apple.product-type.application"),
     "SmalltalkCore": ("SmalltalkCore.framework", "wrapper.framework", "com.apple.product-type.framework"),
@@ -61,21 +79,23 @@ source_phases = {}
 resource_builds = {}
 for name in products:
     directory = Path("Tests" if name.endswith("Tests") else "Sources") / name
-    refs, builds = [], []
-    for source in sorted((ROOT / directory).glob("*.swift")):
-        ref = add(f"File.{directory}/{source.name}", "PBXFileReference", lastKnownFileType="sourcecode.swift", path=source.name, sourceTree="<group>")
-        refs.append(ref)
-        builds.append(add(f"Build.{name}.{source.name}", "PBXBuildFile", fileRef=ref))
+    resource_folders = set()
+    resource_refs = []
     resource_builds[name] = []
     if name == "SmalltalkCore":
-        library = add("File.Library", "PBXFileReference", lastKnownFileType="folder", path="Library", sourceTree="<group>")
-        refs.append(library)
+        path = Path("Library")
+        library = add("File.Library", "PBXFileReference", lastKnownFileType="folder", path=str(path), sourceTree="<group>")
+        resource_folders.add(path)
+        resource_refs.append(library)
         resource_builds[name].append(add("Build.Library", "PBXBuildFile", fileRef=library))
     if name == "Smalltalk80":
-        catalog = add(f"File.{directory}/Assets.xcassets", "PBXFileReference", lastKnownFileType="folder.assetcatalog", path="Assets.xcassets", sourceTree="<group>")
-        refs.append(catalog)
+        path = Path("Assets.xcassets")
+        catalog = add(f"File.{directory / path}", "PBXFileReference", lastKnownFileType="folder.assetcatalog", path=str(path), sourceTree="<group>")
+        resource_folders.add(path)
+        resource_refs.append(catalog)
         resource_builds[name].append(add("Build.Smalltalk80.Assets.xcassets", "PBXBuildFile", fileRef=catalog))
-    groups.append(add(f"Group.{name}", "PBXGroup", children=refs, name=name, path=str(directory), sourceTree="<group>"))
+    refs, builds = swift_sources(name, directory, resource_folders)
+    groups.append(add(f"Group.{name}", "PBXGroup", children=refs + resource_refs, name=name, path=str(directory), sourceTree="<group>"))
     source_phases[name] = add(f"Sources.{name}", "PBXSourcesBuildPhase", buildActionMask=2147483647, files=builds, runOnlyForDeploymentPostprocessing=0)
 
 documentation = []

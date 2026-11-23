@@ -158,12 +158,32 @@ extension SmalltalkRuntime {
         (1...(screen ? 100_000 : 8192)).contains(frame.width) && (1...(screen ? 100_000 : 8192)).contains(frame.height)
     }
 
+    // Reading the object graph here is deliberate: projections and native
+    // control lookup must not execute Smalltalk accessors.
+    var desktopModel: STObject? {
+        guard case .object(let manager)? = globals["Desktop"],
+              case .object(let model)? = manager.fields["model"] else { return nil }
+        return model
+    }
+
+    var desktopWindows: STArray? {
+        guard case .array(let windows)? = desktopModel?.fields["windows"] else { return nil }
+        return windows
+    }
+
+    func projectedWindow(withID id: Int64) -> STObject? {
+        guard let windows = desktopWindows else { return nil }
+        for case .object(let window) in windows.elements.prefix(128) {
+            if case .integer(id)? = window.fields["id"] { return window }
+        }
+        return nil
+    }
+
     /// Field-only projection. Numerical bounds protect AppKit; policy lives in .st.
     func projectWindows() -> (windows: [ToolWindowInfo], activeID: Int64?, error: String?) {
         if let bootstrapError { return ([], nil, bootstrapError) }
-        guard let desktop = globals["Desktop"] else { return ([], nil, bootstrapError) }
-        guard case .object(let manager) = desktop, case .object(let model)? = manager.fields["model"],
-              case .array(let list)? = model.fields["windows"] else { return ([], nil, "Desktop enthält keine gültige Fensterliste.") }
+        guard globals["Desktop"] != nil else { return ([], nil, nil) }
+        guard let model = desktopModel, let list = desktopWindows else { return ([], nil, "Desktop enthält keine gültige Fensterliste.") }
         var windows: [ToolWindowInfo] = [], ids: Set<Int64> = []
         var warning: String? = list.elements.count > 128 ? "Desktop enthält mehr als 128 Fenster." : nil
         var activeID: Int64?
@@ -199,7 +219,7 @@ extension SmalltalkRuntime {
         // Invalid projections must not destroy the native editor needed to repair them.
         if valid { commands.append(.retain(windows.map(\.id))) }
         commands += windows.map { .present($0) }
-        if case .object(let desktop)? = globals["Desktop"], case .object(let model)? = desktop.fields["model"], case .integer(let request)? = model.fields["focusRevision"] {
+        if case .integer(let request)? = desktopModel?.fields["focusRevision"] {
             commands.append(.order(windows.map(\.id), active: active, request: request))
         }
         return WindowCommandBatch(epoch: windowEpoch, revision: windowCommandRevision, acknowledgedEvent: acknowledgedWindowEvent, commands: commands)

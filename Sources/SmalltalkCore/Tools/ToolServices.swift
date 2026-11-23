@@ -70,9 +70,7 @@ extension SmalltalkRuntime {
     func refreshToolWindowsIfNeeded() throws {
         guard catalogDirty else { return }
         catalogDirty = false
-        guard case .object(let desktop)? = globals["Desktop"],
-              case .object(let model)? = desktop.fields["model"],
-              case .array(let windows)? = model.fields["windows"] else { return }
+        guard let windows = desktopWindows else { return }
         for case .object(let window) in windows.elements where window.stClass.lookup("refreshTools") != nil {
             _ = try send(.object(window), "refreshTools", [])
         }

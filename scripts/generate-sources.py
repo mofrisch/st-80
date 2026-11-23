@@ -8,8 +8,9 @@ ROOT = Path(__file__).resolve().parent.parent
 LIBRARY = ROOT / "Sources/SmalltalkCore/Library"
 
 if __name__ == "__main__":
+    print("Swift-Bootstrap im Release-Modus bauen und starten …", file=sys.stderr, flush=True)
     subprocess.run(
-        ["swift", "run", "st80-bootstrap", *sys.argv[1:], str(LIBRARY)],
+        ["swift", "run", "-c", "release", "st80-bootstrap", *sys.argv[1:], str(LIBRARY)],
         cwd=ROOT,
         check=True,
     )

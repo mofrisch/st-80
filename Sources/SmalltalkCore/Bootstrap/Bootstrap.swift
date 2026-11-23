@@ -4,6 +4,11 @@ import Foundation
 /// compiler already present in the previous seed.
 public enum SmalltalkBootstrap {
     public static func rebuild(in directory: URL, checkOnly: Bool = false) throws {
+        try rebuild(in: directory, checkOnly: checkOnly, progress: { _ in })
+    }
+
+    public static func rebuild(in directory: URL, checkOnly: Bool, progress: (String) -> Void) throws {
+        progress("Startimage und Systemquellen laden …")
         let oldLibrary = try SystemLibrary(directory: directory)
         let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
             .filter { $0.pathExtension == "st" && $0.lastPathComponent.first?.isNumber == true }
@@ -14,24 +19,30 @@ public enum SmalltalkBootstrap {
 
         // The previous compiler builds a transition generation. The resulting
         // compiler then builds itself twice to verify a stable executable.
+        progress("[1/3] Systemquellen mit dem bisherigen Compiler übersetzen …")
         let transition = try compilerFor(build(sources, using: compiler))
+        progress("[2/3] Systemquellen mit dem neuen Compiler übersetzen …")
         let final = try build(sources, using: transition)
         let rebuilt = try compilerFor(final)
         let artifacts = try encode(final)
+        progress("[3/3] Reproduzierbarkeit des Selbstbaus prüfen …")
         let repeated = try encode(build(sources, using: rebuilt))
         guard artifacts.0 == repeated.0, artifacts.1 == repeated.1 else {
             throw SmalltalkError("Der neu gebaute Smalltalk-Compiler erzeugt beim Selbstbau abweichenden Code.")
         }
+        progress("InitialWorld.st ausführen …")
         _ = try rebuilt.evaluate(oldLibrary.initialWorld)
         if let error = rebuilt.projectWindows().error { throw SmalltalkError(error) }
 
         let sourcesURL = directory.appendingPathComponent("Smalltalk80.sources")
         let seedURL = directory.appendingPathComponent("Kernel.seed.json")
         if checkOnly {
+            progress("Quellenarchiv und Startimage vergleichen …")
             guard try Data(contentsOf: sourcesURL) == artifacts.0, try Data(contentsOf: seedURL) == artifacts.1 else {
                 throw SmalltalkError("Startimage oder Sources-Archiv sind veraltet. Starte den Bootstrap-Build erneut.")
             }
         } else {
+            progress("Quellenarchiv und Startimage schreiben …")
             try artifacts.0.write(to: sourcesURL, options: .atomic)
             try artifacts.1.write(to: seedURL, options: .atomic)
         }

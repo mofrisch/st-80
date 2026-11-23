@@ -11,7 +11,9 @@ do {
     try SmalltalkBootstrap.rebuild(
         in: URL(fileURLWithPath: directory, isDirectory: true),
         checkOnly: arguments.contains("--check")
-    )
+    ) { message in
+        FileHandle.standardError.write(Data("\(message)\n".utf8))
+    }
     print("Smalltalk-Selbstbau erfolgreich.")
 } catch {
     FileHandle.standardError.write(Data("\(error.localizedDescription)\n".utf8))

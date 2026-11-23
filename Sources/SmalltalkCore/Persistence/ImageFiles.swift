@@ -1,11 +1,11 @@
 import Foundation
 
-/// Executable ASTs belong to the image. Original spelling, comments and method
+/// Executable bytecode belongs to the image. Original spelling, comments and method
 /// history belong to the immutable .sources archive or the append-only .changes.
 struct MethodCode: Codable, Sendable {
     let selector: String
     let parameters: [String]
-    let body: Body
+    let body: BytecodeBody
     let sourceHash: String
     init(_ method: Method) {
         selector = method.selector; parameters = method.parameters; body = method.body

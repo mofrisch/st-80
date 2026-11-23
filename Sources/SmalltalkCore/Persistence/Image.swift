@@ -59,7 +59,7 @@ struct ImageEnvironment: Codable {
 
 struct ImageBlock: Codable {
     var parameters: [String]
-    var body: Body
+    var body: BytecodeBody
     var environment: Int
     var receiver: ImageValue
     var homeClass: String?
@@ -96,13 +96,11 @@ extension SmalltalkSession {
 }
 
 enum ImageCodec {
-    static let version = 4
+    static let version = 5
     static let maxBytes = 32 * 1_024 * 1_024
     static let maxNodes = 40_000
 
-    private enum Pending {
-        case object(STObject), array(STArray), environment(Environment), block(STBlock)
-    }
+    private typealias Pending = HeapReference
 
     static func encode(_ runtime: SmalltalkRuntime, workspace: String, transcript: String) throws -> Data {
         let archive = try capture(runtime, workspace: workspace, transcript: transcript, includesCode: true)
@@ -208,6 +206,15 @@ enum ImageCodec {
         guard image.classes.count <= 128, image.globals.count <= 1_152, image.nodes.count <= maxNodes else { throw invalid("Size limits exceeded.") }
         // No bootstrap, user code, initialize messages or block execution on load.
         let runtime = SmalltalkRuntime(bootstrap: false)
+        // The shells are not reachable from globals until the entire graph has
+        // been connected and validated. The fresh heap still enforces its hard
+        // allocation budget while collection is suspended.
+        return try runtime.memory.withCollectionSuspended {
+            try restoreGraph(image, executableMethods: executableMethods, into: runtime)
+        }
+    }
+
+    private static func restoreGraph(_ image: ImageArchive, executableMethods: [String: [String: MethodCode]], into runtime: SmalltalkRuntime) throws -> (SmalltalkRuntime, LoadedImage) {
         var records: [String: ImageClass] = [:]
         for record in image.classes {
             guard records.updateValue(record, forKey: record.name) == nil else { throw invalid("Duplicate class \(record.name).") }
@@ -251,24 +258,22 @@ enum ImageCodec {
 
         // Allocate first, connect second: this preserves identity and cycles.
         var shells: [Shell] = []
+        var placeholderEnvironment: Environment?
         for node in image.nodes {
             switch node {
             case .object(let record):
                 guard let stClass = runtime.classes[record.className], stClass.name == "Object" || !SmalltalkRuntime.builtinNames.contains(stClass.name), Set(record.fields.keys) == Set(stClass.fields) else { throw invalid("Invalid object layout.") }
-                try runtime.checkAllocation()
-                let object = STObject(stClass)
-                runtime.objects.append(object)
+                let object = try runtime.object(stClass)
                 shells.append(.value(.object(object)))
             case .array(let values):
                 shells.append(.value(try runtime.array(Array(repeating: .nilValue, count: values.count))))
             case .environment:
                 shells.append(.environment(try runtime.environment()))
             case .block(let record):
-                try validateNames(record.parameters)
-                guard Set(record.parameters).isDisjoint(with: record.body.temporaries) else { throw invalid("Duplicate block variable.") }
-                try CodeValidator.check(record.body)
-                let context = Context(environment: Environment(), receiver: .nilValue, homeClass: nil, homeID: 0, isWorkspace: false)
-                shells.append(.value(.block(STBlock(parameters: record.parameters, body: record.body, context: context))))
+                try record.body.validate(parameters: record.parameters)
+                if placeholderEnvironment == nil { placeholderEnvironment = try runtime.environment() }
+                let context = Context(environment: placeholderEnvironment!, receiver: .nilValue, homeClass: nil, homeID: 0, isWorkspace: false)
+                shells.append(.value(.block(try runtime.block(parameters: record.parameters, body: record.body, context: context))))
             }
         }
 

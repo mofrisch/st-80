@@ -6,4 +6,5 @@ Desktop := DesktopManager new.
 (Desktop openWorkspace) text: (ToolVM exampleAt: #workspace).
 Desktop openBrowser.
 Desktop openTranscript.
+Desktop arrangeTools.
 Desktop activate: (Desktop windowAt: 1)

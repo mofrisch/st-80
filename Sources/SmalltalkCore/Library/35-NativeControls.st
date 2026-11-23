@@ -1,8 +1,12 @@
-UITextField subclass: #UICodeEditor instanceVariableNames: 'readOnly'.
+UITextField subclass: #UICodeEditor instanceVariableNames: 'readOnly contextMenu'.
 
 UICodeEditor compile: 'initialize super initialize. readOnly := false'.
 
 UICodeEditor compile: 'readOnly: aBoolean readOnly := aBoolean'.
+
+UICodeEditor compile: 'contextMenu ^ contextMenu'.
+
+UICodeEditor compile: 'contextMenu: aMenu contextMenu := aMenu'.
 
 UIElement subclass: #UIList instanceVariableNames: 'items selection target selector'.
 

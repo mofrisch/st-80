@@ -10,6 +10,80 @@ struct WindowArchitectureTests {
         ScreenInfo(id: id, frame: WindowRect(x: x, y: y, width: width, height: height))
     }
 
+    @Test func toolsArrangeIntoColumnsWithinTheAvailableDisplay() async throws {
+        let session = SmalltalkSession()
+        let initial = await session.snapshot()
+        let display = screen("offset", -1440, 120, 1440, 900)
+        let connected = await session.windowEvents([event(initial, 1, .screens([display]))])
+        #expect(connected.error == nil)
+        let oldBrowser = try #require(connected.windows.first { $0.kind == .browser })
+        _ = await session.windowAction(.minimize(oldBrowser.id, true))
+        let arranged = await session.windowAction(.arrangeTools)
+        #expect(arranged.error == nil)
+        #expect(arranged.activeWindowID == connected.activeWindowID)
+        #expect(arranged.windows.count == connected.windows.count)
+        #expect(arranged.windows.allSatisfy { !$0.minimized })
+        for window in arranged.windows {
+            #expect(window.text == connected.windows.first { $0.id == window.id }?.text)
+            #expect(window.x >= display.frame.x)
+            #expect(window.y >= display.frame.y)
+            #expect(window.x + window.width <= display.frame.x + display.frame.width)
+            #expect(window.y + window.height <= display.frame.y + display.frame.height)
+        }
+        let browser = try #require(arranged.windows.first { $0.kind == .browser })
+        let workspace = try #require(arranged.windows.first { $0.kind == .workspace })
+        let transcript = try #require(arranged.windows.first { $0.kind == .transcript })
+        #expect(browser.width >= 750)
+        #expect(workspace.width >= 480)
+        #expect(browser.x + browser.width < workspace.x)
+        #expect(workspace.x == transcript.x)
+        #expect(workspace.width == transcript.width)
+        #expect(transcript.y + transcript.height < workspace.y)
+        #expect(browser.y == transcript.y)
+        #expect(browser.y + browser.height == workspace.y + workspace.height)
+    }
+
+    @Test func arrangingAnOlderImageInstallsOnlyTheMissingMethodOnce() async throws {
+        let original = SmalltalkSession()
+        let customFrame = WindowRect(x: 220, y: 180, width: 640, height: 420)
+        _ = await original.windowAction(.frame(1, x: customFrame.x, y: customFrame.y, width: customFrame.width, height: customFrame.height))
+        var archive = try JSONDecoder().decode(ImageArchive.self, from: await original.imageData())
+        let manager = try #require(archive.classes.firstIndex { $0.name == "DesktopManager" })
+        let removedSource = archive.classes[manager].methods.removeValue(forKey: "arrangeTools")
+        let missingSource = try #require(removedSource)
+        let missingCode = archive.executableMethods?["DesktopManager"]?.removeValue(forKey: "arrangeTools")
+        #expect(missingCode != nil)
+
+        let restored = SmalltalkSession()
+        let loaded = try await restored.loadImage(JSONEncoder().encode(archive))
+        #expect(loaded.evaluation.windows.first { $0.id == 1 }?.frame == customFrame)
+        #expect(loaded.evaluation.changes.isEmpty)
+        let arranged = await restored.windowAction(.arrangeTools)
+        #expect(arranged.error == nil)
+        #expect(arranged.windows.first { $0.id == 1 }?.frame != customFrame)
+        #expect(arranged.changes.count == 1)
+        let installation = try #require(arranged.changes.first)
+        #expect(installation.kind == .method)
+        #expect(installation.className == "DesktopManager")
+        #expect(installation.selector == "arrangeTools")
+        #expect(installation.source == missingSource)
+
+        let repeated = await restored.windowAction(.arrangeTools)
+        #expect(repeated.error == nil)
+        #expect(repeated.changes.map(\.id) == arranged.changes.map(\.id))
+    }
+
+    @Test func arrangeToolsHonorsAnExistingCustomMethod() async throws {
+        let session = SmalltalkSession()
+        let custom = await session.evaluate("DesktopManager compile: 'arrangeTools self activeWindow title: ''My arrangement'''")
+        #expect(custom.error == nil)
+        let arranged = await session.windowAction(.arrangeTools)
+        #expect(arranged.error == nil)
+        #expect(arranged.windows.first { $0.id == arranged.activeWindowID }?.title == "My arrangement")
+        #expect(arranged.changes.map(\.id) == custom.changes.map(\.id))
+        #expect(arranged.windows.map(\.frame) == custom.windows.map(\.frame))
+    }
+
     @Test func smalltalkOwnsScreenSelectionLimitsAndRemovedDisplayRecovery() async throws {
         let session = SmalltalkSession()
         let initial = await session.snapshot()

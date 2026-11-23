@@ -25,7 +25,8 @@ struct LibrarySources: Codable, Sendable {
 }
 
 struct LibrarySeed: Codable, Sendable {
-    var version = 1
+    static let currentVersion = 2
+    var version = Self.currentVersion
     let sourcesID: String
     let methods: [String: [String: MethodCode]]
     var classMethods: [String: [String: MethodCode]]?
@@ -64,8 +65,12 @@ struct SystemLibrary: Sendable {
         identifier = Self.digest(data)
         sources = try LibrarySources.decode(data)
         let executable = try SourceJournal.readBounded(directory.appendingPathComponent("Kernel.seed.json"), maximum: ImageCodec.maxBytes)
-        seed = try JSONDecoder().decode(LibrarySeed.self, from: executable)
-        guard seed.version == 1, seed.sourcesID == identifier else { throw SmalltalkError("The boot image and sources archive do not match.") }
+        let decoder = JSONDecoder()
+        struct Header: Decodable { let version: Int }
+        let version = try decoder.decode(Header.self, from: executable).version
+        guard version == LibrarySeed.currentVersion else { throw SmalltalkError("Unsupported Smalltalk boot image version.") }
+        seed = try decoder.decode(LibrarySeed.self, from: executable)
+        guard seed.sourcesID == identifier else { throw SmalltalkError("The boot image and sources archive do not match.") }
         initialWorld = try String(contentsOf: directory.appendingPathComponent("InitialWorld.st"), encoding: .utf8)
     }
 

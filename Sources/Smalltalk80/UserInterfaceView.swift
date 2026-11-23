@@ -37,7 +37,8 @@ private struct UIElementView: View {
     var body: some View {
         if element.visible {
             content
-                .disabled(!element.enabled || controller.isRunning)
+                .disabled(!element.enabled || controller.isRunning ||
+                          (element.command == "acceptMethod" && controller.presentedWindow(windowID)?.showsBytecode == true))
                 .frame(
                     minWidth: element.minimumWidth.map { CGFloat($0) },
                     maxWidth: element.maximumWidth.map { CGFloat($0) },
@@ -73,16 +74,30 @@ private struct UIElementView: View {
                     .accessibilityIdentifier(identifier)
             }
         case .codeEditor:
-            CodeEditor(
-                text: text,
-                selection: Binding(
-                    get: { controller.editorSelection(windowID: windowID, elementID: element.id) },
-                    set: { controller.setEditorSelection($0, windowID: windowID, elementID: element.id) }
-                ),
-                isEditable: !element.readOnly && element.enabled && !controller.isRunning,
-                identifier: identifier,
-                label: element.label
-            )
+            if identifier == "methodEditor", let window = controller.presentedWindow(windowID), window.info.kind == .browser {
+                VStack(spacing: 0) {
+                    HStack {
+                        Spacer()
+                        Button(window.showsBytecode ? "Source" : "Bytecode") {
+                            controller.toggleBrowserBytecode(windowID: windowID)
+                        }
+                        .controlSize(.small)
+                        .disabled(window.info.browserMethod == nil)
+                        .accessibilityIdentifier("methodBytecodeToggle")
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    Divider()
+                    if window.showsBytecode, let method = window.info.browserMethod {
+                        BrowserBytecodeEditor(controller: controller, windowID: windowID, method: method)
+                            .id(method)
+                    } else {
+                        codeEditor
+                    }
+                }
+            } else {
+                codeEditor
+            }
         case .list:
             Group {
                 if element.role == "pane" {
@@ -144,6 +159,24 @@ private struct UIElementView: View {
         }
     }
 
+    private var codeEditor: some View {
+        CodeEditor(
+            text: text,
+            selection: Binding(
+                get: { controller.editorSelection(windowID: windowID, elementID: element.id) },
+                set: { controller.setEditorSelection($0, windowID: windowID, elementID: element.id) }
+            ),
+            isEditable: !element.readOnly && element.enabled && !controller.isRunning,
+            identifier: identifier,
+            label: element.label,
+            contextMenuItems: controller.editorContextItems(windowID: windowID, editor: element),
+            contextCommandsEnabled: element.enabled && !controller.isRunning,
+            onContextCommand: { action, selection in
+                Task { await controller.performEditorContextAction(action, windowID: windowID, selection: selection) }
+            }
+        )
+    }
+
     private var list: some View {
         List(selection: Binding(
             get: { element.selection },
@@ -188,5 +221,25 @@ private struct UIElementView: View {
             }
         default: Text(element.text)
         }
+    }
+}
+
+private struct BrowserBytecodeEditor: View {
+    let controller: AppController
+    let windowID: Int64
+    let method: BrowserMethodSelection
+    @State private var listing: String?
+    @State private var selection = NSRange(location: 0, length: 0)
+
+    var body: some View {
+        let text = method.isPrimitive ? "This VM primitive has no bytecode." : listing ?? "Loading bytecode…"
+        CodeEditor(text: .constant(text), selection: $selection, isEditable: false,
+                   identifier: "bytecodeEditor", label: "Method Bytecode")
+            .task {
+                guard !method.isPrimitive else { return }
+                let value = await controller.browserBytecode(windowID: windowID, method: method)
+                guard !Task.isCancelled else { return }
+                listing = value ?? "Bytecode unavailable."
+            }
     }
 }

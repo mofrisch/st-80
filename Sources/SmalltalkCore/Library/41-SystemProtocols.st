@@ -106,7 +106,7 @@ BrowserOrganization compile: 'shippedProtocols
                 ''openBrowser'' ''openTranscript'' ''openChanges'' ''openWindow''))
             (''Window Lifecycle'' (''open:'' ''requestClose:'' ''close:'' ''minimize:''))
             (''Focus and Ordering'' (''chooseActive'' ''bringToFront:'' ''activate:'' ''observeActivation:'' ''observeMinimized:value:''))
-            (''Displays and Placement'' (''screens'' ''screenFor:'' ''screensChanged:'' ''constrain:'' ''restoreWindows''))))
+            (''Displays and Placement'' (''screens'' ''screenFor:'' ''screensChanged:'' ''constrain:'' ''restoreWindows'' ''arrangeTools''))))
         (''UIElement'' (
             (''Initialization'' (''initialize''))
             (''Identity and Appearance'' (''identifier:'' ''role:''))
@@ -128,7 +128,8 @@ BrowserOrganization compile: 'shippedProtocols
             (''Input Handling'' (''editText:'' ''onChangeSend:to:''))))
         (''UICodeEditor'' (
             (''Initialization'' (''initialize''))
-            (''Editing Permissions'' (''readOnly:''))))
+            (''Editing Permissions'' (''readOnly:''))
+            (''Context Menu'' (''contextMenu'' ''contextMenu:''))))
         (''UIList'' (
             (''Initialization'' (''initialize''))
             (''List Contents'' (''items:''))
@@ -165,7 +166,8 @@ BrowserOrganization compile: 'shippedProtocols
             (''Result Display'' (''result:''))))
         (''WorkspaceWindow'' (
             (''Initialization'' (''initialize''))
-            (''Code Evaluation'' (''text:'' ''execute:printing:''))
+            (''Code Evaluation'' (''text:'' ''sourceForSelection:'' ''doIt:'' ''printIt:'' ''inspect:'' ''execute:printing:''))
+            (''Editor Menu'' (''editorMenu'' ''selectionButton:command:action:''))
             (''Examples'' (''examplesMenu'' ''exampleButton:key:''))))
         (''BrowserWindow'' (
             (''Initialization'' (''initialize''))

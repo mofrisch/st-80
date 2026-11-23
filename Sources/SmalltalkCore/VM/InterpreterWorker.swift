@@ -28,7 +28,10 @@ final class InterpreterWorker: Sendable {
                 if queue.jobs.isEmpty && queue.stopping { queue.condition.unlock(); return }
                 let job = queue.jobs.removeFirst()
                 queue.condition.unlock()
-                autoreleasepool { job.operation(&runtime) }
+                autoreleasepool {
+                    job.operation(&runtime)
+                    runtime.collectGarbageIfDue()
+                }
             }
         }
         thread.name = "Smalltalk interpreter"

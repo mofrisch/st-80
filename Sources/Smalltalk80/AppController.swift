@@ -25,6 +25,7 @@ final class AppController {
     var imageURL: URL?
     private(set) var imageHasChanges = false
     private let session = SmalltalkSession()
+    @ObservationIgnored private lazy var inspectorWindows = NativeInspectorWindows(session: session)
     private let preferences: UserDefaults
     private var hasLoaded = false
     @ObservationIgnored private var inputDebounce: Task<Void, Never>?
@@ -76,7 +77,14 @@ final class AppController {
         do { try await startUnsavedChangeLog() } catch { self.error = error.localizedDescription }
         let failure = error
         apply(await session.snapshot(), replacingWindows: true)
+        await arrangeInitialTools()
         error = failure
+    }
+
+    private func arrangeInitialTools() async {
+        // Presenting the first snapshot supplies the native display facts.
+        guard await synchronizeWindowEvents() else { return }
+        apply(await session.windowAction(.arrangeTools))
     }
 
     private func received(_ event: NativeWindowEvent) {
@@ -143,10 +151,20 @@ final class AppController {
 
     private func apply(_ evaluation: EvaluationResult, replacingWindows: Bool = false) {
         if !replacingWindows, let currentEpoch {
-            guard evaluation.windowCommands.epoch == currentEpoch, evaluation.windowCommands.revision > latestRevision else { return }
+            guard evaluation.windowCommands.epoch == currentEpoch else { return }
+            if evaluation.windowCommands.revision < latestRevision {
+                // A newer window snapshot may arrive first. An inspector
+                // request still owns a live root in this session.
+                for case .openInspector(let snapshot) in evaluation.toolRequests {
+                    inspectorWindows.open(snapshot)
+                }
+                return
+            }
+            guard evaluation.windowCommands.revision > latestRevision else { return }
         }
         currentEpoch = evaluation.windowCommands.epoch
         latestRevision = evaluation.windowCommands.revision
+        if replacingWindows { inspectorWindows.closeAll() }
         changes = evaluation.changes
         savedChangeSequence = evaluation.savedChangeSequence
         changesPath = evaluation.changesPath
@@ -156,12 +174,13 @@ final class AppController {
         controlEdits.reconcile(with: evaluation.windows)
         nativeWindows?.execute(evaluation.windowCommands)
         for request in evaluation.toolRequests {
-            Task { [weak self] in
-                guard let self else { return }
-                switch request {
-                case .saveImage: await self.saveImage()
-                case .showVersions(let className, let selector, let side): await self.showChanges(className: className, selector: selector, side: side)
-                }
+            switch request {
+            case .saveImage:
+                Task { [weak self] in await self?.saveImage() }
+            case .showVersions(let className, let selector, let side):
+                Task { [weak self] in await self?.showChanges(className: className, selector: selector, side: side) }
+            case .openInspector(let snapshot):
+                inspectorWindows.open(snapshot)
             }
         }
     }
@@ -239,9 +258,10 @@ final class AppController {
     }
 
     private func activeButton(for command: String) -> (windowID: Int64, button: UIElementInfo)? {
-        guard let window = windowPresentation.activeWindow?.info,
-              let button = window.content?.firstVisible(where: { $0.command == command && $0.enabled }) else { return nil }
-        return (window.id, button)
+        guard !inspectorWindows.hasKeyWindow, let window = windowPresentation.activeWindow,
+              !(command == "acceptMethod" && window.showsBytecode),
+              let button = window.info.content?.firstVisible(where: { $0.command == command && $0.enabled }) else { return nil }
+        return (window.info.id, button)
     }
 
     func hasCommand(_ command: String) -> Bool { activeButton(for: command) != nil }
@@ -249,6 +269,78 @@ final class AppController {
     func performCommand(_ command: String) async {
         guard let target = activeButton(for: command) else { return }
         await clickControl(windowID: target.windowID, elementID: target.button.id)
+    }
+
+    func toggleBrowserBytecode(windowID: Int64) {
+        guard !isRunning else { return }
+        windowPresentation.toggleBytecode(for: windowID)
+    }
+
+    func browserBytecode(windowID: Int64, method: BrowserMethodSelection) async -> String? {
+        await session.browserBytecode(windowID: windowID, method: method)
+    }
+
+    private func legacyWorkspaceEditor(in window: ToolWindowInfo) -> UIElementInfo? {
+        guard window.kind == .workspace,
+              let editor = window.content?.firstVisible(where: { $0.accessibilityID == "workspaceEditor" && $0.enabled }),
+              editor.contextMenuItems == nil else {
+            return nil
+        }
+        return editor
+    }
+
+    var canInspectWorkspace: Bool {
+        guard !inspectorWindows.hasKeyWindow, let window = windowPresentation.activeWindow?.info else { return false }
+        return hasCommand("inspectIt") || legacyWorkspaceEditor(in: window) != nil
+    }
+
+    func editorContextItems(windowID: Int64, editor: UIElementInfo) -> [EditorContextItem] {
+        if let items = editor.contextMenuItems { return items.compactMap(EditorContextItem.init(projected:)) }
+        // An older image already defines the first two commands on its toolbar.
+        guard let window = presentedWindow(windowID)?.info, legacyWorkspaceEditor(in: window)?.id == editor.id else {
+            return []
+        }
+        var items = ["doIt", "printIt"].compactMap { command in
+            window.content?.firstVisible(where: { $0.command == command && $0.selectionSource == editor.id })
+                .flatMap(EditorContextItem.init(projected:))
+        }
+        items.append(.command(title: "Inspect it", identifier: "inspectIt", action: .legacyInspect, enabled: true))
+        return items
+    }
+
+    func performEditorContextAction(_ action: EditorContextAction, windowID: Int64, selection: String) async {
+        switch action {
+        case .control(let id):
+            await clickControl(windowID: windowID, elementID: id, selection: selection)
+        case .legacyInspect:
+            await inspectLegacyWorkspace(windowID: windowID, capturedSelection: selection)
+        }
+    }
+
+    func inspectWorkspace() async {
+        guard !isRunning, !inspectorWindows.hasKeyWindow else { return }
+        if hasCommand("inspectIt") {
+            await performCommand("inspectIt")
+            return
+        }
+        guard let windowID = windowPresentation.activeWindow?.info.id else { return }
+        await inspectLegacyWorkspace(windowID: windowID)
+    }
+
+    private func inspectLegacyWorkspace(windowID: Int64, capturedSelection: String? = nil) async {
+        guard !isRunning, let window = presentedWindow(windowID)?.info,
+              let editor = legacyWorkspaceEditor(in: window) else { return }
+        let text = inputText(windowID: windowID, element: editor)
+        let selected = capturedSelection ?? selectedText(in: editor, windowID: windowID, text: text)
+        let source = selected.isEmpty ? text : selected
+        isRunning = true
+        defer { isRunning = false }
+        guard await flushWindowState(allowInputFailure: true) else { return }
+        guard let current = presentedWindow(windowID)?.info, legacyWorkspaceEditor(in: current)?.id == editor.id else { return }
+        let evaluation = await session.inspectSource(source)
+        apply(evaluation)
+        windowPresentation.setInputError(evaluation.error, for: windowID)
+        imageHasChanges = true
     }
 
     func inputText(windowID: Int64, element: UIElementInfo) -> String {
@@ -261,20 +353,26 @@ final class AppController {
         scheduleInputSynchronization()
     }
 
-    func clickControl(windowID: Int64, elementID: String) async {
-        guard let window = presentedWindow(windowID)?.info,
-              let root = window.content, let button = root.firstVisible(where: { $0.id == elementID }) else { return }
-        let selection = selectedText(for: button, in: windowID, root: root)
-        let acceptsRejectedInput = window.kind == .workspace || window.kind == .browser
+    func clickControl(windowID: Int64, elementID: String, selection capturedSelection: String? = nil) async {
+        guard let window = presentedWindow(windowID), let root = window.info.content,
+              let button = root.firstVisible(where: { $0.id == elementID }),
+              !(button.command == "acceptMethod" && window.showsBytecode) else { return }
+        let selection = capturedSelection ?? selectedText(for: button, in: windowID, root: root)
+        let acceptsRejectedInput = window.info.kind == .workspace || window.info.kind == .browser
         await sendControl(.click(windowID: windowID, elementID: elementID, selection: selection),
                           windowID: windowID, allowInputFailure: acceptsRejectedInput)
     }
 
     private func selectedText(for button: UIElementInfo, in windowID: Int64, root: UIElementInfo) -> String {
         guard let source = button.selectionSource, let editor = root.firstVisible(where: { $0.id == source }) else { return "" }
-        let text = inputText(windowID: windowID, element: editor) as NSString
-        let range = editorSelection(windowID: windowID, elementID: source)
-        guard range.location <= text.length, range.length <= text.length - range.location else { return "" }
+        return selectedText(in: editor, windowID: windowID, text: inputText(windowID: windowID, element: editor))
+    }
+
+    private func selectedText(in editor: UIElementInfo, windowID: Int64, text: String) -> String {
+        let text = text as NSString
+        let range = editorSelection(windowID: windowID, elementID: editor.id)
+        guard range.location >= 0, range.location <= text.length,
+              range.length >= 0, range.length <= text.length - range.location else { return "" }
         return text.substring(with: range)
     }
 
@@ -297,6 +395,8 @@ final class AppController {
 
     func showWorkspace() async { await sendWindowAction(.showWorkspace) }
 
+    func arrangeTools() async { await sendWindowAction(.arrangeTools) }
+
     private func sendWindowAction(_ action: WindowAction) async {
         guard !isRunning else { return }
         isRunning = true
@@ -314,6 +414,7 @@ final class AppController {
         _ = await session.reset()
         do { try await startUnsavedChangeLog() } catch { self.error = error.localizedDescription }
         apply(await session.snapshot(), replacingWindows: true)
+        await arrangeInitialTools()
         imageURL = nil; imageHasChanges = false
         preferences.removeObject(forKey: Self.lastImageKey)
     }

@@ -28,6 +28,8 @@ public struct UIElementInfo: Identifiable, Sendable {
     public let selection: String?
     public let command: String?
     public let selectionSource: String?
+    /// Older image editors may lack the Smalltalk slot for this auxiliary menu.
+    public let contextMenuItems: [UIElementInfo]?
 }
 
 public enum UIAction: Sendable {
@@ -104,6 +106,7 @@ extension SmalltalkRuntime {
             var items: [String] = []
             var selectionSource: String?
             var selection: String?
+            var contextMenuItems: [UIElementInfo]?
             switch kind {
             case .label: text = try string("text")
             case .button:
@@ -132,6 +135,23 @@ extension SmalltalkRuntime {
                     }
                     liveInput = true
                 default: throw SmalltalkError("Invalid text input controller.")
+                }
+                if kind == .codeEditor, let menu = object.fields["contextMenu"] {
+                    if case .nilValue = menu {
+                        contextMenuItems = []
+                    } else {
+                        guard case .object(let menuObject) = menu, isUIClass(menuObject.stClass, named: "UIMenu") else {
+                            throw SmalltalkError("An editor context menu must be a UIMenu or nil.")
+                        }
+                        let menuInfo = try project(menu, depth: depth + 1, parentEnabled: enabled)
+                        guard menuInfo.children.allSatisfy({ item in
+                            (item.kind == .button || item.kind == .divider) &&
+                            (item.selectionSource == nil || item.selectionSource == object.nativeID)
+                        }) else {
+                            throw SmalltalkError("An editor context menu accepts buttons and dividers. Selection actions must use its own editor.")
+                        }
+                        contextMenuItems = menuInfo.visible ? menuInfo.children.filter(\.visible) : []
+                    }
                 }
             case .list:
                 guard case .array(let values)? = object.fields["items"], values.elements.count <= 1024 else {
@@ -165,7 +185,7 @@ extension SmalltalkRuntime {
                                  minimumWidth: dimension("minWidth"), maximumWidth: dimension("maxWidth"),
                                  minimumHeight: dimension("minHeight"), maximumHeight: dimension("maxHeight"),
                                  readOnly: readOnly, items: items, selection: selection, command: symbolField("command"),
-                                 selectionSource: selectionSource)
+                                 selectionSource: selectionSource, contextMenuItems: contextMenuItems)
         }
         let root = try project(value, depth: 0, parentEnabled: true)
         return (root, controls)

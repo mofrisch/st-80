@@ -272,7 +272,7 @@ struct SourceJournalTests {
         try await session.saveImage(to: url, workspace: "counter value", transcript: "hello")
         let bytes = try Data(contentsOf: url)
         let saved = try JSONDecoder().decode(ImageFileArchive.self, from: bytes)
-        #expect(saved.version == 4)
+        #expect(saved.version == 5)
         #expect(saved.memory.classes.allSatisfy { $0.methods.isEmpty })
         #expect(saved.methods.contains { $0.className == "Counter" && $0.code.selector == "answer" && $0.changeID != nil })
         #expect(!String(decoding: bytes, as: UTF8.self).contains("answer ^ 42"))

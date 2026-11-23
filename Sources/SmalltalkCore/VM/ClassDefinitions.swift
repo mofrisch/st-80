@@ -82,10 +82,6 @@ extension SmalltalkRuntime {
         catalogDirty = true
     }
 
-    private enum RetainedReference {
-        case value(Value), environment(Environment)
-    }
-
     private func validateRetainedCode(target: STClass, superclass: STClass, removedFields: [ObjectIdentifier: Set<String>]) throws {
         func validateHome(_ receiver: STClass, home: STClass) throws {
             var ancestor: STClass? = receiver
@@ -96,7 +92,7 @@ extension SmalltalkRuntime {
                 throw SmalltalkError("A method or block on \(receiver.name) still depends on \(home.name) as a superclass.")
             }
         }
-        func validate(_ body: Body, context: Context, parameters: [String] = []) throws {
+        func validate(_ body: BytecodeBody, context: Context, parameters: [String] = []) throws {
             if context.methodSide == .classSide, case .classObject(let receiver) = context.receiver, let home = context.homeClass {
                 try validateHome(receiver, home: home)
             }
@@ -115,75 +111,29 @@ extension SmalltalkRuntime {
 
         // Walk language roots rather than the arena, which also retains garbage.
         // Active scopes cover local blocks and code that may create a block later.
-        var pending = globals.values.map(RetainedReference.value)
-        pending.append(contentsOf: evaluationRoots.map(RetainedReference.value))
-        for message in pendingMessages {
-            switch message.lookup {
+        var pending = retainedRoots
+        func validateSend(_ receiver: Value, lookup: MessageLookup) throws {
+            switch lookup {
             case .classSuper(let home?):
-                if case .classObject(let receiver) = message.receiver { try validateHome(receiver, home: home) }
+                if case .classObject(let target) = receiver { try validateHome(target, home: home) }
             case .instanceSuper(let home):
-                try validateHome(classOf(message.receiver), home: home)
+                try validateHome(classOf(receiver), home: home)
             default:
                 break
             }
         }
+        for message in pendingMessages { try validateSend(message.receiver, lookup: message.lookup) }
+        for case .receiver(let receiver, let lookup) in bytecodeOperands { try validateSend(receiver, lookup: lookup) }
         for activation in activations {
             try validate(activation.body, context: activation.context)
-            pending.append(.value(activation.context.receiver))
-            pending.append(.environment(activation.context.environment))
         }
         var seen: Set<ObjectIdentifier> = []
         while let reference = pending.popLast() {
-            switch reference {
-            case .value(.object(let object)):
-                guard seen.insert(ObjectIdentifier(object)).inserted else { continue }
-                pending.append(contentsOf: object.fields.values.map(RetainedReference.value))
-            case .value(.array(let array)):
-                guard seen.insert(ObjectIdentifier(array)).inserted else { continue }
-                pending.append(contentsOf: array.elements.map(RetainedReference.value))
-            case .value(.block(let block)):
-                guard seen.insert(ObjectIdentifier(block)).inserted else { continue }
+            guard seen.insert(reference.identity).inserted else { continue }
+            if case .block(let block) = reference {
                 try validate(block.body, context: block.context, parameters: block.parameters)
-                pending.append(.value(block.context.receiver))
-                pending.append(.environment(block.context.environment))
-            case .environment(let environment):
-                guard seen.insert(ObjectIdentifier(environment)).inserted else { continue }
-                pending.append(contentsOf: environment.values.values.map(RetainedReference.value))
-                if let parent = environment.parent { pending.append(.environment(parent)) }
-            case .value:
-                break
             }
-        }
-    }
-}
-
-private extension Body {
-    func reference(to removed: Set<String>, excluding outerNames: Set<String>) -> String? {
-        let locals = outerNames.union(temporaries)
-        return expressions.lazy.compactMap { $0.reference(to: removed, excluding: locals) }.first
-    }
-}
-
-private extension Expression {
-    func reference(to removed: Set<String>, excluding locals: Set<String>) -> String? {
-        func isRemoved(_ name: String) -> Bool { removed.contains(name) && !locals.contains(name) }
-        switch kind {
-        case .literal:
-            return nil
-        case .variable(let name):
-            return isRemoved(name) ? name : nil
-        case .assignment(let name, let value):
-            return isRemoved(name) ? name : value.reference(to: removed, excluding: locals)
-        case .returnValue(let value):
-            return value.reference(to: removed, excluding: locals)
-        case .block(let parameters, let body):
-            return body.reference(to: removed, excluding: locals.union(parameters))
-        case .send(let receiver, _, let arguments):
-            return receiver.reference(to: removed, excluding: locals) ??
-                arguments.lazy.compactMap { $0.reference(to: removed, excluding: locals) }.first
-        case .cascade(let receiver, let messages):
-            return receiver.reference(to: removed, excluding: locals) ??
-                messages.lazy.flatMap(\.arguments).compactMap { $0.reference(to: removed, excluding: locals) }.first
+            reference.trace { pending.append($0) }
         }
     }
 }

@@ -36,7 +36,7 @@ struct CompilerTests {
     @Test func imageLoadRejectsOldVersionsBeforeReplacingTheSession() async throws {
         let session = SmalltalkSession()
         _ = await session.evaluate("kept := 42")
-        for version in [1, 2, 3] {
+        for version in [1, 2, 3, 4] {
             let oldHeader = Data(#"{"format":"st80-image","version":\#(version)}"#.utf8)
             await #expect(throws: SmalltalkError.self) {
                 _ = try await session.loadImage(oldHeader)

@@ -14,11 +14,14 @@ extension SmalltalkRuntime {
     func compileMethod(_ source: String, fields: [String] = []) throws -> Method {
         let method = try withCompiler(source, selector: "method:") { output in
             let parts = try CompilerOutput.parts(output, count: 3)
+            let body = try CompilerOutput.body(parts[2])
+            try CodeValidator.check(body)
             return Method(
                 selector: try CompilerOutput.string(parts[0]),
                 parameters: try CompilerOutput.names(parts[1]),
-                body: try CompilerOutput.body(parts[2]),
-                source: source
+                body: BytecodeBody.lower(body),
+                source: source,
+                referenceBody: useASTInterpreterForTesting ? body : nil
             )
         }
         try CodeValidator.check(method, fields: fields)
@@ -28,6 +31,7 @@ extension SmalltalkRuntime {
     private func withCompiler<T>(_ source: String, selector: String, decode: (Value) throws -> T) throws -> T {
         guard source.utf8.count <= 262_144 else { throw SmalltalkError("Source code exceeds the 256 KiB limit.") }
         let workspace = SmalltalkRuntime(bootstrap: false, compilationMode: true)
+        workspace.memory.stressCollection = memory.stressCollection
         for name in Self.compilerClassNames {
             guard let original = classes[name], original.superclass?.name == "Object",
                   let parent = workspace.classes["Object"] else { throw SmalltalkError("Compiler class \(name) is missing.") }
@@ -39,7 +43,11 @@ extension SmalltalkRuntime {
         }
         guard let compiler = workspace.globals["STCompiler"] else { throw SmalltalkError("The Smalltalk compiler is missing.") }
         let instance = try workspace.send(compiler, "new", [])
-        return try decode(workspace.send(instance, selector, [.string(source)]))
+        return try workspace.withRoots([instance]) { roots in
+            let output = try workspace.send(instance, selector, [.string(source)])
+            roots.add(output)
+            return try decode(output)
+        }
     }
 }
 
@@ -136,7 +144,7 @@ enum CodeValidator {
         return selector.first.map { binary.contains($0) } == true ? 1 : 0
     }
 
-    private static func checkSelector(_ selector: String, arguments: Int) throws {
+    static func checkSelector(_ selector: String, arguments: Int) throws {
         if selector.contains(":") {
             let parts = selector.split(separator: ":", omittingEmptySubsequences: false)
             if selector.hasSuffix(":"), parts.count - 1 == arguments, parts.dropLast().allSatisfy({ identifier(String($0)) }) { return }
@@ -156,7 +164,7 @@ enum CodeValidator {
         guard Set(method.parameters + method.body.temporaries).isDisjoint(with: fields) else {
             throw SmalltalkError("A local variable shadows an instance variable.")
         }
-        try check(method.body)
+        try method.body.validate(parameters: method.parameters)
     }
 
     static func check(_ body: Body) throws {

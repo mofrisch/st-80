@@ -8,6 +8,63 @@ struct ToolWindowTests {
         return root.children.lazy.compactMap { element(id, in: $0) }.first
     }
 
+    @Test func workspaceContextMenuDispatchesTheSelectedSourceAndSurvivesImageLoad() async throws {
+        let session = SmalltalkSession()
+        let snapshot = await session.snapshot()
+        let workspace = try #require(snapshot.windows.first { $0.kind == .workspace })
+        let editor = try #require(element("workspaceEditor", in: workspace.content))
+        let menu = try #require(editor.contextMenuItems)
+        #expect(menu.map(\.text) == ["Do it", "Print it", "Inspect it"])
+        #expect(menu.map(\.command) == ["doIt", "printIt", "inspectIt"])
+        #expect(menu.allSatisfy { $0.enabled && $0.selectionSource == editor.id })
+
+        func click(_ command: String, selection: String) async throws -> EvaluationResult {
+            let item = try #require(menu.first { $0.command == command })
+            let result = await session.uiAction(.click(windowID: workspace.id, elementID: item.id, selection: selection))
+            #expect(result.executionError == nil)
+            return result
+        }
+
+        // Evaluating the full buffer would fail. All three items must use just
+        // the source passed along with the context-menu event.
+        _ = await session.uiAction(.text(windowID: workspace.id, elementID: editor.id, value: "1 / 0"))
+        let executed = try await click("doIt", selection: "6 * 7")
+        let updatedWorkspace = executed.windows.first { $0.id == workspace.id }
+        #expect(element("evaluationResult", in: updatedWorkspace?.content)?.text == "42")
+        let printed = try await click("printIt", selection: "3 + 4")
+        #expect(printed.transcript == "→ 7\n")
+
+        _ = await session.evaluate("inspectionRuns := 0")
+        let inspected = try await click("inspectIt", selection: "inspectionRuns := inspectionRuns + 1. Counter new add: inspectionRuns")
+        let inspectors = inspected.toolRequests.compactMap { request -> InspectorSnapshot? in
+            if case .openInspector(let inspector) = request { return inspector }
+            return nil
+        }
+        let inspector = try #require(inspectors.first)
+        #expect(inspectors.count == 1)
+        #expect(inspector.className == "Counter")
+        #expect(inspector.rows.first { $0.id == .field("count") }?.preview == "1")
+        #expect(await session.evaluate("inspectionRuns").value == "1")
+
+        let restored = SmalltalkSession()
+        let image = try await session.imageData()
+        let loaded = try await restored.loadImage(image)
+        let loadedWorkspace = try #require(loaded.evaluation.windows.first { $0.kind == .workspace })
+        let loadedEditor = try #require(element("workspaceEditor", in: loadedWorkspace.content))
+        let loadedMenu = try #require(loadedEditor.contextMenuItems)
+        #expect(loadedMenu.map(\.command) == menu.map(\.command))
+        #expect(loadedMenu.allSatisfy { $0.selectionSource == loadedEditor.id })
+        let oldInspect = try #require(menu.first { $0.command == "inspectIt" })
+        let stale = await restored.uiAction(.click(windowID: loadedWorkspace.id, elementID: oldInspect.id, selection: "1"))
+        #expect(stale.toolRequests.isEmpty)
+        let restoredInspect = try #require(loadedMenu.first { $0.command == "inspectIt" })
+        let live = await restored.uiAction(.click(windowID: loadedWorkspace.id, elementID: restoredInspect.id, selection: "inspectionRuns"))
+        #expect(live.toolRequests.contains {
+            if case .openInspector(let inspector) = $0 { return inspector.summary == "1" }
+            return false
+        })
+    }
+
     @Test func everyShippedBrowserMethodBelongsToExactlyOneProtocol() throws {
         let runtime = SmalltalkRuntime()
         let organization = try #require(runtime.globals["SystemOrganization"])
@@ -149,6 +206,57 @@ struct ToolWindowTests {
         let restoredContent = loaded.evaluation.windows.first { $0.kind == .browser }?.content
         #expect(element("classMethodSide", in: restoredContent)?.role == "primary")
         #expect(element("methodEditor", in: restoredContent)?.text == "value ^ 73")
+    }
+
+    @Test func browserBytecodeReflectsTheSelectedCompiledMethod() async throws {
+        let session = SmalltalkSession()
+        let prepared = await session.compile("value ^ 73", in: "Counter", side: .classSide)
+        #expect(prepared.error == nil)
+        let browser = try #require(prepared.windows.first { $0.kind == .browser })
+        #expect(browser.browserMethod == nil)
+        let methodList = try #require(element("methodList", in: browser.content))
+        let classList = try #require(element("classList", in: browser.content))
+        let classSideButton = try #require(element("classMethodSide", in: browser.content))
+        let instanceSideButton = try #require(element("instanceMethodSide", in: browser.content))
+
+        func selection(in result: EvaluationResult) throws -> BrowserMethodSelection {
+            #expect(result.error == nil)
+            return try #require(result.windows.first { $0.id == browser.id }?.browserMethod)
+        }
+
+        let instanceMethod = try await selection(in: session.uiAction(.select(
+            windowID: browser.id, elementID: methodList.id, value: "value"
+        )))
+        #expect(instanceMethod.className == "Counter")
+        #expect(instanceMethod.selector == "value")
+        #expect(instanceMethod.side == .instance)
+        #expect(await session.browserBytecode(windowID: browser.id, method: instanceMethod)?.contains("LOAD count") == true)
+
+        _ = await session.uiAction(.click(windowID: browser.id, elementID: classSideButton.id))
+        #expect(await session.browserBytecode(windowID: browser.id, method: instanceMethod) == nil)
+        let classMethod = try await selection(in: session.uiAction(.select(
+            windowID: browser.id, elementID: methodList.id, value: "value"
+        )))
+        #expect(classMethod.side == .classSide)
+        #expect(await session.browserBytecode(windowID: browser.id, method: classMethod)?.contains("PUSH_LITERAL 73") == true)
+
+        let replaced = try await selection(in: session.compile(
+            "value ^ [ :item | item ] value: 94", in: "Counter", side: .classSide
+        ))
+        #expect(replaced != classMethod)
+        #expect(await session.browserBytecode(windowID: browser.id, method: classMethod) == nil)
+        let refreshedBytecode = try #require(await session.browserBytecode(windowID: browser.id, method: replaced))
+        #expect(refreshedBytecode.contains("PUSH_LITERAL 94"))
+        #expect(refreshedBytecode.contains("MAKE_BLOCK (item)\n    0000  LOAD item\n    0001  FINISH"))
+
+        _ = await session.uiAction(.click(windowID: browser.id, elementID: instanceSideButton.id))
+        _ = await session.uiAction(.select(windowID: browser.id, elementID: classList.id, value: "Object"))
+        let primitive = try await selection(in: session.uiAction(.select(
+            windowID: browser.id, elementID: methodList.id, value: "class"
+        )))
+        #expect(primitive.className == "Object")
+        #expect(primitive.isPrimitive)
+        #expect(await session.browserBytecode(windowID: browser.id, method: primitive) == nil)
     }
 
     @Test func browserOrganizationEditsSurviveClosingTheBrowserAndLoadingAnImage() async throws {

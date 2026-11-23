@@ -193,6 +193,41 @@ struct ImageTests {
         }
     }
 
+    @Test func invalidBytecodeInMethodsAndBlocksRejectsTheImageBeforeReplacement() async throws {
+        let current = SmalltalkSession()
+        #expect(await value("kept := 42", in: current) == "42")
+        let donor = SmalltalkSession()
+        #expect(await value("Counter compile: 'imageMethod ^ 123'. escaped := [ 7 ]. 123", in: donor) == "123")
+        let data = try await donor.imageData()
+        let archive = try JSONDecoder().decode(ImageArchive.self, from: data)
+        let position = SourcePosition(line: 1, column: 1)
+        let invalid = BytecodeBody(temporaries: [], instructions: [
+            BytecodeInstruction(operation: .pop, position: position),
+            BytecodeInstruction(operation: .finish, position: position),
+        ])
+
+        var badMethod = archive
+        let method = Method(selector: "imageMethod", parameters: [], body: invalid, source: "imageMethod ^ 123")
+        badMethod.executableMethods?["Counter"]?["imageMethod"] = MethodCode(method)
+
+        var badBlock = archive
+        guard case .reference(let blockID)? = archive.globals["escaped"], archive.nodes.indices.contains(blockID),
+              case .block(var block) = archive.nodes[blockID] else {
+            Issue.record("The saved closure is missing from the image.")
+            return
+        }
+        block.body = invalid
+        badBlock.nodes[blockID] = .block(block)
+
+        for candidate in [badMethod, badBlock] {
+            let bytes = try JSONEncoder().encode(candidate)
+            await #expect(throws: SmalltalkError.self) {
+                _ = try await current.loadImage(bytes)
+            }
+            #expect(await value("kept", in: current) == "42")
+        }
+    }
+
     @Test func fileRoundTripAndFailedWritePreserveSession() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("st80-image-tests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

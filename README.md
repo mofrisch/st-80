@@ -13,7 +13,7 @@ The project contains four targets.
 | Target | Purpose |
 | --- | --- |
 | Smalltalk80 | Native macOS windows with SwiftUI content and an AppKit text editor |
-| SmalltalkCore | Swift VM with object memory, syntax tree execution, and the Smalltalk compiler |
+| SmalltalkCore | Swift bytecode VM with object memory and the Smalltalk compiler |
 | SmalltalkCoreTests | Language, image, and window model tests |
 | Smalltalk80UITests | Workspaces, live method editing, native windows, and image restoration after relaunch |
 
@@ -23,7 +23,10 @@ Local builds use ad hoc signing, so you can run the app without a development te
 
 - In a **Workspace**, select code and press **⌘D** to run it. With no selection, the entire buffer runs.
 - **⌘P** also prints the result to the Transcript.
+- **⌘I** (**Smalltalk → Inspect it**) evaluates the selection and opens the result in the Object Inspector. With no selection, it evaluates the entire workspace buffer.
+- Right-click the Workspace editor to choose **Do it**, **Print it**, or **Inspect it**. The menu uses the selection already present when it opens. New images define the menu in `WorkspaceWindow`. In images saved before editor menus were introduced, the app uses the saved Workspace buttons for **Do it** and **Print it** and the existing Inspector action for **Inspect it**.
 - In the **System Browser**, select a class and switch between **Instance** and **Class** below the lists. Each side has its own protocols, methods, and editor draft. Use **New Method** to start a definition and **⌘S** to accept it. The new method is available immediately.
+- With a method selected, **Bytecode** shows its compiled instructions and operands, including the instructions inside blocks. Use **Source** to return to the editor and its draft. The browser identifies VM primitives that have no bytecode.
 - Selecting a class shows its definition in the source editor. **Definition** returns to it from a method. Edit the superclass or instance variable names in `subclass:instanceVariableNames:` and press **⌘S**. Use **Move Class …** to change the category.
 - Use **Create Class …** and **New Method** to add definitions. The browser shows the selected class's own methods. Select its superclass to browse inherited methods.
 - **Details** in the browser shows the class information and shared workspace variables, including their classes and values.
@@ -31,6 +34,10 @@ Local builds use ad hoc signing, so you can run the app without a development te
 - **⌘1 / ⌘2 / ⌘3** brings a workspace, the System Browser, or the Transcript to the front.
 - **⌘O** opens UTF-8 source code in a new workspace. In a workspace, **⌘S** saves the source as a `.st` file.
 - The **Examples** menu contains sample code for counters, arrays and blocks, class definitions, native windows, and custom interfaces.
+
+The Object Inspector shows a value's class, instance variables, and one-based array elements. Open a row to follow its value, use **Back** to return, and use **Refresh** after another workspace changes the object. Long arrays are shown one page at a time. Smalltalk code can also open the window with `ToolVM inspect: anObject`.
+
+An open inspector keeps its current value and navigation history reachable for garbage collection. Inspectors belong to the running session. Loading an image or resetting the session closes them.
 
 ## Save and load images
 
@@ -47,7 +54,7 @@ The VM builds and validates a separate session before replacing the active one. 
 
 **Reset Session** starts a fresh session, clears the automatic association with the last image, and leaves saved files on disk. In a workspace, **⌘S** saves the source text as `.st`.
 
-The versioned JSON image format (`format: st80-image`, `version: 4`) stores an object table, executable syntax trees, and source references. Earlier alpha image formats are unsupported. The core API `imageData` produces a portable image with embedded method sources. Each image can contain up to 32 MiB and 40,000 reachable reference objects.
+The JSON image format (`format: st80-image`, `version: 5`) stores an object table, bytecode for methods and blocks, source positions, and source references. Use a fresh session when upgrading from an earlier image version. The core API `imageData` produces a portable image with embedded method sources. Each image can contain up to 32 MiB and 40,000 reachable reference objects.
 
 ### Sources and changes
 
@@ -71,7 +78,7 @@ Keep the image, its matching `.changes` file, and its referenced sources archive
 
 ## Smalltalk compiler and boot image
 
-`02-Scanner.st` and `03-Compiler.st` contain the scanner and parser. The same compiler handles **Do it**, browser **Accept**, `Class>>compile:`, and `Class>>compileClass:`. It builds syntax trees in temporary object memory. The Swift VM validates these trees before executing code or installing a definition.
+`02-Scanner.st` and `03-Compiler.st` contain the scanner and parser. The same compiler handles **Do it**, browser **Accept**, `Class>>compile:`, and `Class>>compileClass:`. It builds syntax trees in temporary object memory. Swift validates the trees and lowers them to stack instructions. The VM executes those instructions with the same message lookup, primitives, and lexical scopes for workspace code, methods, and blocks. Each instruction carries a source position for runtime errors. Image loading validates bytecode operands, stack shape, and block scopes before installing the restored world.
 
 After changing a numbered system source file, rebuild both bundled artifacts from the project directory.
 
@@ -81,9 +88,29 @@ python3 scripts/generate-sources.py
 
 The bootstrap loads the previous Smalltalk compiler from the boot image, generates a new compiler, and verifies that the new compiler can rebuild itself reproducibly. Use `--check` to verify the existing artifacts. The regular Xcode build bundles them. Opening a saved image loads the compiler stored in that image.
 
+## Garbage collection
+
+Each runtime has an `ObjectMemory` with a precise, nonmoving mark-and-sweep collector. It manages objects, arrays, blocks, and lexical environments. Roots include globals, the bytecode operand stack, active receivers and environments, and explicit temporary roots held by Swift code. The collector follows object fields, array elements, and block/environment captures. It first detaches every unreachable node's references, then releases the nodes through Swift ARC, including cyclic graphs. Object identity and native window identifiers remain stable.
+
+Collection runs on the interpreter worker at allocation safepoints and, when due, after a completed worker operation. Smalltalk execution pauses during collection. The native UI renders immutable snapshots. Classes, bytecode instructions, and strings remain outside the managed node graph.
+
+The normal heap starts collecting at 4,096 registered nodes. After collection, the threshold becomes the greater of that starting threshold and twice the surviving node count, up to a hard limit of 100,000 nodes. Reaching the hard limit first triggers collection; an allocation fails only if the heap still has no room. The separate temporary compiler runtime uses a starting threshold of 32,768 and a hard limit of 1,000,000 nodes. All four managed node kinds count toward these budgets.
+
+To request a full collection in a Workspace, evaluate:
+
+```smalltalk
+ToolVM collectGarbage
+```
+
+The result is the number of nodes reclaimed by that collection. `ToolVM gcStatistics` returns an array of alternating symbols and integers: `#nodes`, `#objects`, `#arrays`, `#blocks`, `#environments`, `#slots`, `#collections`, `#reclaimed`, and `#lastPauseNanoseconds`. The node counts report registered heap occupancy when sampled; between collections they can include unreachable nodes. Slots count logical value/reference slots, not bytes or process resident memory. The Swift session API provides `collectGarbage()` and `garbageCollectionStatistics()` returning `GCStatistics`.
+
+Images contain the reachable object graph. Loading suspends collection while the new graph is allocated and connected, while retaining the hard allocation limit.
+
 ## Native window management
 
 The Workspace, System Browser, and Transcript are separate macOS windows. Use the standard title bars to move, resize, minimize, and close them. Workspaces share one Smalltalk session and each keeps its own text, selection, and last result.
+
+A fresh session places the System Browser on the left, with the Workspace above the Transcript on the right. The group is centered in the display's usable area and occupies at most 1800 × 1000 screen points. Saved images restore their own window positions. **Smalltalk → Arrange Tools** applies this arrangement to an existing session, including older images. The command adds the arrangement method to an older image's changes log when needed. You can also evaluate `Desktop arrangeTools` once the method is available.
 
 Smalltalk implements window management. The global `Desktop` holds the `DesktopManager` controller. Its `DesktopModel` tracks the window list, order, active window, and display information. `SystemWindow` is a subclass of `Model` that reports state changes through the standard observer protocol.
 
@@ -192,7 +219,7 @@ You can bind `text` on labels and text fields, `title` on buttons, `enabled` and
 | `UILabel` | `text:`, `text` |
 | `UIButton` | `title:`, `action:`, `onClickSend:to:`, `selectionFrom:action:` for actions that use the code editor selection |
 | `UITextField` | `label:`, `placeholder:`, `text:`, `text`, `onChangeSend:to:` |
-| `UICodeEditor` | Text field messages, plus `readOnly:` and native text selection |
+| `UICodeEditor` | Text field messages, plus `readOnly:`, native text selection, and `contextMenu:` to attach a `UIMenu` of buttons and dividers |
 | `UIList` | `items:` with unique strings, `selection:`, `onSelectSend:to:` |
 | `UISplit`, `UIScroll`, `UIMenu` | Containers for split views, scrolling, and menus. `UISplit` stacks its panes with `role: #vertical`. `UIMenu` also supports `title:`. |
 | `UIDivider` | Separator |
@@ -249,14 +276,14 @@ Unary messages bind before binary messages, and binary messages before keyword m
 
 The prototype has these limits.
 
-- The interpreter executes syntax trees. The VM does not implement Blue Book bytecode or load historical images.
+- The interpreter uses this project's stack instruction set. Images are specific to this VM.
 - Classes share a simplified `Class` and have separate method dictionaries for the instance and class sides. Class methods inherit along the superclass chain. In a class method, `self` is the receiving class and `super` starts lookup above the defining class. The simplified model has no individual metaclass objects or class instance variables.
 - `subclass:instanceVariableNames:` is the short form. The longer Smalltalk-80 message is accepted with empty class variables and pool dictionaries.
 - `new` sends `initialize`. With no explicit `^`, a method returns `self` and a block returns its last expression.
 - Assigning an undeclared name in a workspace creates a persistent workspace variable. `| temp |` declares a local that lasts for the evaluation.
 - Strings are Unicode values. `at:` returns a one-character string and `==` compares strings by value. `Character`, `Fraction`, `Float`, and `LargeInteger` are not implemented.
-- Object memory uses an arena, which is freed on reset. The system does not yet include garbage collection, processes, a debugger, or BitBlt.
-- An evaluation can take up to 100,000 steps, 128 call levels, and 32 syntactic nesting levels. The arena supports 20,000 entries and arrays can hold 4,096 elements. Changes already performed survive an evaluation error.
+- Object memory uses the collector described above. The system does not yet include processes, a debugger, or BitBlt.
+- An evaluation can take up to 100,000 execution steps, including bytecode instructions and call entry, with 128 call levels and 32 syntactic nesting levels. The normal heap permits up to 100,000 registered nodes after collection, and arrays can hold 4,096 elements. Changes already performed survive an evaluation error.
 
 ## App icon
 
@@ -286,7 +313,3 @@ xcodebuild -project Smalltalk80.xcodeproj -scheme Smalltalk80 \
 ```
 
 You can also run the core tests with `swift test`. The checked-in Xcode project is ready to open and build. After adding source files, use `python3 scripts/generate-project.py` to recreate it. Regeneration replaces manual project edits.
-
-## Next steps
-
-A natural next step is an object inspector that shows individual fields. Bytecode execution and garbage collection could then extend the current interpreter.

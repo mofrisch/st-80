@@ -5,6 +5,7 @@ import Foundation
 public enum NativeToolRequest: Sendable {
     case saveImage
     case showVersions(className: String, selector: String, side: MethodSide = .instance)
+    case openInspector(InspectorSnapshot)
 }
 
 extension SmalltalkRuntime {
@@ -24,6 +25,23 @@ extension SmalltalkRuntime {
             return methodSide
         }
         switch selector {
+        case "inspect:":
+            try requestInspection(args[0])
+            return args[0]
+        case "collectGarbage": return .integer(Int64(collectGarbage().lastReclaimed))
+        case "gcStatistics":
+            let stats = memory.statistics
+            return try array([
+                .symbol("nodes"), .integer(Int64(stats.liveNodes)),
+                .symbol("objects"), .integer(Int64(stats.liveObjects)),
+                .symbol("arrays"), .integer(Int64(stats.liveArrays)),
+                .symbol("blocks"), .integer(Int64(stats.liveBlocks)),
+                .symbol("environments"), .integer(Int64(stats.liveEnvironments)),
+                .symbol("slots"), .integer(Int64(stats.liveSlots)),
+                .symbol("collections"), .integer(Int64(stats.totalCollections)),
+                .symbol("reclaimed"), .integer(Int64(stats.totalReclaimed)),
+                .symbol("lastPauseNanoseconds"), .integer(Int64(clamping: stats.lastPauseNanoseconds))
+            ])
         case "classNames": return try array(classes.keys.sorted().map(Value.string))
         case "classNamed:": return try classes[string(args[0])].map(Value.classObject) ?? .nilValue
         case "classNameOf:": return try .string(target(args[0]).name)
@@ -50,9 +68,13 @@ extension SmalltalkRuntime {
         case "bindingSummary":
             let summary = bindingInfos().map { "\($0.name)  [\($0.className)]\n\($0.value)" }.joined(separator: "\n\n")
             return .string(String(summary.prefix(10_000)))
-        case "evaluateSource:":
+        case "evaluateSource:", "inspectSource:":
             return try outcome {
                 guard !evaluatingToolSource else { throw SmalltalkError("A workspace evaluation is already running.") }
+                let source = try string(args[0])
+                if selector == "inspectSource:", source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    throw SmalltalkError("Enter an expression to inspect.")
+                }
                 let enclosingDepth = depth
                 let enclosingSteps = steps
                 evaluatingToolSource = true
@@ -64,7 +86,12 @@ extension SmalltalkRuntime {
                     steps = enclosingSteps
                     depth = enclosingDepth
                 }
-                return printValue(try evaluate(string(args[0])))
+                let value = try evaluate(source)
+                if selector == "inspectSource:" {
+                    try requestInspection(value)
+                    return "Object Inspector opened."
+                }
+                return printValue(value)
             }
         case "compileSource:in:", "compileSource:in:side:":
             let stClass = try target(args[1])
@@ -102,8 +129,11 @@ extension SmalltalkRuntime {
         guard catalogDirty else { return }
         catalogDirty = false
         guard let windows = desktopWindows else { return }
-        for case .object(let window) in windows.elements where window.stClass.lookup("refreshTools") != nil {
-            _ = try send(.object(window), "refreshTools", [])
+        let elements = windows.elements
+        try withRoots(elements) { _ in
+            for case .object(let window) in elements where window.stClass.lookup("refreshTools") != nil {
+                _ = try send(.object(window), "refreshTools", [])
+            }
         }
     }
 }

@@ -68,8 +68,18 @@ struct Body: Codable, Sendable {
 }
 
 struct Method: Sendable {
+    let identity = UUID()
     let selector: String
     let parameters: [String]
-    let body: Body
+    let body: BytecodeBody
     let source: String
+    let referenceBody: Body?
+
+    init(selector: String, parameters: [String], body: BytecodeBody, source: String, referenceBody: Body? = nil) {
+        self.selector = selector
+        self.parameters = parameters
+        self.body = body
+        self.source = source
+        self.referenceBody = referenceBody
+    }
 }

@@ -17,6 +17,15 @@ public struct ScreenInfo: Sendable {
     public init(id: String, frame: WindowRect) { self.id = id; self.frame = frame }
 }
 
+public struct BrowserMethodSelection: Sendable, Hashable {
+    public let className: String
+    public let selector: String
+    public let side: MethodSide
+    public let isPrimitive: Bool
+    fileprivate let windowIdentity: String
+    fileprivate let methodIdentity: UUID?
+}
+
 public struct ToolWindowInfo: Identifiable, Sendable {
     public let id: Int64
     public let kind: ToolKind
@@ -25,15 +34,17 @@ public struct ToolWindowInfo: Identifiable, Sendable {
     public let x: Int64, y: Int64, width: Int64, height: Int64
     public let minimized: Bool
     public let content: UIElementInfo?
+    public let browserMethod: BrowserMethodSelection?
     public let identity: String
     public let minimumWidth: Int64, minimumHeight: Int64, maximumWidth: Int64, maximumHeight: Int64
     public let frameRevision: Int64, stateRevision: Int64
     public var frame: WindowRect { WindowRect(x: x, y: y, width: width, height: height) }
 
-    public init(id: Int64, kind: ToolKind, title: String, text: String, x: Int64, y: Int64, width: Int64, height: Int64, minimized: Bool, content: UIElementInfo? = nil, minimumWidth: Int64 = 1, minimumHeight: Int64 = 1, maximumWidth: Int64 = 8192, maximumHeight: Int64 = 8192, frameRevision: Int64 = 1, stateRevision: Int64 = 1, identity: String = "") {
+    public init(id: Int64, kind: ToolKind, title: String, text: String, x: Int64, y: Int64, width: Int64, height: Int64, minimized: Bool, content: UIElementInfo? = nil, minimumWidth: Int64 = 1, minimumHeight: Int64 = 1, maximumWidth: Int64 = 8192, maximumHeight: Int64 = 8192, frameRevision: Int64 = 1, stateRevision: Int64 = 1, identity: String = "", browserMethod: BrowserMethodSelection? = nil) {
         self.id = id; self.kind = kind; self.title = title; self.text = text
         self.x = x; self.y = y; self.width = width; self.height = height
         self.minimized = minimized; self.content = content
+        self.browserMethod = browserMethod
         self.minimumWidth = minimumWidth; self.minimumHeight = minimumHeight
         self.maximumWidth = maximumWidth; self.maximumHeight = maximumHeight
         self.frameRevision = frameRevision; self.stateRevision = stateRevision
@@ -73,6 +84,7 @@ public struct NativeWindowEvent: Sendable {
 
 public enum WindowAction: Sendable {
     case showWorkspace
+    case arrangeTools
     case open(ToolKind), close(Int64), activate(Int64), text(Int64, String)
     case frame(Int64, x: Int64, y: Int64, width: Int64, height: Int64)
     case minimize(Int64, Bool)
@@ -81,6 +93,10 @@ public enum WindowAction: Sendable {
 extension SmalltalkSession {
     public func windowAction(_ action: WindowAction) async -> EvaluationResult { await worker.submit { $0.performWindowAction(action) } }
     public func windowEvents(_ events: [NativeWindowEvent]) async -> EvaluationResult { await worker.submit { $0.performWindowEvents(events) } }
+
+    public func browserBytecode(windowID: Int64, method: BrowserMethodSelection) async -> String? {
+        await worker.submit { $0.browserBytecode(windowID: windowID, method: method) }
+    }
 }
 
 extension SmalltalkRuntime {
@@ -95,6 +111,17 @@ extension SmalltalkRuntime {
             }
             switch action {
             case .showWorkspace: _ = try send(desktop, "showWorkspace", [])
+            case .arrangeTools:
+                // An explicit arrange request also works in images predating
+                // this policy, without replacing an image's own implementation.
+                if lookupMethod("arrangeTools", on: desktop) == nil {
+                    guard case .object(let manager) = desktop,
+                          let source = try SystemLibrary.shared.get().sources.methods["DesktopManager"]?["arrangeTools"] else {
+                        throw SmalltalkError("The tool arrangement method is missing.")
+                    }
+                    try compile(source, in: manager.stClass)
+                }
+                _ = try send(desktop, "arrangeTools", [])
             case .open(let kind):
                 let selectors: [ToolKind: String] = [.workspace: "openWorkspace", .browser: "openBrowser", .transcript: "openTranscript", .custom: "openWindow", .changes: "openChanges"]
                 _ = try send(desktop, selectors[kind]!, [])
@@ -119,14 +146,18 @@ extension SmalltalkRuntime {
                 guard let desktop = globals["Desktop"] else { continue }
                 if case .screens(let screens) = event.kind {
                     guard screens.count <= 32 else { throw SmalltalkError("Too many displays.") }
-                    let facts = try screens.map { screen -> Value in
-                        guard Self.validFrame(screen.frame, screen: true), let stClass = classes["DisplayScreen"] else { throw SmalltalkError("Invalid display geometry.") }
-                        try checkAllocation()
-                        let object = STObject(stClass); objects.append(object)
-                        object.fields = ["id": .string(screen.id), "x": .integer(screen.frame.x), "y": .integer(screen.frame.y), "width": .integer(screen.frame.width), "height": .integer(screen.frame.height)]
-                        return .object(object)
+                    try withRoots([desktop]) { roots in
+                        var facts: [Value] = []
+                        for screen in screens {
+                            guard Self.validFrame(screen.frame, screen: true), let stClass = classes["DisplayScreen"] else { throw SmalltalkError("Invalid display geometry.") }
+                            let display = try object(stClass)
+                            display.fields = ["id": .string(screen.id), "x": .integer(screen.frame.x), "y": .integer(screen.frame.y), "width": .integer(screen.frame.width), "height": .integer(screen.frame.height)]
+                            let fact = Value.object(display)
+                            roots.add(fact)
+                            facts.append(fact)
+                        }
+                        _ = try send(desktop, "screensChanged:", [array(facts)])
                     }
-                    _ = try send(desktop, "screensChanged:", [array(facts)])
                     continue
                 }
                 let id: Int64
@@ -179,6 +210,25 @@ extension SmalltalkRuntime {
         return nil
     }
 
+    private func selectedBrowserMethod(in window: STObject) -> (selection: BrowserMethodSelection, compiled: Method?)? {
+        guard case .symbol("browser")? = window.fields["kind"], isUIClass(window.stClass, named: "BrowserWindow"),
+              case .boolean(false)? = window.fields["editingDefinition"],
+              case .string(let className)? = window.fields["className"], let target = classes[className],
+              case .string(let selector)? = window.fields["selector"],
+              case .symbol(let sideName)? = window.fields["methodSide"], let side = MethodSide(rawValue: sideName) else { return nil }
+        let compiled = target[side][selector]
+        let primitive = isReflectedPrimitive(selector, on: target, side: side)
+        guard compiled != nil || primitive else { return nil }
+        return (BrowserMethodSelection(className: className, selector: selector, side: side, isPrimitive: primitive,
+                                       windowIdentity: window.nativeID, methodIdentity: compiled?.identity), compiled)
+    }
+
+    func browserBytecode(windowID: Int64, method: BrowserMethodSelection) -> String? {
+        guard let window = projectedWindow(withID: windowID), let selected = selectedBrowserMethod(in: window),
+              selected.selection == method, let compiled = selected.compiled else { return nil }
+        return compiled.body.disassembly(parameters: compiled.parameters)
+    }
+
     /// Field-only projection. Numerical bounds protect AppKit; policy lives in .st.
     func projectWindows() -> (windows: [ToolWindowInfo], activeID: Int64?, error: String?) {
         if let bootstrapError { return ([], nil, bootstrapError) }
@@ -207,7 +257,10 @@ extension SmalltalkRuntime {
             if object.fields["content"] != nil || kind == .custom {
                 do { content = try projectWindowContent(object) } catch { warning = error.localizedDescription }
             }
-            windows.append(ToolWindowInfo(id: id, kind: kind, title: String(title.prefix(256)), text: text, x: x, y: y, width: width, height: height, minimized: minimized, content: content, minimumWidth: minW, minimumHeight: minH, maximumWidth: maxW, maximumHeight: maxH, frameRevision: frameRevision, stateRevision: stateRevision, identity: object.nativeID))
+            windows.append(ToolWindowInfo(id: id, kind: kind, title: String(title.prefix(256)), text: text, x: x, y: y, width: width, height: height,
+                                          minimized: minimized, content: content, minimumWidth: minW, minimumHeight: minH, maximumWidth: maxW,
+                                          maximumHeight: maxH, frameRevision: frameRevision, stateRevision: stateRevision, identity: object.nativeID,
+                                          browserMethod: selectedBrowserMethod(in: object)?.selection))
             if case .object(let selected)? = model.fields["activeWindow"], selected === object, !minimized { activeID = id }
         }
         return (windows, activeID, warning)

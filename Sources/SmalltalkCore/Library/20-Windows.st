@@ -162,6 +162,31 @@ DesktopManager compile: 'openChanges
     | existing | existing := self windowOfKind: #changes.
     existing notNil ifTrue: [ ^ self activate: existing ].
     ^ self createKind: #changes title: ''Code Changes'''.
+DesktopManager compile: 'arrangeTools
+    | browser workspace output screen left bottom availableWidth availableHeight gap browserWidth rightWidth outputHeight workspaceHeight |
+    browser := self windowOfKind: #browser.
+    workspace := self windowOfKind: #workspace.
+    output := self windowOfKind: #transcript.
+    (browser isNil or: [ workspace isNil or: [ output isNil ] ]) ifTrue: [ ^ self ].
+    left := 12. bottom := 12. availableWidth := 1576. availableHeight := 876. gap := 12.
+    screen := self screenFor: workspace.
+    screen notNil ifTrue: [
+        availableWidth := ((screen width - 24) max: 1) min: 1800.
+        availableHeight := ((screen height - 24) max: 1) min: 1000.
+        left := screen x + ((screen width - availableWidth) // 2).
+        bottom := screen y + ((screen height - availableHeight) // 2) ].
+    browserWidth := (availableWidth - gap) // 2 max: browser minimumWidth.
+    browserWidth := browserWidth min: ((availableWidth - gap - workspace minimumWidth) max: 1).
+    rightWidth := (availableWidth - gap - browserWidth) max: 1.
+    outputHeight := ((availableHeight - gap) // 3) max: output minimumHeight.
+    outputHeight := outputHeight min: ((availableHeight - gap - workspace minimumHeight) max: 1).
+    workspaceHeight := (availableHeight - gap - outputHeight) max: 1.
+    browser placeX: left y: bottom width: browserWidth height: availableHeight.
+    output placeX: left + browserWidth + gap y: bottom width: rightWidth height: outputHeight.
+    workspace placeX: left + browserWidth + gap y: bottom + outputHeight + gap width: rightWidth height: workspaceHeight.
+    #(#browser #workspace #transcript) do: [ :kind |
+        | window | window := self windowOfKind: kind.
+        window minimized: false. self constrain: window ]'.
 DesktopManager compile: 'bringToFront: aWindow
     model windows: (self windows select: [ :each | (each == aWindow) not ]).
     self append: aWindow. model activeWindow: aWindow. ^ aWindow'.

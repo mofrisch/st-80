@@ -73,6 +73,10 @@ extension SmalltalkRuntime {
                 if isUIClass(view.stClass, named: "UIContainer"), case .array(let children)? = view.fields["children"] {
                     pending.append(contentsOf: children.elements.prefix(512))
                 }
+                if isUIClass(view.stClass, named: "UICodeEditor"), case .object(let menu)? = view.fields["contextMenu"],
+                   isUIClass(menu.stClass, named: "UIMenu") {
+                    pending.append(.object(menu))
+                }
             }
         }
         return mounted
@@ -83,10 +87,12 @@ extension SmalltalkRuntime {
         let mounted = try mountedBindingIDs()
         // Copy the list: user-defined connect/disconnect methods may allocate.
         let bindings = objects.filter { isUIClass($0.stClass, named: "UIBinding") }
-        for binding in bindings {
-            guard case .boolean(let active)? = binding.fields["active"] else { continue }
-            let desired = mounted.contains(ObjectIdentifier(binding))
-            if active != desired { _ = try send(.object(binding), desired ? "connect" : "disconnect", []) }
+        try withRoots(bindings.map(Value.object)) { _ in
+            for binding in bindings {
+                guard case .boolean(let active)? = binding.fields["active"] else { continue }
+                let desired = mounted.contains(ObjectIdentifier(binding))
+                if active != desired { _ = try send(.object(binding), desired ? "connect" : "disconnect", []) }
+            }
         }
     }
 

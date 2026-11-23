@@ -78,11 +78,6 @@ final class Environment {
     }
 }
 
-final class WeakEnvironment {
-    weak var value: Environment?
-    init(_ value: Environment) { self.value = value }
-}
-
 struct Context {
     let environment: Environment
     let receiver: Value
@@ -100,14 +95,25 @@ enum MessageLookup {
 
 final class STBlock {
     let parameters: [String]
-    let body: Body
-    var context: Context
+    let body: BytecodeBody
+    let referenceBody: Body?
+    private var capturedContext: Context?
+    var context: Context {
+        get {
+            guard let capturedContext else { preconditionFailure("Using a collected block without a GC root.") }
+            return capturedContext
+        }
+        set { capturedContext = newValue }
+    }
 
-    init(parameters: [String], body: Body, context: Context) {
+    init(parameters: [String], body: BytecodeBody, context: Context, referenceBody: Body? = nil) {
         self.parameters = parameters
         self.body = body
-        self.context = context
+        self.referenceBody = referenceBody
+        capturedContext = context
     }
+
+    func clearReferences() { capturedContext = nil }
 }
 
 struct ReturnSignal: Error {
@@ -166,6 +172,10 @@ public actor SmalltalkSession {
         await worker.submit { $0.run(source) }
     }
 
+    public func inspectSource(_ source: String) async -> EvaluationResult {
+        await worker.submit { $0.run(source, inspectingResult: true) }
+    }
+
     public func snapshot() async -> EvaluationResult { await worker.submit { $0.snapshot() } }
 
     public func compile(_ source: String, in className: String, side: MethodSide = .instance) async -> EvaluationResult {
@@ -194,6 +204,7 @@ final class SmalltalkRuntime {
     var catalogDirty = false
     var evaluatingToolSource = false
     var toolRequests: [NativeToolRequest] = []
+    var objectInspectors: [UUID: ObjectInspectorState] = [:]
     var recordingChanges = false
     var bootstrapError: String?
     let windowEpoch = UUID().uuidString
@@ -206,18 +217,22 @@ final class SmalltalkRuntime {
     var depth = 0
     var nextHome = 0
     var activeHomes: Set<Int> = []
-    var activations: [(body: Body, context: Context)] = []
+    var activations: [(body: BytecodeBody, context: Context)] = []
+    var bytecodeOperands: [BytecodeOperand] = []
     var evaluationRoots: [Value] = []
     var pendingMessages: [(receiver: Value, lookup: MessageLookup)] = []
+    var useASTInterpreterForTesting = false
     let compilationMode: Bool
     var arrayLimit: Int { compilationMode ? 524_288 : 4_096 }
-    private var allocationLimit: Int { compilationMode ? 524_288 : 20_000 }
-    var environments: [WeakEnvironment] = []
-    var objects: [STObject] = []
-    var arrays: [STArray] = []
+    let memory: ObjectMemory
+    var environments: [Environment] { memory.environments }
+    var objects: [STObject] { memory.objects }
+    var arrays: [STArray] { memory.arrays }
 
-    init(bootstrap: Bool = true, compilationMode: Bool = false) {
+    init(bootstrap: Bool = true, compilationMode: Bool = false, memory: ObjectMemory? = nil) {
         self.compilationMode = compilationMode
+        self.memory = memory ?? ObjectMemory(hardLimit: compilationMode ? 1_000_000 : 100_000,
+                                             initialThreshold: compilationMode ? 32_768 : 4096)
         func add(_ name: String, _ superclass: String? = "Object") {
             let stClass = STClass(name, superclass: superclass.flatMap { classes[$0] })
             classes[name] = stClass
@@ -250,19 +265,6 @@ final class SmalltalkRuntime {
         transcript = ""
     }
 
-    deinit {
-        // The first object memory is an arena. Break reference cycles on session reset.
-        // Retain every live scope before severing links, so even a long lexical
-        // chain is released iteratively rather than recursively through ARC.
-        let scopes = environments.compactMap(\.value)
-        for environment in scopes {
-            environment.parent = nil
-            environment.values.removeAll()
-        }
-        for object in objects { object.fields.removeAll() }
-        for array in arrays { array.elements.removeAll() }
-    }
-
     func tick() throws {
         steps += 1
         guard steps <= (compilationMode ? 24_000_000 : 100_000) else {
@@ -277,56 +279,66 @@ final class SmalltalkRuntime {
     }
 
     func environment(parent: Environment? = nil) throws -> Environment {
-        try checkAllocation()
-        let environment = Environment(parent: parent)
-        environments.append(WeakEnvironment(environment))
-        return environment
-    }
-
-    func checkAllocation() throws {
-        if environments.count + objects.count + arrays.count >= allocationLimit {
-            environments.removeAll { $0.value == nil }
-        }
-        guard environments.count + objects.count + arrays.count < allocationLimit else {
-            throw SmalltalkError("The object memory is full. Reset the session.")
+        try withRoots(environments: parent.map { [$0] } ?? []) { _ in
+            try checkAllocation()
+            let environment = Environment(parent: parent)
+            memory.register(environment)
+            return environment
         }
     }
 
     func array(_ values: [Value]) throws -> Value {
         guard values.count <= arrayLimit else { throw SmalltalkError("Arrays are limited to \(arrayLimit.formatted(.number.locale(Locale(identifier: "en_US")))) elements.") }
-        try checkAllocation()
-        let array = STArray(values)
-        arrays.append(array)
-        return .array(array)
+        return try withRoots(values) { _ in
+            try checkAllocation()
+            let array = STArray(values)
+            memory.register(array)
+            return .array(array)
+        }
     }
 
-    func run(_ source: String) -> EvaluationResult {
+    func run(_ source: String, inspectingResult: Bool = false) -> EvaluationResult {
         transcript = ""
         steps = 0
         depth = 0
         catalogDirty = true
-        do { return finishEvaluation(value: printValue(try evaluate(source))) }
-        catch { return finishEvaluation(error: error.localizedDescription) }
+        do {
+            if inspectingResult, source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                throw SmalltalkError("Enter an expression to inspect.")
+            }
+            let value = try evaluate(source)
+            if inspectingResult {
+                try requestInspection(value)
+                return finishEvaluation()
+            }
+            return finishEvaluation(value: printValue(value))
+        } catch {
+            return finishEvaluation(error: error.localizedDescription)
+        }
     }
 
     func evaluate(_ source: String) throws -> Value {
-        let body = try compileWorkspace(source)
+        let syntax = try compileWorkspace(source)
+        let body = BytecodeBody.lower(syntax)
         nextHome += 1
         let homeID = nextHome
         activeHomes.insert(homeID)
         defer { activeHomes.remove(homeID) }
         let context = Context(environment: try environment(), receiver: .nilValue, homeClass: nil, homeID: homeID, isWorkspace: true)
-        do { return try evaluate(body, context: context) }
+        do { return try execute(body, context: context, referenceBody: useASTInterpreterForTesting ? syntax : nil) }
         catch let signal as ReturnSignal where signal.homeID == homeID { return signal.value }
     }
 
-    func evaluate(_ body: Body, context: Context) throws -> Value {
+    func execute(_ body: BytecodeBody, context: Context, referenceBody: Body? = nil) throws -> Value {
         activations.append((body, context))
         defer { activations.removeLast() }
         for name in body.temporaries { context.environment.values[name] = .nilValue }
-        var result: Value = .nilValue
-        for expression in body.expressions { result = try evaluate(expression, context: context) }
-        return result
+        if useASTInterpreterForTesting, let referenceBody {
+            var result: Value = .nilValue
+            for expression in referenceBody.expressions { result = try evaluate(expression, context: context) }
+            return result
+        }
+        return try executeBytecode(body, context: context)
     }
 
     func evaluate(_ expression: Expression, context: Context) throws -> Value {
@@ -345,20 +357,28 @@ final class SmalltalkRuntime {
                 return try evaluateMessage(receiver, selector, arguments, context: context, startingAt: lookup)
             case .cascade(let receiverExpression, let messages):
                 let (receiver, lookup) = try messageReceiver(receiverExpression, context: context)
-                var result = receiver
-                for message in messages {
-                    result = try evaluateMessage(receiver, message.selector, message.arguments, context: context, startingAt: lookup)
+                return try withRoots([receiver]) { _ in
+                    var result = receiver
+                    for message in messages {
+                        result = try evaluateMessage(receiver, message.selector, message.arguments, context: context, startingAt: lookup)
+                    }
+                    return result
                 }
-                return result
             case .block(let parameters, let body):
-                return .block(STBlock(parameters: parameters, body: body, context: context))
+                return .block(try block(parameters: parameters, body: BytecodeBody.lower(body), context: context, referenceBody: body))
             case .returnValue(let expression):
-                guard activeHomes.contains(context.homeID) else { throw SmalltalkError("The home context of this block has already returned, so ^ cannot return from it.") }
+                try checkHomeForReturn(context)
                 throw ReturnSignal(value: try evaluate(expression, context: context), homeID: context.homeID)
             }
         } catch var error as SmalltalkError {
             if error.position == nil { error.position = expression.position }
             throw error
+        }
+    }
+
+    func checkHomeForReturn(_ context: Context) throws {
+        guard activeHomes.contains(context.homeID) else {
+            throw SmalltalkError("The home context of this block has already returned, so ^ cannot return from it.")
         }
     }
 
@@ -381,14 +401,14 @@ final class SmalltalkRuntime {
     }
 
     func messageReceiver(_ expression: Expression, context: Context) throws -> (Value, MessageLookup) {
-        if case .variable("super") = expression.kind {
-            if context.methodSide == .classSide, let home = context.homeClass {
-                return (context.receiver, .classSuper(home.superclass))
-            }
-            guard let superclass = context.homeClass?.superclass else { throw SmalltalkError("super is unavailable here.") }
-            return (context.receiver, .instanceSuper(superclass))
-        }
+        if case .variable("super") = expression.kind { return (context.receiver, try superLookup(context)) }
         return (try evaluate(expression, context: context), .normal)
+    }
+
+    func superLookup(_ context: Context) throws -> MessageLookup {
+        if context.methodSide == .classSide, let home = context.homeClass { return .classSuper(home.superclass) }
+        guard let superclass = context.homeClass?.superclass else { throw SmalltalkError("super is unavailable here.") }
+        return .instanceSuper(superclass)
     }
 
     func variable(_ name: String, context: Context) throws -> Value {
@@ -425,7 +445,16 @@ final class SmalltalkRuntime {
         case .integer(let n): return .integer(n)
         case .string(let s): return .string(s)
         case .symbol(let s): return .symbol(s)
-        case .array(let elements): return try array(elements.map { try value($0) })
+        case .array(let elements):
+            return try withRoots { roots in
+                var values: [Value] = []
+                for element in elements {
+                    let value = try value(element)
+                    roots.add(value)
+                    values.append(value)
+                }
+                return try array(values)
+            }
         }
     }
 
@@ -466,40 +495,46 @@ final class SmalltalkRuntime {
     }
 
     func send(_ receiver: Value, _ selector: String, _ arguments: [Value], startingAt lookup: MessageLookup = .normal) throws -> Value {
-        try enter()
-        defer { depth -= 1 }
-        guard arguments.count == CodeValidator.arity(of: selector) else { throw SmalltalkError("Wrong number of arguments for \(selector).") }
-        if let (method, owner, side) = lookupMethod(selector, on: receiver, startingAt: lookup) {
-            return try invoke(method, owner: owner, receiver: receiver, arguments: arguments, side: side)
+        try withRoots([receiver] + arguments) { _ in
+            try enter()
+            defer { depth -= 1 }
+            guard arguments.count == CodeValidator.arity(of: selector) else { throw SmalltalkError("Wrong number of arguments for \(selector).") }
+            if let (method, owner, side) = lookupMethod(selector, on: receiver, startingAt: lookup) {
+                return try invoke(method, owner: owner, receiver: receiver, arguments: arguments, side: side)
+            }
+            if let result = try primitive(receiver, selector, arguments) { return result }
+            throw SmalltalkError("\(classOf(receiver).name) does not understand \(selector).")
         }
-        if let result = try primitive(receiver, selector, arguments) { return result }
-        throw SmalltalkError("\(classOf(receiver).name) does not understand \(selector).")
     }
 
     func invoke(_ method: Method, owner: STClass, receiver: Value, arguments: [Value], side: MethodSide) throws -> Value {
-        guard method.parameters.count == arguments.count else { throw SmalltalkError("Wrong number of arguments for \(method.selector).") }
-        let environment = try environment()
-        for (name, value) in zip(method.parameters, arguments) { environment.values[name] = value }
-        nextHome += 1
-        let homeID = nextHome
-        activeHomes.insert(homeID)
-        defer { activeHomes.remove(homeID) }
-        let context = Context(environment: environment, receiver: receiver, homeClass: owner, homeID: homeID, isWorkspace: false, methodSide: side)
-        do {
-            _ = try evaluate(method.body, context: context)
-            return receiver
-        } catch let signal as ReturnSignal where signal.homeID == homeID { return signal.value }
+        try withRoots([receiver] + arguments) { _ in
+            guard method.parameters.count == arguments.count else { throw SmalltalkError("Wrong number of arguments for \(method.selector).") }
+            let environment = try environment()
+            for (name, value) in zip(method.parameters, arguments) { environment.values[name] = value }
+            nextHome += 1
+            let homeID = nextHome
+            activeHomes.insert(homeID)
+            defer { activeHomes.remove(homeID) }
+            let context = Context(environment: environment, receiver: receiver, homeClass: owner, homeID: homeID, isWorkspace: false, methodSide: side)
+            do {
+                _ = try execute(method.body, context: context, referenceBody: method.referenceBody)
+                return receiver
+            } catch let signal as ReturnSignal where signal.homeID == homeID { return signal.value }
+        }
     }
 
     func invokeBlock(_ value: Value, _ arguments: [Value] = []) throws -> Value {
-        guard case .block(let block) = value else { throw SmalltalkError("Expected a block [...].") }
-        guard block.parameters.count == arguments.count else { throw SmalltalkError("Expected \(block.parameters.count) block arguments, got \(arguments.count).") }
-        try enter()
-        defer { depth -= 1 }
-        let environment = try environment(parent: block.context.environment)
-        for (name, value) in zip(block.parameters, arguments) { environment.values[name] = value }
-        let context = Context(environment: environment, receiver: block.context.receiver, homeClass: block.context.homeClass, homeID: block.context.homeID, isWorkspace: block.context.isWorkspace, methodSide: block.context.methodSide)
-        return try evaluate(block.body, context: context)
+        try withRoots([value] + arguments) { _ in
+            guard case .block(let block) = value else { throw SmalltalkError("Expected a block [...].") }
+            guard block.parameters.count == arguments.count else { throw SmalltalkError("Expected \(block.parameters.count) block arguments, got \(arguments.count).") }
+            try enter()
+            defer { depth -= 1 }
+            let environment = try environment(parent: block.context.environment)
+            for (name, value) in zip(block.parameters, arguments) { environment.values[name] = value }
+            let context = Context(environment: environment, receiver: block.context.receiver, homeClass: block.context.homeClass, homeID: block.context.homeID, isWorkspace: block.context.isWorkspace, methodSide: block.context.methodSide)
+            return try execute(block.body, context: context, referenceBody: block.referenceBody)
+        }
     }
 
     @discardableResult

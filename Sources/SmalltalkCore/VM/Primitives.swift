@@ -223,9 +223,7 @@ extension SmalltalkRuntime {
             guard stClass.name == "Object" || Self.primitiveDescriptions[stClass.name] == nil && !["True", "False", "SmallInteger", "Number", "UndefinedObject"].contains(stClass.name) else {
                 throw SmalltalkError("\(stClass.name) cannot be instantiated with new.")
             }
-            try checkAllocation()
-            let object = STObject(stClass)
-            objects.append(object)
+            let object = try object(stClass)
             return try send(.object(object), "initialize", [])
         default: return nil
         }

@@ -92,6 +92,9 @@ extension UIElementInfo {
         for child in children {
             if let found = child.firstVisible(where: matches) { return found }
         }
+        for item in contextMenuItems ?? [] {
+            if let found = item.firstVisible(where: matches) { return found }
+        }
         return nil
     }
 }

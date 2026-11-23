@@ -59,10 +59,10 @@ WorkspaceWindow compile: 'initialize
     self resizeWidth: 720 height: 600.
     editor := UICodeEditor new identifier: ''workspaceEditor''; label: ''Smalltalk Workspace''; yourself.
     editor onChangeSend: #text: to: self.
-    doIt := UIButton new title: ''Do it''; identifier: ''executeButton''; role: #primary; command: #doIt; yourself.
-    doIt selectionFrom: editor action: [ :selected | self execute: selected printing: false ].
-    printIt := UIButton new title: ''Print it''; command: #printIt; yourself.
-    printIt selectionFrom: editor action: [ :selected | self execute: selected printing: true ].
+    editor contextMenu: self editorMenu.
+    doIt := (self selectionButton: ''Do it'' command: #doIt action: #doIt:)
+        identifier: ''executeButton''; role: #primary; yourself.
+    printIt := self selectionButton: ''Print it'' command: #printIt action: #printIt:.
     bar := UIRow new padding: 12; yourself.
     bar add: (self heading: ''Workspace''); add: UISpacer new; add: self examplesMenu; add: printIt; add: doIt.
     root := UIColumn new spacing: 0; yourself.
@@ -74,13 +74,40 @@ WorkspaceWindow compile: 'text: aString
     super text: aString.
     editor notNil ifTrue: [ editor text: aString ]'.
 
+WorkspaceWindow compile: 'sourceForSelection: selected
+    ^ selected size = 0 ifTrue: [ self text ] ifFalse: [ selected ]'.
+
+WorkspaceWindow compile: 'doIt: selected ^ self execute: selected printing: false'.
+
+WorkspaceWindow compile: 'printIt: selected ^ self execute: selected printing: true'.
+
+WorkspaceWindow compile: 'inspect: selected
+    | outcome |
+    outcome := ToolVM inspectSource: (self sourceForSelection: selected).
+    self result: outcome.
+    ^ outcome at: 2'.
+
 WorkspaceWindow compile: 'execute: selected printing: aBoolean
-    | source outcome |
-    source := selected size = 0 ifTrue: [ self text ] ifFalse: [ selected ].
-    outcome := ToolVM evaluateSource: source.
+    | outcome |
+    outcome := ToolVM evaluateSource: (self sourceForSelection: selected).
     self result: outcome.
     (aBoolean and: [ outcome at: 1 ]) ifTrue: [ Transcript show: ''→ '' , (outcome at: 2); cr ].
     ^ outcome at: 2'.
+
+WorkspaceWindow compile: 'selectionButton: aTitle command: aCommand action: aSelector
+    ^ UIButton new
+        title: aTitle;
+        command: aCommand;
+        selectionFrom: editor action: [ :selected | self perform: aSelector with: selected ];
+        yourself'.
+
+WorkspaceWindow compile: 'editorMenu
+    | menu |
+    menu := UIMenu new title: ''Workspace''; yourself.
+    menu add: (self selectionButton: ''Do it'' command: #doIt action: #doIt:).
+    menu add: (self selectionButton: ''Print it'' command: #printIt action: #printIt:).
+    menu add: (self selectionButton: ''Inspect it'' command: #inspectIt action: #inspect:).
+    ^ menu'.
 
 WorkspaceWindow compile: 'examplesMenu
     | menu |

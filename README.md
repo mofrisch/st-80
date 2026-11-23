@@ -21,38 +21,40 @@ Local builds use ad hoc signing, so you can run the app without a development te
 
 ## Usage
 
-- In a **Workspace**, select code and press **⌘D** to run it. With no selection, the entire buffer runs.
-- **⌘P** also prints the result to the Transcript.
-- **⌘I** (**Smalltalk → Inspect it**) evaluates the selection and opens the result in the Object Inspector. With no selection, it evaluates the entire workspace buffer.
-- Right-click the Workspace editor to choose **Do it**, **Print it**, or **Inspect it**. The menu uses the selection already present when it opens. New images define the menu in `WorkspaceWindow`. In images saved before editor menus were introduced, the app uses the saved Workspace buttons for **Do it** and **Print it** and the existing Inspector action for **Inspect it**.
-- In the **System Browser**, select a class and switch between **Instance** and **Class** below the lists. Each side has its own protocols, methods, and editor draft. Use **New Method** to start a definition and **⌘S** to accept it. The new method is available immediately.
-- With a method selected, **Bytecode** shows its compiled instructions and operands, including the instructions inside blocks. Use **Source** to return to the editor and its draft. The browser identifies VM primitives that have no bytecode.
+- In a **Workspace**, click **Do it** in the title bar or press **⌘D**. The evaluation commands use the selected code or the whole buffer when there is no selection.
+- The ellipsis next to **Do it** and the editor's context menu offer **Print it** (**⌘P**), **Inspect it** (**⌘I**) and **Debug it** (**⌘⇧D**). **Print it** adds the result to the Transcript. **Inspect it** opens the value in the Object Inspector, and **Debug it** pauses at entry.
+- The result row below the Workspace editor shows the latest result. Click **Result** or **Error** to expand it. Choose **Smalltalk → Clear Transcript** or use the Transcript's context menu to clear the output.
+- The **System Browser** has four lists for class categories, classes, protocols, and methods. Switch between **Instance** and **Class** above the lists. Each side has its own protocols, methods, and editor draft. Start with **New Method**, and use **Accept** or **⌘S** to compile a changed method. Its history is under **Method Actions → Versions**.
+- The Workspace and method editors show line numbers and highlight Smalltalk syntax.
+- With a method selected, click **Bytecode** below the source editor to expand a read-only listing of the compiled method, including the instructions inside blocks. The listing updates when you accept a source edit. The browser identifies VM primitives that have no bytecode.
 - Selecting a class shows its definition in the source editor. **Definition** returns to it from a method. Edit the superclass or instance variable names in `subclass:instanceVariableNames:` and press **⌘S**. Use **Move Class …** to change the category.
-- Use **Create Class …** and **New Method** to add definitions. The browser shows the selected class's own methods. Select its superclass to browse inherited methods.
-- **Details** in the browser shows the class information and shared workspace variables, including their classes and values.
+- Create classes in the Workspace by evaluating `Object subclass: #Greeter instanceVariableNames: 'name'`. Use **New Method** in the browser to add a method. The browser shows the selected class's own methods. Select its superclass to browse inherited methods.
+- Evaluate `ToolVM bindingSummary` in a Workspace to list shared variables with their classes and values.
 - **⌘N** opens an independent workspace.
 - **⌘1 / ⌘2 / ⌘3** brings a workspace, the System Browser, or the Transcript to the front.
 - **⌘O** opens UTF-8 source code in a new workspace. In a workspace, **⌘S** saves the source as a `.st` file.
-- The **Examples** menu contains sample code for counters, arrays and blocks, class definitions, native windows, and custom interfaces.
+- **Smalltalk → Examples** opens sample code for counters, arrays and blocks, class definitions, native windows, and custom interfaces.
 
 The Object Inspector shows a value's class, instance variables, and one-based array elements. Open a row to follow its value, use **Back** to return, and use **Refresh** after another workspace changes the object. Long arrays are shown one page at a time. Smalltalk code can also open the window with `ToolVM inspect: anObject`.
 
 An open inspector keeps its current value and navigation history reachable for garbage collection. Inspectors belong to the running session. Loading an image or resetting the session closes them.
 
+The debugger pauses at entry. Select a stack frame to see its source, current instruction, receiver, and variables. **Step Into** follows calls, **Step Over** runs to the next location in the current frame or its caller, and **Step Out** returns to the caller. **Continue** runs until completion or a runtime error. An error shows the failing stack. **Stop** and closing the debugger end the evaluation and keep effects already performed.
+
 ## Save and load images
+
+The app starts from the bundled image on every launch. Open a saved image with **⌘⇧O — Open Image …**.
 
 - **⌘⇧S — Save Image** saves the running session as a `.stimage` file. The first save opens the native file dialog. Subsequent saves replace the same file atomically.
 - **⌘⌥⇧S — Save Image As …** saves to another image file.
-- **⌘⇧O — Open Image …** replaces the session with a saved one.
-- The app loads the last successfully saved or opened image at launch.
 - When you quit with unsaved changes, choose **Save**, **Don’t Save**, or **Cancel**. The app stays open if you cancel the save or if saving fails.
-- The image bar shows the file name and save status. Accept browser edits with **⌘S** before saving an image. The image stores accepted methods.
+- Accept browser edits with **⌘S** before saving an image. The image stores accepted methods.
 
 An image preserves classes and their hierarchy, accepted methods (including changes to built-in classes), workspace variables, instance variables, arrays, and saved blocks with their lexical contexts. It preserves shared references and cyclic object graphs. It also saves all workspace buffers, open windows with their size, position, order, and minimized state, and the Transcript. Unreachable objects are omitted.
 
 The VM builds and validates a separate session before replacing the active one. It validates the saved method structure and source references. Loading performs no compilation or Smalltalk execution and leaves completed block return contexts closed. If an image is invalid or incompatible, the active session remains available.
 
-**Reset Session** starts a fresh session, clears the automatic association with the last image, and leaves saved files on disk. In a workspace, **⌘S** saves the source text as `.st`.
+**Reset Session** starts a fresh session in the running app. In a workspace, **⌘S** saves the source text as `.st`.
 
 The JSON image format (`format: st80-image`, `version: 5`) stores an object table, bytecode for methods and blocks, source positions, and source references. Use a fresh session when upgrading from an earlier image version. The core API `imageData` produces a portable image with embedded method sources. Each image can contain up to 32 MiB and 40,000 reachable reference objects.
 
@@ -162,7 +164,7 @@ The SwiftUI renderer uses the same control tree for built-in tools and custom wi
 
 ## Interfaces with MVC
 
-Choose **Examples → Custom Interface** in the workspace for a complete MVC example. You can also open and run `Examples/GreetingWindow.st` using **⌘O**.
+Choose **Smalltalk → Examples → Custom Interface** for a complete MVC example. You can also open and run `Examples/GreetingWindow.st` using **⌘O**.
 
 | Role | Responsibility in the example |
 | --- | --- |
@@ -282,7 +284,7 @@ The prototype has these limits.
 - `new` sends `initialize`. With no explicit `^`, a method returns `self` and a block returns its last expression.
 - Assigning an undeclared name in a workspace creates a persistent workspace variable. `| temp |` declares a local that lasts for the evaluation.
 - Strings are Unicode values. `at:` returns a one-character string and `==` compares strings by value. `Character`, `Fraction`, `Float`, and `LargeInteger` are not implemented.
-- Object memory uses the collector described above. The system does not yet include processes, a debugger, or BitBlt.
+- Object memory uses the collector described above. The system does not yet include Smalltalk processes or BitBlt.
 - An evaluation can take up to 100,000 execution steps, including bytecode instructions and call entry, with 128 call levels and 32 syntactic nesting levels. The normal heap permits up to 100,000 registered nodes after collection, and arrays can hold 4,096 elements. Changes already performed survive an evaluation error.
 
 ## App icon

@@ -101,17 +101,23 @@ private struct ObjectInspectorView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             navigation
-            Divider()
             if isAvailable {
                 objectSummary
                 if !snapshot.rows.isEmpty {
-                    members
+                    Divider()
+                    ValueTable(rows: snapshot.rows, name: \.name, value: \.preview, className: \.className,
+                               identifier: "inspectorMembers", rowIdentifierPrefix: "inspectorRow",
+                               isLoading: isLoading) { row in
+                        perform(.follow(row.id))
+                    }
+                    .id([String(snapshot.page)] + snapshot.path)
                 }
                 if snapshot.pageCount > 1 {
                     Divider()
                     pagination
                 }
             } else {
+                Divider()
                 ContentUnavailableView("Inspection ended", systemImage: "magnifyingglass")
             }
         }
@@ -120,39 +126,47 @@ private struct ObjectInspectorView: View {
     }
 
     private var navigation: some View {
-        HStack {
+        HStack(spacing: 10) {
             Button { perform(.back) } label: { Label("Back", systemImage: "chevron.left") }
                 .disabled(!isAvailable || isLoading || snapshot.path.count < 2)
                 .accessibilityIdentifier("inspectorBack")
-            if snapshot.path.count > 1 {
-                Text(snapshot.path.joined(separator: " › "))
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.head)
+            if isAvailable {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(snapshot.className)
+                        .font(.headline)
+                        .lineLimit(1)
+                        .accessibilityLabel(Text(snapshot.className))
+                        .accessibilityAddTraits(.isHeader)
+                        .accessibilityIdentifier("inspectorClass")
+                    if snapshot.path.count > 1 {
+                        Text(snapshot.path.joined(separator: " › "))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.head)
+                    }
+                }
             }
             Spacer()
             Button { perform(.refresh) } label: { Label("Refresh", systemImage: "arrow.clockwise") }
                 .disabled(!isAvailable || isLoading)
                 .accessibilityIdentifier("inspectorRefresh")
         }
-        .padding(12)
+        .controlSize(.small)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 
     private var objectSummary: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(snapshot.className)
-                .font(.headline)
-                .accessibilityLabel(Text(snapshot.className))
-                .accessibilityAddTraits(.isHeader)
-                .accessibilityIdentifier("inspectorClass")
+        Group {
             if snapshot.rows.isEmpty {
                 ScrollView { summaryText }
             } else {
                 summaryText.lineLimit(2)
             }
         }
-        .padding(12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
     }
 
     private var summaryText: some View {
@@ -162,55 +176,6 @@ private struct ObjectInspectorView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityLabel(Text(snapshot.summary))
             .accessibilityIdentifier("inspectorSummary")
-    }
-
-    private var members: some View {
-        VStack(spacing: 0) {
-            Divider()
-            columns(name: "Member", value: "Value", className: "Class")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-            Divider()
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(snapshot.rows) { row in
-                        Button { perform(.follow(row.id)) } label: {
-                            columns(name: row.name, value: row.preview, className: row.className, showChevron: true)
-                                .font(.system(size: 13, design: .monospaced))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 7)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(isLoading)
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel(Text(row.name))
-                        .accessibilityValue(Text("\(row.preview), \(row.className)"))
-                        .accessibilityAddTraits(.isButton)
-                        .accessibilityIdentifier("inspectorRow-\(row.name)")
-                        Divider().padding(.leading, 12)
-                    }
-                }
-            }
-            .id([String(snapshot.page)] + snapshot.path)
-            .accessibilityIdentifier("inspectorMembers")
-        }
-    }
-
-    private func columns(name: String, value: String, className: String, showChevron: Bool = false) -> some View {
-        HStack(spacing: 12) {
-            Text(name).frame(width: 100, alignment: .leading)
-            Text(value).frame(maxWidth: .infinity, alignment: .leading)
-            Text(className).foregroundStyle(.secondary).frame(width: 110, alignment: .leading)
-            Image(systemName: "chevron.right")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .opacity(showChevron ? 1 : 0)
-                .accessibilityHidden(true)
-        }
-        .lineLimit(1)
     }
 
     private var pagination: some View {
@@ -228,7 +193,9 @@ private struct ObjectInspectorView: View {
                 .disabled(isLoading || snapshot.page >= snapshot.pageCount - 1)
                 .accessibilityIdentifier("inspectorNextPage")
         }
-        .padding(12)
+        .controlSize(.small)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 
     private func perform(_ action: InspectorAction) {

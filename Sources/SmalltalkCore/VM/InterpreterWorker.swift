@@ -5,6 +5,12 @@ import Foundation
 final class InterpreterWorker: Sendable {
     private struct Job: Sendable {
         let operation: @Sendable (inout SmalltalkRuntime) -> Void
+        let cancellation: (@Sendable () -> Void)?
+
+        init(operation: @escaping @Sendable (inout SmalltalkRuntime) -> Void, cancellation: (@Sendable () -> Void)? = nil) {
+            self.operation = operation
+            self.cancellation = cancellation
+        }
     }
 
     // All mutable state is protected by condition, including shutdown.
@@ -12,6 +18,7 @@ final class InterpreterWorker: Sendable {
         let condition = NSCondition()
         var jobs: [Job] = []
         var stopping = false
+        var activeCancellation: (@Sendable () -> Void)?
     }
 
     private let queue: Queue
@@ -24,9 +31,11 @@ final class InterpreterWorker: Sendable {
             var runtime = SmalltalkRuntime()
             while true {
                 queue.condition.lock()
+                queue.activeCancellation = nil
                 while queue.jobs.isEmpty && !queue.stopping { queue.condition.wait() }
                 if queue.jobs.isEmpty && queue.stopping { queue.condition.unlock(); return }
                 let job = queue.jobs.removeFirst()
+                queue.activeCancellation = job.cancellation
                 queue.condition.unlock()
                 autoreleasepool {
                     job.operation(&runtime)
@@ -42,23 +51,30 @@ final class InterpreterWorker: Sendable {
     deinit {
         queue.condition.lock()
         queue.stopping = true
+        var cancellations = queue.jobs.compactMap(\.cancellation)
+        if let active = queue.activeCancellation { cancellations.append(active) }
         queue.condition.signal()
         queue.condition.unlock()
+        cancellations.forEach { $0() }
     }
 
     func submit<T: Sendable>(_ operation: @escaping @Sendable (inout SmalltalkRuntime) -> T) async -> T {
         await withCheckedContinuation { continuation in
-            enqueue(Job { runtime in continuation.resume(returning: operation(&runtime)) })
+            enqueue(Job(operation: { runtime in continuation.resume(returning: operation(&runtime)) }))
         }
     }
 
     func submitThrowing<T: Sendable>(_ operation: @escaping @Sendable (inout SmalltalkRuntime) throws -> T) async throws -> T {
         try await withCheckedThrowingContinuation { continuation in
-            enqueue(Job { runtime in
+            enqueue(Job(operation: { runtime in
                 do { continuation.resume(returning: try operation(&runtime)) }
                 catch { continuation.resume(throwing: error) }
-            })
+            }))
         }
+    }
+
+    func submit(onCancellation: @escaping @Sendable () -> Void, _ operation: @escaping @Sendable (inout SmalltalkRuntime) -> Void) {
+        enqueue(Job(operation: operation, cancellation: onCancellation))
     }
 
     private func enqueue(_ job: Job) {

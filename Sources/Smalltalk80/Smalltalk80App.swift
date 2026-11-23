@@ -25,6 +25,7 @@ final class ApplicationDelegate: NSObject, NSApplicationDelegate {
         guard controller.isRunning || controller.imageNeedsSaving() else { return .terminateNow }
 
         quitPending = true
+        controller.stopDebugging()
         Task {
             await controller.waitForCurrentOperation()
             let shouldQuit = controller.imageNeedsSaving() ? await confirmQuit() : true
@@ -102,10 +103,15 @@ struct Smalltalk80App: App {
                     .disabled(controller.isRunning || !controller.hasCommand("printIt"))
                 Button("Inspect it") { Task { await controller.inspectWorkspace() } }.keyboardShortcut("i")
                     .disabled(controller.isRunning || !controller.canInspectWorkspace)
+                Button("Debug it") { Task { await controller.debugWorkspace() } }
+                    .keyboardShortcut("d", modifiers: [.command, .shift]).disabled(!controller.canDebugWorkspace)
                 Divider()
+                WorkspaceExamplesMenu(controller: controller)
                 Button("Show Workspace") { Task { await controller.showWorkspace() } }.keyboardShortcut("1")
                 Button("Open Browser") { Task { await controller.openTool(.browser) } }.keyboardShortcut("2")
                 Button("Open Transcript") { Task { await controller.openTool(.transcript) } }.keyboardShortcut("3")
+                Button("Clear Transcript") { Task { await controller.clearTranscript() } }
+                    .disabled(controller.isRunning || !controller.canClearTranscript)
                 Button("Arrange Tools") { Task { await controller.arrangeTools() } }.disabled(controller.isRunning)
                 Button("Code Changes …") { Task { await controller.showChanges() } }.disabled(controller.isRunning)
                 Button("Open Changes File …") { Task { await controller.openChanges() } }.disabled(controller.isRunning)

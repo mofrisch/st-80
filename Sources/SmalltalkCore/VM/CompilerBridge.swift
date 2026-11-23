@@ -32,6 +32,7 @@ extension SmalltalkRuntime {
         guard source.utf8.count <= 262_144 else { throw SmalltalkError("Source code exceeds the 256 KiB limit.") }
         let workspace = SmalltalkRuntime(bootstrap: false, compilationMode: true)
         workspace.memory.stressCollection = memory.stressCollection
+        workspace.debuggerCancellation = debuggerCancellation
         for name in Self.compilerClassNames {
             guard let original = classes[name], original.superclass?.name == "Object",
                   let parent = workspace.classes["Object"] else { throw SmalltalkError("Compiler class \(name) is missing.") }

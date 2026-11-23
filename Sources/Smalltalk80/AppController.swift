@@ -26,7 +26,9 @@ final class AppController {
     private(set) var imageHasChanges = false
     private let session = SmalltalkSession()
     @ObservationIgnored private lazy var inspectorWindows = NativeInspectorWindows(session: session)
-    private let preferences: UserDefaults
+    @ObservationIgnored private let debuggerWindow = NativeDebuggerWindow()
+    @ObservationIgnored private var debugSession: WorkspaceDebugSession?
+    @ObservationIgnored private var debuggerStopRequested = false
     private var hasLoaded = false
     @ObservationIgnored private var inputDebounce: Task<Void, Never>?
     @ObservationIgnored private var inputFlush: (id: UUID, task: Task<Bool, Never>)?
@@ -46,15 +48,11 @@ final class AppController {
     var selectedChange: String?
     var baseChange: ChangeInfo?
     @ObservationIgnored private var nativeWindows: NativeWindowBackend?
-    private static let lastImageKey = "lastImagePath"
     private static var imageType: UTType { UTType(filenameExtension: "stimage", conformingTo: .data) ?? .data }
 
-    init() {
-        let suite = ProcessInfo.processInfo.environment["ST80_PREFERENCES_SUITE"]
-        preferences = suite.flatMap { UserDefaults(suiteName: $0) } ?? .standard
-    }
-
     var activeKind: ToolKind? { windowPresentation.activeWindow?.info.kind }
+    var activeWindowID: Int64? { windowPresentation.activeID }
+    var workspaceWindow: ToolWindowInfo? { windowPresentation.workspace?.info }
 
     func presentedWindow(_ id: Int64) -> PresentedWindow? { windowPresentation.window(id) }
 
@@ -66,14 +64,15 @@ final class AppController {
                 guard let self else { return AnyView(EmptyView()) }
                 return AnyView(ToolContentView(controller: self, windowID: id))
             },
+            workspaceToolbar: { [weak self] info in
+                guard let self, let content = info.content,
+                      WorkspaceToolbar(controller: self, windowID: info.id, content: content) != nil else { return nil }
+                return AnyView(WorkspaceTitlebarView(controller: self, windowID: info.id))
+            },
             onEvent: { [weak self] event in self?.received(event) }
         )
         isRunning = true
         defer { isRunning = false }
-        if let path = preferences.string(forKey: Self.lastImageKey) {
-            do { try await restoreImage(from: URL(fileURLWithPath: path)); return }
-            catch { self.error = "Could not load the last image: \(error.localizedDescription)" }
-        }
         do { try await startUnsavedChangeLog() } catch { self.error = error.localizedDescription }
         let failure = error
         apply(await session.snapshot(), replacingWindows: true)
@@ -234,8 +233,10 @@ final class AppController {
             }
             if !evaluation.toolRequests.isEmpty { apply(evaluation) }
         }
-        for edit in acknowledged { controlEdits.acknowledge(edit) }
+        // Publish the acknowledged text before releasing the native draft.
+        // An editor can redraw from an older projected element in the meantime.
         if let latestInput { apply(latestInput) }
+        for edit in acknowledged { controlEdits.acknowledge(edit) }
         for id in editedWindows { windowPresentation.setInputError(failures[id], for: id) }
         return failures.isEmpty
     }
@@ -258,10 +259,10 @@ final class AppController {
     }
 
     private func activeButton(for command: String) -> (windowID: Int64, button: UIElementInfo)? {
-        guard !inspectorWindows.hasKeyWindow, let window = windowPresentation.activeWindow,
-              !(command == "acceptMethod" && window.showsBytecode),
-              let button = window.info.content?.firstVisible(where: { $0.command == command && $0.enabled }) else { return nil }
-        return (window.info.id, button)
+        guard !inspectorWindows.hasKeyWindow, let window = windowPresentation.activeWindow?.info,
+              let button = window.content?.firstVisible(where: { $0.command == command && $0.enabled }),
+              canPerform(button, in: window.id) else { return nil }
+        return (window.id, button)
     }
 
     func hasCommand(_ command: String) -> Bool { activeButton(for: command) != nil }
@@ -280,12 +281,24 @@ final class AppController {
         await session.browserBytecode(windowID: windowID, method: method)
     }
 
-    private func legacyWorkspaceEditor(in window: ToolWindowInfo) -> UIElementInfo? {
-        guard window.kind == .workspace,
-              let editor = window.content?.firstVisible(where: { $0.accessibilityID == "workspaceEditor" && $0.enabled }),
-              editor.contextMenuItems == nil else {
-            return nil
+    func canPerform(_ element: UIElementInfo, in windowID: Int64) -> Bool {
+        guard element.enabled else { return false }
+        // Class definitions and new methods already get their enabled state from Smalltalk.
+        guard element.command == "acceptMethod", let window = presentedWindow(windowID)?.info,
+              let compiled = window.browserMethodSource,
+              let editor = window.content?.firstVisible(where: { $0.accessibilityID == "methodEditor" }) else { return true }
+        return inputText(windowID: windowID, element: editor) != compiled
+    }
+
+    private func workspaceEditor(in window: ToolWindowInfo) -> UIElementInfo? {
+        guard window.kind == .workspace else { return nil }
+        return window.content?.firstVisible {
+            $0.kind == .codeEditor && $0.accessibilityID == "workspaceEditor" && $0.enabled
         }
+    }
+
+    private func legacyWorkspaceEditor(in window: ToolWindowInfo) -> UIElementInfo? {
+        guard let editor = workspaceEditor(in: window), editor.contextMenuItems == nil else { return nil }
         return editor
     }
 
@@ -295,25 +308,90 @@ final class AppController {
     }
 
     func editorContextItems(windowID: Int64, editor: UIElementInfo) -> [EditorContextItem] {
-        if let items = editor.contextMenuItems { return items.compactMap(EditorContextItem.init(projected:)) }
-        // An older image already defines the first two commands on its toolbar.
-        guard let window = presentedWindow(windowID)?.info, legacyWorkspaceEditor(in: window)?.id == editor.id else {
+        let window = presentedWindow(windowID)?.info
+        let isWorkspaceEditor = window.flatMap { workspaceEditor(in: $0) }?.id == editor.id
+        var items: [EditorContextItem]
+        if let projected = editor.contextMenuItems {
+            items = projected.compactMap(EditorContextItem.init(projected:))
+            guard !items.isEmpty, !projected.contains(where: { $0.command == "debugIt" }) else { return items }
+        } else if isWorkspaceEditor, let window {
+            // An older image already defines the first two commands on its toolbar.
+            items = ["doIt", "printIt"].compactMap { command in
+                window.content?.firstVisible(where: { $0.command == command && $0.selectionSource == editor.id })
+                    .flatMap(EditorContextItem.init(projected:))
+            }
+            items.append(.command(title: "Inspect it", identifier: "inspectIt", action: .legacyInspect, enabled: true))
+        } else {
             return []
         }
-        var items = ["doIt", "printIt"].compactMap { command in
-            window.content?.firstVisible(where: { $0.command == command && $0.selectionSource == editor.id })
-                .flatMap(EditorContextItem.init(projected:))
+        if isWorkspaceEditor {
+            items.append(.command(title: "Debug it", identifier: "debugIt",
+                                  action: .debugWorkspace(editorID: editor.id), enabled: true))
         }
-        items.append(.command(title: "Inspect it", identifier: "inspectIt", action: .legacyInspect, enabled: true))
         return items
     }
 
-    func performEditorContextAction(_ action: EditorContextAction, windowID: Int64, selection: String) async {
+    func performEditorContextAction(_ action: EditorContextAction, windowID: Int64, selection: String? = nil) async {
         switch action {
         case .control(let id):
             await clickControl(windowID: windowID, elementID: id, selection: selection)
         case .legacyInspect:
             await inspectLegacyWorkspace(windowID: windowID, capturedSelection: selection)
+        case .debugWorkspace(let editorID):
+            await debugWorkspace(windowID: windowID, editorID: editorID, capturedSelection: selection)
+        }
+    }
+
+    var canDebugWorkspace: Bool {
+        guard !isRunning, !inspectorWindows.hasKeyWindow, let window = windowPresentation.activeWindow?.info else {
+            return false
+        }
+        return workspaceEditor(in: window) != nil
+    }
+
+    func debugWorkspace() async {
+        guard canDebugWorkspace, let window = windowPresentation.activeWindow?.info,
+              let editor = workspaceEditor(in: window) else { return }
+        await debugWorkspace(windowID: window.id, editorID: editor.id)
+    }
+
+    func stopDebugging() {
+        debuggerStopRequested = true
+        debugSession?.send(.stop)
+    }
+
+    private func debugWorkspace(windowID: Int64, editorID: String, capturedSelection: String? = nil) async {
+        guard !isRunning, let window = presentedWindow(windowID)?.info,
+              let editor = workspaceEditor(in: window), editor.id == editorID else { return }
+        let text = inputText(windowID: windowID, element: editor)
+        let selected = capturedSelection ?? selectedText(in: editor, windowID: windowID, text: text)
+        let source = selected.isEmpty ? text : selected
+        debuggerStopRequested = false
+        isRunning = true
+        defer {
+            debuggerWindow.close()
+            debugSession = nil
+            isRunning = false
+        }
+        guard await flushWindowState(allowInputFailure: true), !debuggerStopRequested,
+              let current = presentedWindow(windowID)?.info, workspaceEditor(in: current)?.id == editorID else { return }
+        let debugging = await session.debugSource(source, workspaceID: windowID)
+        debugSession = debugging
+        if debuggerStopRequested { debugging.send(.stop) }
+        for await event in debugging.events {
+            switch event {
+            case .paused(let snapshot):
+                guard !debuggerStopRequested else { continue }
+                debuggerWindow.show(snapshot, onCommand: { [weak self] command in
+                    if case .stop = command { self?.stopDebugging() }
+                    else { self?.debugSession?.send(command) }
+                }, onClose: { [weak self] in self?.stopDebugging() })
+            case .finished(let evaluation):
+                apply(evaluation)
+                windowPresentation.setInputError(evaluation.error, for: windowID)
+                imageHasChanges = true
+                return
+            }
         }
     }
 
@@ -354,11 +432,11 @@ final class AppController {
     }
 
     func clickControl(windowID: Int64, elementID: String, selection capturedSelection: String? = nil) async {
-        guard let window = presentedWindow(windowID), let root = window.info.content,
-              let button = root.firstVisible(where: { $0.id == elementID }),
-              !(button.command == "acceptMethod" && window.showsBytecode) else { return }
+        guard let window = presentedWindow(windowID)?.info,
+              let root = window.content, let button = root.firstVisible(where: { $0.id == elementID }),
+              canPerform(button, in: windowID) else { return }
         let selection = capturedSelection ?? selectedText(for: button, in: windowID, root: root)
-        let acceptsRejectedInput = window.info.kind == .workspace || window.info.kind == .browser
+        let acceptsRejectedInput = window.kind == .workspace || window.kind == .browser
         await sendControl(.click(windowID: windowID, elementID: elementID, selection: selection),
                           windowID: windowID, allowInputFailure: acceptsRejectedInput)
     }
@@ -395,6 +473,20 @@ final class AppController {
 
     func showWorkspace() async { await sendWindowAction(.showWorkspace) }
 
+    var canClearTranscript: Bool { transcriptClearControl != nil }
+
+    func clearTranscript() async {
+        guard let target = transcriptClearControl else { return }
+        await clickControl(windowID: target.windowID, elementID: target.buttonID)
+    }
+
+    private var transcriptClearControl: (windowID: Int64, buttonID: String)? {
+        guard let transcript = windowPresentation.windows.last(where: { $0.info.kind == .transcript }),
+              let content = transcript.info.content, let button = TranscriptToolView.clearButton(in: content),
+              button.enabled else { return nil }
+        return (transcript.info.id, button.id)
+    }
+
     func arrangeTools() async { await sendWindowAction(.arrangeTools) }
 
     private func sendWindowAction(_ action: WindowAction) async {
@@ -416,7 +508,6 @@ final class AppController {
         apply(await session.snapshot(), replacingWindows: true)
         await arrangeInitialTools()
         imageURL = nil; imageHasChanges = false
-        preferences.removeObject(forKey: Self.lastImageKey)
     }
 
     func openWorkspace() async {
@@ -504,7 +595,7 @@ final class AppController {
         do {
             try await session.saveImage(to: url, workspace: windowPresentation.workspace?.info.text ?? "", transcript: "")
             apply(await session.snapshot())
-            imageURL = url; preferences.set(url.path, forKey: Self.lastImageKey)
+            imageURL = url
             imageHasChanges = controlEdits.hasPendingEdits || !pendingWindowEvents.isEmpty
             result = "Saved image: \(url.lastPathComponent)"; error = nil
             return .saved
@@ -582,7 +673,6 @@ final class AppController {
         clearPending()
         apply(image.evaluation, replacingWindows: true)
         imageURL = url; imageHasChanges = false
-        preferences.set(url.path, forKey: Self.lastImageKey)
         result = "Loaded image: \(url.lastPathComponent)"; error = nil
     }
 }

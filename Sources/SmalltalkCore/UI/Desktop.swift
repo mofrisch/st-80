@@ -35,16 +35,18 @@ public struct ToolWindowInfo: Identifiable, Sendable {
     public let minimized: Bool
     public let content: UIElementInfo?
     public let browserMethod: BrowserMethodSelection?
+    public let browserMethodSource: String?
     public let identity: String
     public let minimumWidth: Int64, minimumHeight: Int64, maximumWidth: Int64, maximumHeight: Int64
     public let frameRevision: Int64, stateRevision: Int64
     public var frame: WindowRect { WindowRect(x: x, y: y, width: width, height: height) }
 
-    public init(id: Int64, kind: ToolKind, title: String, text: String, x: Int64, y: Int64, width: Int64, height: Int64, minimized: Bool, content: UIElementInfo? = nil, minimumWidth: Int64 = 1, minimumHeight: Int64 = 1, maximumWidth: Int64 = 8192, maximumHeight: Int64 = 8192, frameRevision: Int64 = 1, stateRevision: Int64 = 1, identity: String = "", browserMethod: BrowserMethodSelection? = nil) {
+    public init(id: Int64, kind: ToolKind, title: String, text: String, x: Int64, y: Int64, width: Int64, height: Int64, minimized: Bool, content: UIElementInfo? = nil, minimumWidth: Int64 = 1, minimumHeight: Int64 = 1, maximumWidth: Int64 = 8192, maximumHeight: Int64 = 8192, frameRevision: Int64 = 1, stateRevision: Int64 = 1, identity: String = "", browserMethod: BrowserMethodSelection? = nil, browserMethodSource: String? = nil) {
         self.id = id; self.kind = kind; self.title = title; self.text = text
         self.x = x; self.y = y; self.width = width; self.height = height
         self.minimized = minimized; self.content = content
         self.browserMethod = browserMethod
+        self.browserMethodSource = browserMethodSource
         self.minimumWidth = minimumWidth; self.minimumHeight = minimumHeight
         self.maximumWidth = maximumWidth; self.maximumHeight = maximumHeight
         self.frameRevision = frameRevision; self.stateRevision = stateRevision
@@ -257,10 +259,11 @@ extension SmalltalkRuntime {
             if object.fields["content"] != nil || kind == .custom {
                 do { content = try projectWindowContent(object) } catch { warning = error.localizedDescription }
             }
+            let method = selectedBrowserMethod(in: object)
             windows.append(ToolWindowInfo(id: id, kind: kind, title: String(title.prefix(256)), text: text, x: x, y: y, width: width, height: height,
                                           minimized: minimized, content: content, minimumWidth: minW, minimumHeight: minH, maximumWidth: maxW,
                                           maximumHeight: maxH, frameRevision: frameRevision, stateRevision: stateRevision, identity: object.nativeID,
-                                          browserMethod: selectedBrowserMethod(in: object)?.selection))
+                                          browserMethod: method?.selection, browserMethodSource: method?.compiled?.source))
             if case .object(let selected)? = model.fields["activeWindow"], selected === object, !minimized { activeID = id }
         }
         return (windows, activeID, warning)

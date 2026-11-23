@@ -85,6 +85,7 @@ struct Context {
     let homeID: Int
     let isWorkspace: Bool
     var methodSide: MethodSide = .instance
+    var debuggerOrigin: DebuggerOrigin?
 }
 
 enum MessageLookup {
@@ -221,6 +222,8 @@ final class SmalltalkRuntime {
     var bytecodeOperands: [BytecodeOperand] = []
     var evaluationRoots: [Value] = []
     var pendingMessages: [(receiver: Value, lookup: MessageLookup)] = []
+    var debugger: DebuggerExecution?
+    var debuggerCancellation: DebuggerChannel?
     var useASTInterpreterForTesting = false
     let compilationMode: Bool
     var arrayLimit: Int { compilationMode ? 524_288 : 4_096 }
@@ -266,6 +269,7 @@ final class SmalltalkRuntime {
     }
 
     func tick() throws {
+        try debuggerCancellation?.checkStop()
         steps += 1
         guard steps <= (compilationMode ? 24_000_000 : 100_000) else {
             throw SmalltalkError(compilationMode ? "The Smalltalk compiler reached its execution limit." : "Execution stopped after 100,000 steps. Check loops and recursion.")
@@ -324,14 +328,19 @@ final class SmalltalkRuntime {
         let homeID = nextHome
         activeHomes.insert(homeID)
         defer { activeHomes.remove(homeID) }
-        let context = Context(environment: try environment(), receiver: .nilValue, homeClass: nil, homeID: homeID, isWorkspace: true)
-        do { return try execute(body, context: context, referenceBody: useASTInterpreterForTesting ? syntax : nil) }
+        let context = Context(environment: try environment(), receiver: .nilValue, homeClass: nil, homeID: homeID,
+                              isWorkspace: true, debuggerOrigin: DebuggerOrigin(source: source))
+        do { return try execute(body, context: context, referenceBody: useASTInterpreterForTesting ? syntax : nil, debuggerKind: .workspace) }
         catch let signal as ReturnSignal where signal.homeID == homeID { return signal.value }
     }
 
-    func execute(_ body: BytecodeBody, context: Context, referenceBody: Body? = nil) throws -> Value {
+    func execute(_ body: BytecodeBody, context: Context, referenceBody: Body? = nil, debuggerKind: DebuggerFrameKind = .method) throws -> Value {
         activations.append((body, context))
-        defer { activations.removeLast() }
+        debugger?.enter(context: context, kind: debuggerKind)
+        defer {
+            debugger?.leave()
+            activations.removeLast()
+        }
         for name in body.temporaries { context.environment.values[name] = .nilValue }
         if useASTInterpreterForTesting, let referenceBody {
             var result: Value = .nilValue
@@ -516,7 +525,9 @@ final class SmalltalkRuntime {
             let homeID = nextHome
             activeHomes.insert(homeID)
             defer { activeHomes.remove(homeID) }
-            let context = Context(environment: environment, receiver: receiver, homeClass: owner, homeID: homeID, isWorkspace: false, methodSide: side)
+            let origin = compilationMode ? nil : DebuggerOrigin(source: method.source, selector: method.selector)
+            let context = Context(environment: environment, receiver: receiver, homeClass: owner, homeID: homeID,
+                                  isWorkspace: false, methodSide: side, debuggerOrigin: origin)
             do {
                 _ = try execute(method.body, context: context, referenceBody: method.referenceBody)
                 return receiver
@@ -532,8 +543,11 @@ final class SmalltalkRuntime {
             defer { depth -= 1 }
             let environment = try environment(parent: block.context.environment)
             for (name, value) in zip(block.parameters, arguments) { environment.values[name] = value }
-            let context = Context(environment: environment, receiver: block.context.receiver, homeClass: block.context.homeClass, homeID: block.context.homeID, isWorkspace: block.context.isWorkspace, methodSide: block.context.methodSide)
-            return try execute(block.body, context: context, referenceBody: block.referenceBody)
+            let lexical = block.context
+            let context = Context(environment: environment, receiver: lexical.receiver, homeClass: lexical.homeClass,
+                                  homeID: lexical.homeID, isWorkspace: lexical.isWorkspace, methodSide: lexical.methodSide,
+                                  debuggerOrigin: lexical.debuggerOrigin)
+            return try execute(block.body, context: context, referenceBody: block.referenceBody, debuggerKind: .block)
         }
     }
 

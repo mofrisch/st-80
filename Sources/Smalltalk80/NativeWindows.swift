@@ -16,6 +16,7 @@ final class NativeWindowBackend {
         var stateRequest: Int64 = 0
         var latestFrameEvent: Int64 = 0
         var latestStateEvent: Int64 = 0
+        var titlebarAccessory: NSTitlebarAccessoryViewController?
 
         init(window: NSWindow, delegate: WindowDelegate, identity: String) {
             self.window = window
@@ -31,6 +32,7 @@ final class NativeWindowBackend {
     }
 
     private let content: (Int64) -> AnyView
+    private let workspaceToolbar: (ToolWindowInfo) -> AnyView?
     private let onEvent: (NativeWindowEvent) -> Void
     private var entries: [Int64: Entry] = [:]
     private var applying = false
@@ -41,8 +43,11 @@ final class NativeWindowBackend {
     private var latestFocusEvent: Int64 = 0
     private var screenObserver: NSObjectProtocol?
 
-    init(content: @escaping (Int64) -> AnyView, onEvent: @escaping (NativeWindowEvent) -> Void) {
-        self.content = content; self.onEvent = onEvent
+    init(content: @escaping (Int64) -> AnyView, workspaceToolbar: @escaping (ToolWindowInfo) -> AnyView?,
+         onEvent: @escaping (NativeWindowEvent) -> Void) {
+        self.content = content
+        self.workspaceToolbar = workspaceToolbar
+        self.onEvent = onEvent
         screenObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.screensChanged() }
         }
@@ -96,6 +101,7 @@ final class NativeWindowBackend {
         if isNew { entries[info.id] = entry }
 
         updateTitle(of: entry.window, to: info.title)
+        updateTitlebar(for: entry, info: info)
         if isNew || (entry.frameRequest != info.frameRevision && entry.latestFrameEvent <= event) {
             applyFrame(info, to: entry)
             acknowledgements.frames.append(.frameApplied(info.id, request: info.frameRevision, facts(entry.observedFrame)))
@@ -107,6 +113,23 @@ final class NativeWindowBackend {
             }
         }
         if isNew && !info.minimized { entry.window.orderFront(nil) }
+    }
+
+    private func updateTitlebar(for entry: Entry, info: ToolWindowInfo) {
+        if info.kind == .workspace, let content = workspaceToolbar(info) {
+            guard entry.titlebarAccessory == nil else { return }
+            let host = NSHostingView(rootView: content.fixedSize())
+            host.setFrameSize(host.fittingSize)
+            let accessory = NSTitlebarAccessoryViewController()
+            accessory.layoutAttribute = .right
+            accessory.view = host
+            entry.window.addTitlebarAccessoryViewController(accessory)
+            entry.titlebarAccessory = accessory
+        } else if let accessory = entry.titlebarAccessory,
+                  let index = entry.window.titlebarAccessoryViewControllers.firstIndex(where: { $0 === accessory }) {
+            entry.window.removeTitlebarAccessoryViewController(at: index)
+            entry.titlebarAccessory = nil
+        }
     }
 
     private func updateTitle(of window: NSWindow, to title: String) {

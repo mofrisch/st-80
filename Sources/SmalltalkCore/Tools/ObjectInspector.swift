@@ -164,11 +164,11 @@ extension SmalltalkRuntime {
         return left.identity == right.identity
     }
 
-    private func inspectionClassName(_ value: Value) -> String {
+    func inspectionClassName(_ value: Value) -> String {
         Self.previewText(classOf(value).name, limit: 160)
     }
 
-    private func inspectionPreview(_ value: Value, limit: Int, multiline: Bool = false) -> String {
+    func inspectionPreview(_ value: Value, limit: Int, multiline: Bool = false) -> String {
         let text: String
         switch value {
         case .object:

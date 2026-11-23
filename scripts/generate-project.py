@@ -147,6 +147,8 @@ for name, (_, _, product_type) in products.items():
             "INFOPLIST_KEY_LSApplicationCategoryType": "public.app-category.developer-tools",
             "INFOPLIST_KEY_NSPrincipalClass": "NSApplication",
             "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
+            # SmalltalkCore is already signed when it reaches Embed Frameworks.
+            "COPY_PHASE_STRIP": "NO",
             "ENABLE_HARDENED_RUNTIME": "YES",
         })
     elif name == "SmalltalkCore":

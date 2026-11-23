@@ -38,7 +38,7 @@ struct ControlEdits {
     }
 
     func text(at address: ControlAddress, fallback: String) -> String {
-        drafts[address]?.text ?? fallback
+        drafts[address]?.text ?? inputs[address]?.text ?? fallback
     }
 
     mutating func recordText(_ text: String, at address: ControlAddress) {

@@ -49,12 +49,14 @@ final class Smalltalk80UITests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let suite = "dev.moritz.Smalltalk80UITests.\(UUID().uuidString)"
-        defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
+        let preferences = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { preferences.removePersistentDomain(forName: suite) }
         let app = XCUIApplication()
         app.launchEnvironment["ST80_PREFERENCES_SUITE"] = suite
         app.launch()
         let editor = app.windows["toolWindow-1"].textViews["workspaceEditor"]
         XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        let initialSource = try XCTUnwrap(editor.value as? String)
         app.typeKey("q", modifierFlags: .command)
         XCTAssertTrue(app.wait(for: .notRunning, timeout: 5))
 
@@ -104,9 +106,14 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertTrue(app.wait(for: .notRunning, timeout: 10))
         XCTAssertTrue(FileManager.default.fileExists(atPath: image.path))
 
+        // An earlier version remembered this path in the launch preferences.
+        preferences.set(image.path, forKey: "lastImagePath")
         app.launch()
         XCTAssertTrue(editor.waitForExistence(timeout: 10))
-        XCTAssertEqual(editor.value as? String, source)
+        XCTAssertEqual(editor.value as? String, initialSource)
+        openImage(image, in: app)
+        let restoredSource = expectation(for: NSPredicate(format: "value == %@", source), evaluatedWith: editor)
+        wait(for: [restoredSource], timeout: 10)
         let revisedSource = "Save this to the same image"
         replaceText(in: editor, with: revisedSource)
         editor.typeKey("q", modifierFlags: .command)
@@ -115,8 +122,9 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertTrue(app.wait(for: .notRunning, timeout: 10))
 
         app.launch()
-        XCTAssertTrue(editor.waitForExistence(timeout: 10))
-        XCTAssertEqual(editor.value as? String, revisedSource)
+        openImage(image, in: app)
+        let restoredRevision = expectation(for: NSPredicate(format: "value == %@", revisedSource), evaluatedWith: editor)
+        wait(for: [restoredRevision], timeout: 10)
         app.typeKey("q", modifierFlags: .command)
         XCTAssertTrue(app.wait(for: .notRunning, timeout: 5))
     }
@@ -199,8 +207,14 @@ final class Smalltalk80UITests: XCTestCase {
         let value = browser.staticTexts["value"].firstMatch
         XCTAssertTrue(value.waitForExistence(timeout: 5))
         XCTAssertFalse(toggle.isEnabled)
+        XCTAssertFalse(bytecode.exists)
         value.click()
 
+        let acceptedSource = "value ^ count"
+        let originalValue = NSPredicate(format: "value == %@", acceptedSource)
+        wait(for: [expectation(for: originalValue, evaluatedWith: source)], timeout: 5)
+        let accept = browser.buttons["executeButton"]
+        XCTAssertFalse(accept.isEnabled)
         let draft = "value\n    ^ count + 19"
         replaceText(in: source, with: draft)
         XCTAssertEqual(toggle.label, "Bytecode")
@@ -210,17 +224,30 @@ final class Smalltalk80UITests: XCTestCase {
         let listing = try XCTUnwrap(bytecode.value as? String)
         XCTAssertTrue(listing.contains("RETURN_FROM_HOME"), listing)
         XCTAssertFalse(listing.contains("PUSH_LITERAL 19"), listing)
-        XCTAssertFalse(source.exists)
-        XCTAssertFalse(browser.buttons["executeButton"].isEnabled)
+        XCTAssertEqual(source.value as? String, draft)
+        XCTAssertLessThanOrEqual(source.frame.maxY, bytecode.frame.minY + 1)
+        XCTAssertTrue(accept.isEnabled)
+        for heading in ["Class Categories", "Classes", "Protocols", "Methods"] {
+            XCTAssertTrue(browser.staticTexts[heading].exists)
+        }
         bytecode.click()
         bytecode.typeKey("x", modifierFlags: [])
         XCTAssertEqual(bytecode.value as? String, listing)
 
-        XCTAssertEqual(toggle.label, "Source")
+        XCTAssertEqual(toggle.label, "Bytecode")
         toggle.click()
-        XCTAssertTrue(source.waitForExistence(timeout: 5))
+        XCTAssertFalse(bytecode.exists)
         XCTAssertEqual(source.value as? String, draft)
         toggle.click()
+        source.click()
+        source.typeKey("z", modifierFlags: .command)
+        wait(for: [expectation(for: originalValue, evaluatedWith: source)], timeout: 5)
+        replaceText(in: source, with: draft)
+        source.typeKey("s", modifierFlags: .command)
+        let acceptedValue = NSPredicate(format: "value CONTAINS %@", "PUSH_LITERAL 19")
+        wait(for: [expectation(for: acceptedValue, evaluatedWith: bytecode)], timeout: 5)
+        XCTAssertFalse(accept.isEnabled)
+
         browser.staticTexts["increment"].firstMatch.click()
         let increment = NSPredicate(format: "value CONTAINS %@", "STORE count")
         wait(for: [expectation(for: increment, evaluatedWith: bytecode)], timeout: 5)
@@ -239,6 +266,34 @@ final class Smalltalk80UITests: XCTestCase {
         toggle.click()
         let primitive = NSPredicate(format: "value == %@", "This VM primitive has no bytecode.")
         wait(for: [expectation(for: primitive, evaluatedWith: bytecode)], timeout: 5)
+    }
+
+    func testBrowserShowsClassCreatedInWorkspace() {
+        let app = launchFreshApp()
+        let workspace = app.windows["toolWindow-1"]
+        let workspaceEditor = workspace.textViews["workspaceEditor"]
+        replaceText(in: workspaceEditor, with: "Object subclass: #ClassContextExample instanceVariableNames: 'count'")
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(workspace.staticTexts["ClassContextExample"].waitForExistence(timeout: 5))
+        workspaceEditor.typeKey("2", modifierFlags: .command)
+
+        let browser = app.windows["toolWindow-2"]
+        let filter = browser.textFields["classFilter"]
+        XCTAssertTrue(filter.waitForExistence(timeout: 5))
+        filter.click()
+        filter.typeText("ClassContextExample")
+        let classRow = browser.staticTexts["ClassContextExample"].firstMatch
+        XCTAssertTrue(classRow.waitForExistence(timeout: 5))
+        classRow.click()
+
+        let definition = NSPredicate(format: "value == %@",
+                                     "Object subclass: #ClassContextExample\n    instanceVariableNames: 'count'")
+        wait(for: [expectation(for: definition, evaluatedWith: browser.textViews["methodEditor"])], timeout: 5)
+        let createClass = NSPredicate(format: "label BEGINSWITH %@", "Create Class")
+        XCTAssertFalse(browser.buttons.matching(createClass).firstMatch.exists)
+        XCTAssertFalse(browser.staticTexts["Create a Class"].exists)
+        classRow.rightClick()
+        XCTAssertFalse(app.menuItems.matching(createClass).firstMatch.exists)
     }
 
     func testBrowserOrganizationMenusCreateCategoriesAndProtocols() {
@@ -315,40 +370,170 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertFalse(workspace.staticTexts["ERROR"].exists)
     }
 
+    func testWorkspaceToolbarGroupsActionsAndFoldsResult() {
+        let app = launchFreshApp()
+        let workspace = app.windows["toolWindow-1"]
+        let browser = app.windows["toolWindow-2"]
+        let transcript = app.windows["toolWindow-3"]
+        let editor = workspace.textViews["workspaceEditor"]
+        let run = workspace.buttons["executeButton"]
+        let resultToggle = workspace.buttons["toolResultToggle"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertTrue(browser.waitForExistence(timeout: 5))
+        XCTAssertEqual(run.label, "Do it")
+        XCTAssertFalse(workspace.buttons["saveImageButton"].exists)
+        XCTAssertFalse(browser.buttons["saveImageButton"].exists)
+        XCTAssertFalse(resultToggle.exists)
+
+        replaceText(in: editor, with: "1 / 0.\n6 * 7")
+        editor.typeKey(.leftArrow, modifierFlags: [.command, .shift])
+        run.click()
+        let result = workspace.staticTexts["42"]
+        XCTAssertTrue(result.waitForExistence(timeout: 5))
+        XCTAssertTrue(resultToggle.exists)
+        resultToggle.click()
+        XCTAssertGreaterThan(result.frame.minY, resultToggle.frame.maxY)
+        resultToggle.click()
+        XCTAssertLessThan(result.frame.minY, resultToggle.frame.maxY)
+
+        let actions = workspace.descendants(matching: .any).matching(identifier: "workspaceActions").firstMatch
+        XCTAssertTrue(actions.exists)
+        actions.click()
+        func menuItem(_ identifier: String, title: String) -> XCUIElement {
+            app.menuItems.matching(NSPredicate(format: "identifier == %@ OR label == %@",
+                                              "workspaceAction-\(identifier)", title)).firstMatch
+        }
+        let printIt = menuItem("printIt", title: "Print it")
+        XCTAssertTrue(printIt.waitForExistence(timeout: 5))
+        XCTAssertEqual(printIt.title, "Print it")
+        XCTAssertEqual(menuItem("inspectIt", title: "Inspect it").title, "Inspect it")
+        XCTAssertEqual(menuItem("debugIt", title: "Debug it").title, "Debug it")
+        XCTAssertFalse(app.menuItems["workspaceAction-doIt"].firstMatch.exists)
+        printIt.click()
+
+        let printed = NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "→ 42", "→ 42")
+        let output = transcript.staticTexts.matching(printed).firstMatch
+        XCTAssertTrue(output.waitForExistence(timeout: 5))
+        app.menuBars.menuBarItems["Smalltalk"].click()
+        XCTAssertTrue(app.menuItems["Examples"].firstMatch.waitForExistence(timeout: 5))
+        app.menuItems["Clear Transcript"].click()
+        let cleared = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: output)
+        wait(for: [cleared], timeout: 5)
+
+        app.menuBars.menuBarItems["Smalltalk"].click()
+        let examples = app.menuItems["Examples"].firstMatch
+        examples.hover()
+        let counter = app.menuItems["Counter"].firstMatch
+        XCTAssertTrue(counter.waitForExistence(timeout: 5))
+        counter.click()
+        let example = app.windows["toolWindow-4"].textViews["workspaceEditor"]
+        let exampleSource = NSPredicate(format: "value CONTAINS %@", "counter := Counter new.")
+        wait(for: [expectation(for: exampleSource, evaluatedWith: example)], timeout: 5)
+    }
+
     func testWorkspaceContextMenuUsesTheSelectionForAllThreeActions() {
         let app = launchFreshApp()
         let workspace = app.windows["toolWindow-1"]
         let editor = workspace.textViews["workspaceEditor"]
-        replaceText(in: editor, with: "1 / 0.\n6 * 7")
+        let selectedSource = "6 * 7"
+        let source = "1 / 0.\n" + selectedSource
+        replaceText(in: editor, with: source)
         editor.typeKey(.leftArrow, modifierFlags: [.command, .shift])
 
         // Open the menu away from the selection. Running the entire buffer
         // or evaluating the text under the pointer would miss the result.
         let point = editor.coordinate(withNormalizedOffset: CGVector(dx: 0.45, dy: 0.45))
+        func menuItem(_ id: String) -> XCUIElement {
+            app.menuItems["editorContext-\(id)"].firstMatch
+        }
         func choose(_ id: String, title: String) {
-            point.rightClick()
-            let command = app.menuItems["editorContext-\(id)"].firstMatch
+            let command = menuItem(id)
             XCTAssertTrue(command.waitForExistence(timeout: 5), editor.debugDescription)
             XCTAssertEqual(command.title, title)
             XCTAssertTrue(command.isEnabled)
             command.click()
         }
 
+        withPreservedPasteboard { pasteboard in
+            pasteboard.clearContents()
+            point.rightClick()
+            XCTAssertTrue(menuItem("copy").waitForExistence(timeout: 5))
+            XCTAssertEqual(menuItem("cut").title, "Cut")
+            XCTAssertEqual(menuItem("paste").title, "Paste")
+            XCTAssertEqual(menuItem("selectAll").title, "Select All")
+            choose("copy", title: "Copy")
+            XCTAssertEqual(pasteboard.string(forType: .string), selectedSource)
+
+            editor.typeKey(.rightArrow, modifierFlags: [])
+            point.rightClick()
+            choose("paste", title: "Paste")
+            XCTAssertEqual(editor.value as? String, source + selectedSource)
+            editor.typeKey("z", modifierFlags: .command)
+            XCTAssertEqual(editor.value as? String, source)
+        }
+
+        editor.typeKey(.downArrow, modifierFlags: .command)
+        editor.typeKey(.leftArrow, modifierFlags: [.command, .shift])
+        point.rightClick()
         choose("doIt", title: "Do it")
         XCTAssertTrue(workspace.staticTexts["42"].waitForExistence(timeout: 5))
         XCTAssertFalse(workspace.staticTexts["ERROR"].exists)
 
+        XCUIElement.perform(withKeyModifiers: .control) { point.click() }
         choose("printIt", title: "Print it")
         let transcript = app.windows["toolWindow-3"].staticTexts["transcriptOutput"]
         let output = NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "→ 42", "→ 42")
         wait(for: [expectation(for: output, evaluatedWith: transcript)], timeout: 5)
 
+        point.rightClick()
         choose("inspectIt", title: "Inspect it")
         let inspector = app.windows["objectInspector"].firstMatch
         XCTAssertTrue(inspector.waitForExistence(timeout: 5))
         let summary = inspector.staticTexts["inspectorSummary"]
         let inspected = NSPredicate(format: "label == %@ OR value == %@", "42", "42")
         wait(for: [expectation(for: inspected, evaluatedWith: summary)], timeout: 5)
+    }
+
+    func testWorkspaceDebuggerStepsIntoSelectedCodeAndContinues() {
+        let app = launchFreshApp()
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        replaceText(in: editor, with: "1 / 0.\nCounter new value + 42")
+        editor.typeKey(.leftArrow, modifierFlags: [.command, .shift])
+
+        editor.coordinate(withNormalizedOffset: CGVector(dx: 0.45, dy: 0.45)).rightClick()
+        let debug = app.menuItems["editorContext-debugIt"].firstMatch
+        XCTAssertTrue(debug.waitForExistence(timeout: 5), editor.debugDescription)
+        XCTAssertEqual(debug.title, "Debug it")
+        debug.click()
+
+        let debugger = app.windows["debugger"].firstMatch
+        XCTAssertTrue(debugger.waitForExistence(timeout: 5))
+        let title = debugger.staticTexts["debuggerFrameTitle"]
+        let workspaceFrame = NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Workspace", "Workspace")
+        wait(for: [expectation(for: workspaceFrame, evaluatedWith: title)], timeout: 5)
+
+        let stepInto = debugger.buttons["debuggerStepInto"]
+        let location = debugger.staticTexts["debuggerLocation"]
+        let instruction = debugger.staticTexts["debuggerInstruction"]
+        let initializeFrame = NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "initialize", "initialize")
+        for _ in 0..<6 where !initializeFrame.evaluate(with: title) {
+            let previousLocation = location.label
+            let previousInstruction = instruction.label
+            stepInto.click()
+            let advanced = NSPredicate { _, _ in
+                stepInto.isEnabled && (title.label.contains("initialize") ||
+                    (title.value as? String)?.contains("initialize") == true ||
+                    location.label != previousLocation || instruction.label != previousInstruction)
+            }
+            wait(for: [expectation(for: advanced, evaluatedWith: nil)], timeout: 5)
+        }
+        XCTAssertTrue(initializeFrame.evaluate(with: title), debugger.debugDescription)
+
+        debugger.buttons["debuggerContinue"].click()
+        wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: debugger)], timeout: 5)
+        XCTAssertTrue(workspace.staticTexts["42"].waitForExistence(timeout: 5))
+        XCTAssertFalse(workspace.staticTexts["ERROR"].exists)
     }
 
     func testInspectItUsesSelectionAndNavigatesNestedArray() {
@@ -487,16 +672,14 @@ final class Smalltalk80UITests: XCTestCase {
         replaceText(in: firstEditor, with: "persisted add: 50. persisted value")
         first.buttons["executeButton"].click()
         XCTAssertTrue(first.staticTexts["157"].waitForExistence(timeout: 5))
-        firstEditor.typeKey("o", modifierFlags: [.command, .shift])
-        XCTAssertTrue(app.buttons["OKButton"].waitForExistence(timeout: 5))
-        navigateFilePanel(in: app, to: url.path)
-        app.buttons["OKButton"].click()
+        openImage(url, in: app)
         let restoredSource = expectation(for: NSPredicate(format: "value == %@", source), evaluatedWith: firstEditor)
         wait(for: [restoredSource], timeout: 5)
         XCTAssertEqual(secondEditor.value as? String, "persisted value")
 
         app.terminate()
         app.launch()
+        openImage(url, in: app)
         let reopenedFirst = app.windows["toolWindow-1"].textViews["workspaceEditor"]
         let reopenedSecondWindow = app.windows["toolWindow-4"]
         let reopenedSecond = reopenedSecondWindow.textViews["workspaceEditor"]
@@ -590,6 +773,7 @@ final class Smalltalk80UITests: XCTestCase {
 
         app.terminate()
         app.launch()
+        openImage(image, in: app)
         let restored = app.windows["toolWindow-4"]
         XCTAssertTrue(restored.waitForExistence(timeout: 10))
         XCTAssertEqual(restored.textFields["First Name"].value as? String, "Ada")
@@ -690,6 +874,7 @@ final class Smalltalk80UITests: XCTestCase {
         wait(for: [saved], timeout: 10)
         app.terminate()
         app.launch()
+        openImage(image, in: app)
         let restoredFirst = app.windows["toolWindow-4"]
         let restoredSecond = app.windows["toolWindow-5"]
         XCTAssertTrue(restoredFirst.waitForExistence(timeout: 10))
@@ -767,6 +952,7 @@ final class Smalltalk80UITests: XCTestCase {
         discard.click()
         XCTAssertTrue(app.wait(for: .notRunning, timeout: 5))
         app.launch()
+        openImage(image, in: app)
         let restored = app.windows["toolWindow-1"]
         let restoredEditor = restored.textViews["workspaceEditor"]
         XCTAssertTrue(restoredEditor.waitForExistence(timeout: 10))
@@ -803,7 +989,15 @@ final class Smalltalk80UITests: XCTestCase {
         editor.click()
         editor.typeKey("a", modifierFlags: .command)
         // XCUI's key synthesis drops a dead-key caret on German keyboards.
-        // Paste source verbatim and restore the user's pasteboard afterward.
+        withPreservedPasteboard { pasteboard in
+            pasteboard.clearContents()
+            pasteboard.setString(source, forType: .string)
+            editor.typeKey("v", modifierFlags: .command)
+        }
+        XCTAssertEqual(editor.value as? String, source)
+    }
+
+    private func withPreservedPasteboard(_ action: (NSPasteboard) -> Void) {
         let pasteboard = NSPasteboard.general
         let previous = pasteboard.pasteboardItems?.map { item in
             let copy = NSPasteboardItem()
@@ -812,12 +1006,24 @@ final class Smalltalk80UITests: XCTestCase {
             }
             return copy
         }
-        pasteboard.clearContents()
-        pasteboard.setString(source, forType: .string)
-        editor.typeKey("v", modifierFlags: .command)
-        pasteboard.clearContents()
-        if let previous { pasteboard.writeObjects(previous) }
-        XCTAssertEqual(editor.value as? String, source)
+        defer {
+            pasteboard.clearContents()
+            if let previous { pasteboard.writeObjects(previous) }
+        }
+        action(pasteboard)
+    }
+
+    private func openImage(_ image: URL, in app: XCUIApplication) {
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        let ready = expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: workspace.buttons["executeButton"])
+        wait(for: [ready], timeout: 5)
+        editor.typeKey("o", modifierFlags: [.command, .shift])
+        let open = app.buttons["OKButton"]
+        XCTAssertTrue(open.waitForExistence(timeout: 5))
+        navigateFilePanel(in: app, to: image.path)
+        open.click()
     }
 
     private func navigateFilePanel(in app: XCUIApplication, to path: String) {

@@ -1,6 +1,18 @@
 import SmalltalkCore
 import SwiftUI
 
+struct WorkspaceTitlebarView: View {
+    let controller: AppController
+    let windowID: Int64
+
+    var body: some View {
+        if let content = controller.presentedWindow(windowID)?.info.content,
+           let toolbar = WorkspaceToolbar(controller: controller, windowID: windowID, content: content) {
+            toolbar
+        }
+    }
+}
+
 struct ToolContentView: View {
     @Bindable var controller: AppController
     let windowID: Int64
@@ -13,10 +25,11 @@ struct ToolContentView: View {
                 } else {
                     VStack(spacing: 0) {
                         if let content = window.info.content {
-                            UIElementView(controller: controller, windowID: windowID, element: content)
+                            toolView(kind: window.info.kind, content: content)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                         }
-                        if let error = window.inputError ?? controller.error {
+                        if let error = window.inputError ?? (controller.activeWindowID == windowID ? controller.error : nil),
+                           window.info.content?.firstVisible(where: { $0.accessibilityID == "evaluationResult" })?.text != error {
                             Divider()
                             Text(error).foregroundStyle(.red)
                                 .textSelection(.enabled).padding(12)
@@ -27,9 +40,22 @@ struct ToolContentView: View {
             }
         }.background(Color(nsColor: .windowBackgroundColor))
     }
+
+    @ViewBuilder
+    private func toolView(kind: ToolKind, content: UIElementInfo) -> some View {
+        if kind == .workspace, let workspace = WorkspaceToolView(controller: controller, windowID: windowID, content: content) {
+            workspace
+        } else if kind == .browser, let browser = ClassicBrowserView(controller: controller, windowID: windowID, content: content) {
+            browser
+        } else if kind == .transcript, let transcript = TranscriptToolView(controller: controller, windowID: windowID, content: content) {
+            transcript
+        } else {
+            UIElementView(controller: controller, windowID: windowID, element: content)
+        }
+    }
 }
 
-private struct UIElementView: View {
+struct UIElementView: View {
     @Bindable var controller: AppController
     let windowID: Int64
     let element: UIElementInfo
@@ -37,8 +63,7 @@ private struct UIElementView: View {
     var body: some View {
         if element.visible {
             content
-                .disabled(!element.enabled || controller.isRunning ||
-                          (element.command == "acceptMethod" && controller.presentedWindow(windowID)?.showsBytecode == true))
+                .disabled(controller.isRunning || !controller.canPerform(element, in: windowID))
                 .frame(
                     minWidth: element.minimumWidth.map { CGFloat($0) },
                     maxWidth: element.maximumWidth.map { CGFloat($0) },
@@ -76,23 +101,14 @@ private struct UIElementView: View {
         case .codeEditor:
             if identifier == "methodEditor", let window = controller.presentedWindow(windowID), window.info.kind == .browser {
                 VStack(spacing: 0) {
-                    HStack {
-                        Spacer()
-                        Button(window.showsBytecode ? "Source" : "Bytecode") {
-                            controller.toggleBrowserBytecode(windowID: windowID)
-                        }
-                        .controlSize(.small)
-                        .disabled(window.info.browserMethod == nil)
-                        .accessibilityIdentifier("methodBytecodeToggle")
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    codeEditor.frame(minHeight: 64)
                     Divider()
+                    bytecodeToggle(for: window)
                     if window.showsBytecode, let method = window.info.browserMethod {
+                        Divider()
                         BrowserBytecodeEditor(controller: controller, windowID: windowID, method: method)
                             .id(method)
-                    } else {
-                        codeEditor
+                            .frame(minHeight: 64, idealHeight: 144, maxHeight: 184)
                     }
                 }
             } else {
@@ -169,12 +185,39 @@ private struct UIElementView: View {
             isEditable: !element.readOnly && element.enabled && !controller.isRunning,
             identifier: identifier,
             label: element.label,
+            usesSmalltalkSourceStyle: identifier == "workspaceEditor" || identifier == "methodEditor",
             contextMenuItems: controller.editorContextItems(windowID: windowID, editor: element),
             contextCommandsEnabled: element.enabled && !controller.isRunning,
             onContextCommand: { action, selection in
                 Task { await controller.performEditorContextAction(action, windowID: windowID, selection: selection) }
             }
         )
+    }
+
+    private func bytecodeToggle(for window: PresentedWindow) -> some View {
+        Button {
+            controller.toggleBrowserBytecode(windowID: windowID)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: window.showsBytecode ? "chevron.down" : "chevron.right")
+                    .font(.caption2)
+                    .accessibilityHidden(true)
+                Text("Bytecode").font(.callout)
+                Spacer()
+                if window.showsBytecode {
+                    Text("Read-only").font(.caption).foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(window.info.browserMethod == nil)
+        .accessibilityLabel("Bytecode")
+        .accessibilityValue(window.showsBytecode ? "Expanded" : "Collapsed")
+        .accessibilityIdentifier("methodBytecodeToggle")
     }
 
     private var list: some View {
@@ -234,7 +277,7 @@ private struct BrowserBytecodeEditor: View {
     var body: some View {
         let text = method.isPrimitive ? "This VM primitive has no bytecode." : listing ?? "Loading bytecode…"
         CodeEditor(text: .constant(text), selection: $selection, isEditable: false,
-                   identifier: "bytecodeEditor", label: "Method Bytecode")
+                   identifier: "bytecodeEditor", label: "Method Bytecode", allowsUndo: false)
             .task {
                 guard !method.isPrimitive else { return }
                 let value = await controller.browserBytecode(windowID: windowID, method: method)

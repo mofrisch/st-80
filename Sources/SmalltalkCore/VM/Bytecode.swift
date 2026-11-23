@@ -207,7 +207,7 @@ enum BytecodeOperation: Codable, Sendable {
     case finish
 }
 
-private extension BytecodeOperation {
+extension BytecodeOperation {
     var disassemblyText: String {
         switch self {
         case .pushLiteral(let literal): return "PUSH_LITERAL \(literal.disassemblyText)"

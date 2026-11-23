@@ -19,6 +19,7 @@ extension SmalltalkRuntime {
         for instruction in body.instructions {
             do {
                 try tick()
+                try debugger?.before(instruction, runtime: self)
                 switch instruction.operation {
                 case .pushLiteral(let literal):
                     bytecodeOperands.append(.value(try value(literal)))
@@ -59,6 +60,10 @@ extension SmalltalkRuntime {
                 }
             } catch var error as SmalltalkError {
                 if error.position == nil { error.position = instruction.position }
+                debugger?.report(error, at: instruction, runtime: self)
+                throw error
+            } catch {
+                debugger?.report(error, at: instruction, runtime: self)
                 throw error
             }
         }

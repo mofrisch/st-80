@@ -138,8 +138,8 @@ extension SmalltalkRuntime {
             // Native focus, geometry and editing events must not replace the
             // last Do it/compiler result displayed in a workspace.
             _ = result
-            return snapshot()
-        } catch { return snapshot(error: error.localizedDescription) }
+            return finishEvaluation()
+        } catch { return finishEvaluation(error: error.localizedDescription) }
     }
 
     /// This projection cannot call user methods: snapshots and image loading must

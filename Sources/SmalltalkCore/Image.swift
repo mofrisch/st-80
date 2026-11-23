@@ -155,6 +155,10 @@ enum ImageCodec {
             }
             index += 1
         }
+        try runtime.validateMVCState(in: pending.compactMap { node in
+            if case .object(let object) = node { return object }
+            return nil
+        })
         let classes = runtime.classes.values.sorted { $0.name < $1.name }.map {
             ImageClass(name: $0.name, superclass: $0.superclass?.name, fields: $0.ownFields, methods: $0.methods.mapValues(\.source))
         }
@@ -186,7 +190,9 @@ enum ImageCodec {
         case value(Value), environment(Environment)
     }
 
-    private static func restore(_ image: ImageArchive) throws -> (SmalltalkRuntime, LoadedImage) {
+    private static func restore(_ savedImage: ImageArchive) throws -> (SmalltalkRuntime, LoadedImage) {
+        var image = savedImage
+        try upgradeMVCLayouts(&image)
         guard image.classes.count <= 128, image.globals.count <= 1_152, image.nodes.count <= maxNodes else { throw invalid("Größenlimits überschritten.") }
         // No bootstrap, user code, initialize messages or block execution on load.
         let runtime = SmalltalkRuntime(bootstrap: false)
@@ -311,6 +317,7 @@ enum ImageCodec {
         runtime.globals = globals
         try runtime.installDesktopIfNeeded(workspace: image.workspace)
         try runtime.installUserInterfaceIfNeeded()
+        try runtime.validateMVCState()
         if let error = runtime.projectWindows().error {
             throw SmalltalkError(error)
         }

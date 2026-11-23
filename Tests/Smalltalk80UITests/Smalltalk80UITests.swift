@@ -255,6 +255,95 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertTrue(restored.staticTexts["Layout repariert."].waitForExistence(timeout: 5))
     }
 
+    func testMVCModelsRefreshMultipleViewsWhileTypingFromWorkspaceAndAfterImageRelaunch() throws {
+        continueAfterFailure = false
+        let suite = "dev.moritz.Smalltalk80UITests.\(UUID().uuidString)"
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("st80-mvc-ui-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let app = XCUIApplication()
+        defer {
+            app.terminate()
+            try? FileManager.default.removeItem(at: directory)
+            UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite)
+        }
+        app.launchEnvironment["ST80_PREFERENCES_SUITE"] = suite
+        app.launch()
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(contentsOf: root.appendingPathComponent("Examples/GreetingWindow.st"), encoding: .utf8)
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        replaceText(in: editor, with: source + """
+        . greetingView moveToX: 100 y: 1000.
+        mirrorView := GreetingView new.
+        mirrorView moveToX: 650 y: 1000.
+        mirrorView model: greetingModel controller: greetingController; open
+        """)
+        workspace.buttons["executeButton"].click()
+        let first = app.windows["toolWindow-4"]
+        let second = app.windows["toolWindow-5"]
+        XCTAssertTrue(first.waitForExistence(timeout: 10))
+        XCTAssertTrue(second.waitForExistence(timeout: 5))
+        let field = first.textFields["Name"]
+        field.click()
+        field.typeText("Moritz")
+        // No Return, focus change or click: the controller updates the model as
+        // we type, and both dependent views must react to that model change.
+        XCTAssertTrue(second.staticTexts["Hallo, Moritz!"].waitForExistence(timeout: 5))
+        XCTAssertEqual(second.textFields["Name"].value as? String, "Moritz")
+        XCTAssertEqual(field.value as? String, "Moritz")
+        field.typeKey(.leftArrow, modifierFlags: .command)
+        field.typeText("Dr. ")
+        XCTAssertTrue(second.staticTexts["Hallo, Dr. Moritz!"].waitForExistence(timeout: 5))
+        XCTAssertEqual(field.value as? String, "Dr. Moritz")
+
+        field.typeKey("1", modifierFlags: .command)
+        replaceText(in: editor, with: "greetingModel name: 'Ada'")
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(first.staticTexts["Hallo, Ada!"].waitForExistence(timeout: 5))
+        XCTAssertTrue(second.staticTexts["Hallo, Ada!"].exists)
+        XCTAssertEqual(field.value as? String, "Ada")
+        second.buttons["Leeren"].click()
+        XCTAssertTrue(first.staticTexts["Noch keine Begrüßung."].waitForExistence(timeout: 5))
+        XCTAssertEqual(field.value as? String, "")
+
+        second.textFields["Name"].typeKey("1", modifierFlags: .command)
+        replaceText(in: editor, with: "GreetingController compile: 'nameChanged: aString ^ 1 / 0'")
+        workspace.buttons["executeButton"].click()
+        field.click()
+        field.typeText("Reparierbar")
+        let inputError = first.staticTexts.containing(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Division durch null", "Division durch null")).firstMatch
+        XCTAssertTrue(inputError.waitForExistence(timeout: 5))
+        field.typeKey("1", modifierFlags: .command)
+        replaceText(in: editor, with: "GreetingController compile: 'nameChanged: aString model name: aString'")
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(second.staticTexts["Hallo, Reparierbar!"].waitForExistence(timeout: 5))
+
+        field.click()
+        field.typeKey("a", modifierFlags: .command)
+        field.typeText("Gespeichert")
+        field.typeKey("s", modifierFlags: [.command, .shift])
+        XCTAssertTrue(app.buttons["OKButton"].waitForExistence(timeout: 5))
+        navigateFilePanel(in: app, to: directory.path)
+        app.buttons["OKButton"].click()
+        let image = directory.appendingPathComponent("Smalltalk.stimage")
+        let saved = expectation(for: NSPredicate { _, _ in FileManager.default.fileExists(atPath: image.path) }, evaluatedWith: nil)
+        wait(for: [saved], timeout: 10)
+        app.terminate()
+        app.launch()
+        let restoredFirst = app.windows["toolWindow-4"]
+        let restoredSecond = app.windows["toolWindow-5"]
+        XCTAssertTrue(restoredFirst.waitForExistence(timeout: 10))
+        XCTAssertEqual(restoredFirst.textFields["Name"].value as? String, "Gespeichert")
+        XCTAssertTrue(restoredSecond.staticTexts["Hallo, Gespeichert!"].exists)
+        restoredSecond.buttons["Beispielname"].click()
+        XCTAssertTrue(restoredFirst.staticTexts["Hallo, Moritz!"].waitForExistence(timeout: 5))
+        XCTAssertEqual(restoredFirst.textFields["Name"].value as? String, "Moritz")
+        let attachment = XCTAttachment(screenshot: restoredFirst.screenshot())
+        attachment.name = "MVC view after model change and image relaunch"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     private func launchFreshApp() -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()

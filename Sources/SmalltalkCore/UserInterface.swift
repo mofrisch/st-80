@@ -12,6 +12,7 @@ public struct UIElementInfo: Identifiable, Sendable {
     public let label: String
     public let placeholder: String
     public let enabled: Bool
+    public let liveInput: Bool
     public let spacing: Int64
     public let padding: Int64
     public let children: [UIElementInfo]
@@ -29,7 +30,7 @@ extension SmalltalkSession {
 }
 
 extension SmalltalkRuntime {
-    private struct UIClassDefinition {
+    struct UIClassDefinition {
         let name: String
         let superclass: String
         let fields: [String]
@@ -37,8 +38,8 @@ extension SmalltalkRuntime {
     }
 
     private static let uiClasses: [UIClassDefinition] = [
-        .init(name: "UIElement", superclass: "Object", fields: ["enabled"], methods: [
-            "initialize enabled := true", "enabled ^ enabled", "enabled: aBoolean enabled := aBoolean",
+        .init(name: "UIElement", superclass: "Object", fields: ["enabled", "mvcBindings"], methods: [
+            "initialize enabled := true. mvcBindings := nil", "enabled ^ enabled", "enabled: aBoolean enabled := aBoolean",
         ]),
         .init(name: "UILabel", superclass: "UIElement", fields: ["text"], methods: [
             "initialize super initialize. text := ''", "text ^ text", "text: aString text := aString",
@@ -48,7 +49,7 @@ extension SmalltalkRuntime {
             "title ^ title", "title: aString title := aString", "action: aBlock action := aBlock",
             "click enabled ifFalse: [ ^ self ]. action notNil ifTrue: [ ^ action value ]",
         ]),
-        .init(name: "UITextField", superclass: "UIElement", fields: ["label", "text", "placeholder"], methods: [
+        .init(name: "UITextField", superclass: "UIElement", fields: ["label", "text", "placeholder", "mvcInputTarget", "mvcInputSelector"], methods: [
             "initialize super initialize. label := ''. text := ''. placeholder := ''",
             "label ^ label", "label: aString label := aString",
             "text ^ text", "text: aString text := aString",
@@ -119,9 +120,10 @@ extension SmalltalkRuntime {
             guard let stClass = classes[name] else { throw SmalltalkError("Fensterklasse fehlt.") }
             if stClass.lookup(selector) == nil { try compile(source, in: stClass) }
         }
+        try installMVCIfNeeded()
     }
 
-    private func isUIClass(_ stClass: STClass, named name: String) -> Bool {
+    func isUIClass(_ stClass: STClass, named name: String) -> Bool {
         guard let base = classes[name] else { return false }
         var current: STClass? = stClass
         while let candidate = current {
@@ -161,6 +163,7 @@ extension SmalltalkRuntime {
             }
             let enabled = parentEnabled && ownEnabled
             var text = "", label = "", placeholder = ""
+            var liveInput = false
             var spacing: Int64 = 0, padding: Int64 = 0
             var children: [UIElementInfo] = []
             switch kind {
@@ -174,6 +177,16 @@ extension SmalltalkRuntime {
                 }
             case .textField:
                 text = try string("text"); label = try string("label"); placeholder = try string("placeholder")
+                switch object.fields["mvcInputTarget"] {
+                case .nilValue?: break
+                case .object?:
+                    guard case .symbol(let selector)? = object.fields["mvcInputSelector"],
+                          selector.filter({ $0 == ":" }).count == 1, selector.hasSuffix(":") else {
+                        throw SmalltalkError("Ungültiger Controller für ein Eingabefeld.")
+                    }
+                    liveInput = true
+                default: throw SmalltalkError("Ungültiger Controller für ein Eingabefeld.")
+                }
             case .column, .row:
                 guard case .array(let array)? = object.fields["children"], array.elements.count <= 512,
                       case .integer(let gap)? = object.fields["spacing"], (0...128).contains(gap),
@@ -186,7 +199,7 @@ extension SmalltalkRuntime {
             }
             controls[object.nativeID] = ProjectedControl(object: object, kind: kind, enabled: enabled)
             return UIElementInfo(id: object.nativeID, kind: kind, text: text, label: label, placeholder: placeholder,
-                                 enabled: enabled, spacing: spacing, padding: padding, children: children)
+                                 enabled: enabled, liveInput: liveInput, spacing: spacing, padding: padding, children: children)
         }
         let root = try project(value, depth: 0, parentEnabled: true)
         return (root, controls)
@@ -226,9 +239,9 @@ extension SmalltalkRuntime {
                 result = try send(.object(control.object), "click", [])
             case .text(_, _, let text):
                 guard control.kind == .textField, text.utf8.count <= 65_536 else { throw SmalltalkError("Ungültige Texteingabe (maximal 64 KiB).") }
-                result = try send(.object(control.object), "text:", [.string(text)])
+                result = try send(.object(control.object), "editText:", [.string(text)])
             }
-            return snapshot(value: printValue(result))
-        } catch { return snapshot(error: error.localizedDescription) }
+            return finishEvaluation(value: printValue(result))
+        } catch { return finishEvaluation(error: error.localizedDescription) }
     }
 }

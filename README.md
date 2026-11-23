@@ -69,44 +69,80 @@ Browser und Transcript werden beim erneuten Öffnen nach vorne geholt. Jeder Auf
 
 Fenstertexte werden vor einer Auswertung oder dem Speichern eines Images an die Smalltalk-Objekte übertragen. Ältere Images ohne Fensterverwaltung erhalten beim Laden die drei Standardfenster; ihr gespeicherter Workspace wird übernommen. Bei dieser Ergänzung werden keine benutzerdefinierten `initialize`-Methoden aufgerufen.
 
-## Oberflächen in Smalltalk
+## Oberflächen mit MVC
 
-Mit **Beispiele → Eigene Oberfläche** öffnest du ein ausführbares Beispiel. Fenster, Bedienelemente, Layouts und Button-Aktionen sind gewöhnliche Smalltalk-Objekte und Methoden. SwiftUI stellt sie als native macOS-Oberfläche dar.
+Unter **Beispiele → Eigene Oberfläche** im Workspace liegt ein vollständiges MVC-Beispiel. Den gleichen Quelltext findest du in `Examples/GreetingWindow.st`; du kannst ihn mit **⌘O** öffnen und ausführen.
+
+| Rolle | Zuständigkeit im Beispiel |
+| --- | --- |
+| `GreetingModel`, Unterklasse von `Model` | Hält `name`, berechnet `greeting` und meldet Änderungen. Kennt keine UI-Klassen. |
+| `GreetingView`, Unterklasse von `UIWindow` | Definiert Layout, Bedienelemente und Bindungen. Leitet Eingaben an den Controller weiter. |
+| `GreetingController`, Unterklasse von `Controller` | Verarbeitet Eingaben und Buttons und verändert ausschließlich das Model. Aktualisiert keine Labels oder Felder selbst. |
+
+Nach dem Ausführen reicht im Workspace:
 
 ```smalltalk
-| window column input output button |
-window := UIWindow new.
-window title: 'Begrüßung'.
-input := UITextField new.
-input label: 'Name'; placeholder: 'Dein Name'.
-output := UILabel new.
-output text: 'Bereit.'.
-button := UIButton new.
-button title: 'Begrüßen'.
-button action: [ output text: 'Hallo, ', input text, '!' ].
-column := UIColumn new.
-column padding: 20; spacing: 12.
-column add: input; add: button; add: output.
-window content: column; open
+greetingModel name: 'Ada'
 ```
+
+Das Eingabefeld und die Begrüßung aktualisieren sich automatisch. Eine zweite View kann dasselbe Model beobachten:
+
+```smalltalk
+secondView := GreetingView new.
+secondView moveToX: 650 y: 200.
+secondView model: greetingModel controller: greetingController; open
+```
+
+Änderungen am Model erscheinen in beiden Fenstern. Das funktioniert auch während des Tippens, ohne Return oder einen Button-Klick.
+
+### Änderungsprotokoll und Bindungen
+
+Ein Fachmodell erbt von `Model`. Seine Setter melden Änderungen über `self changed` (alle Aspekte) oder `self changed: #name` (nur diesen Aspekt). Ein Setter im Beispiel lautet:
+
+```smalltalk
+name: aString
+    name := aString.
+    self changed
+```
+
+Die View bindet eine Eigenschaft an einen Getter des Models und weist Eingaben einem Controller zu:
+
+```smalltalk
+input bind: #text to: greetingModel aspect: #name.
+input onChangeSend: #nameChanged: to: greetingController.
+output bind: #text to: greetingModel aspect: #greeting.
+button onClickSend: #clear to: greetingController
+```
+
+`nameChanged:` im Controller sendet `model name: aString`. Das Model benachrichtigt seine Beobachter; die Bindungen lesen die betroffenen Getter und setzen die View-Eigenschaften. Der Controller muss weder die View kennen noch einen Refresh aufrufen. Für berechnete Werte wie `greeting` meldet das Beispiel alle Aspekte mit `changed`.
+
+`Model` bietet außerdem `addDependent:`, `removeDependent:` und `dependents`. Eigene Beobachter implementieren `update:`; dessen Argument ist der geänderte Aspekt oder `nil` für alle Aspekte. Mehrfaches Anmelden desselben Beobachters erzeugt keine doppelten Benachrichtigungen.
+
+Bindbar sind `text` bei Labels und Textfeldern, `title` bei Buttons, `enabled` bei allen UI-Elementen sowie `spacing` und `padding` bei Layouts. `unbind: #text` entfernt eine einzelne Bindung, `unbindAll` alle Bindungen einer View. Erneutes Binden derselben Eigenschaft ersetzt die alte Bindung. Am Ende einer Auswertung oder eines nativen Ereignisses werden Bindungen entfernter Bedienelemente und geschlossener Fenster abgemeldet. Beim Wiederöffnen werden sie mit den aktuellen Model-Werten verbunden.
+
+### Bedienelemente und Darstellung
 
 | Klasse | Nachrichten |
 | --- | --- |
 | `UIWindow` | `title:`, `content:`, `open`, `moveToX:y:`, `resizeWidth:height:` |
 | `UILabel` | `text:`, `text` |
-| `UIButton` | `title:`, `action:` (Block ohne Argumente), `click` |
-| `UITextField` | `label:`, `placeholder:`, `text:`, `text` |
+| `UIButton` | `title:`, `onClickSend:to:`; bestehende Block-Aktionen mit `action:` bleiben unterstützt |
+| `UITextField` | `label:`, `placeholder:`, `text:`, `text`, `onChangeSend:to:` |
 | `UIColumn`, `UIRow` | `add:`, `remove:`, `removeAll`, `children:`, `spacing:`, `padding:` |
 | `UISpacer` | Flexibler Abstand innerhalb einer Zeile oder Spalte |
-| Alle UI-Elemente | `enabled:`; ein deaktiviertes Layout deaktiviert seine enthaltenen Elemente |
+| Alle UI-Elemente | `enabled:`, `bind:to:aspect:`, `unbind:`, `unbindAll` |
 
-Zeilen und Spalten lassen sich verschachteln. `add:` gibt das hinzugefügte Element zurück. `spacing:` akzeptiert 0 bis 128 Punkte, `padding:` 0 bis 256. Eine Oberfläche ist ein Baum mit maximal 512 Elementen und 16 Verschachtelungsebenen; ein Element darf innerhalb eines Fensters nur einmal vorkommen.
+Zeilen und Spalten lassen sich verschachteln. `add:` gibt das hinzugefügte Element zurück. `spacing:` akzeptiert 0 bis 128 Punkte, `padding:` 0 bis 256. Eine Oberfläche ist ein Baum mit maximal 512 Elementen und 16 Verschachtelungsebenen; ein Element darf innerhalb eines Fensters nur einmal vorkommen. Ein deaktiviertes Layout deaktiviert auch seine enthaltenen Elemente.
 
-Für einen eigenen Fenstertyp leitest du von `UIWindow` ab und baust den Inhalt in `initialize` auf. Das vollständige Beispiel steht in `Examples/GreetingWindow.st`. Einmal über **⌘O** öffnen und ausführen; anschließend öffnet `GreetingWindow new open` weitere unabhängige Exemplare. In Button-Blöcken kannst du Nachrichten wie `[ self greet ]` verwenden und die Methode `greet` später im Browser verändern. Bestehende Fenster verwenden sofort die neue Methode. Auch Unterklassen der Bedienelemente sind möglich.
+Die Smalltalk-Objekte bleiben auf dem Interpreter-Thread. Die native SwiftUI-View zeichnet unveränderliche Zustände und führt keine Model-Getter aus. `AppController` vermittelt native Ereignisse und übernimmt die fertigen Zustände zur Darstellung. Das Änderungsprotokoll selbst läuft in Smalltalk, ohne Polling.
 
-Texteingaben bleiben während des Tippens flüssig im nativen Feld. Vor einem Button-Klick, einer Smalltalk-Auswertung oder dem Speichern eines Images werden alle Eingaben über `text:` ins Objektmodell übertragen. Ein Button sieht dadurch auch ohne Return oder Fokuswechsel den aktuellen Text. Änderungen aus Smalltalk werden danach wieder angezeigt. Fehler einer Button-Aktion erscheinen im betroffenen eigenen Fenster.
+Textfelder mit einem Eingabe-Controller übertragen Änderungen nach einer kurzen Tipp-Pause von 80 ms. Dabei wird das Feld nicht deaktiviert. Vor Buttons, Workspace-Auswertungen und dem Speichern eines Images werden ausstehende Eingaben vollständig und in Eingabereihenfolge übertragen. Änderungen aus Model-Benachrichtigungen lösen keine erneuten Eingabeereignisse aus. Auch bei einer fehlerhaften Model- oder Controller-Methode bleiben Workspace und Methodenbrowser zum Reparieren benutzbar; ausstehende Eingaben werden danach erneut übertragen.
 
-Images erhalten Oberflächen, Eingabewerte, eigene Klassen und die von Aktionen eingefangenen Objekte und lokalen Variablen. Nach dem Laden funktionieren die Buttons weiter. Bereits gespeicherte Images erhalten die neuen UI-Klassen und die fehlenden Öffnungsmethoden, ohne vorhandene Methoden zu ersetzen oder `initialize` auszuführen. Das bisherige `SystemWindow`-Layout bleibt unverändert.
+### Images
+
+Images erhalten Fachmodelle, Controller, Views, Bindungen und Beobachterbeziehungen. Nach dem Laden funktionieren Model-Änderungen und Eingaben weiter. Beim Laden werden weder `initialize` noch gebundene Getter ausgeführt; dafür enthalten Images auch den zuletzt gültigen Darstellungszustand.
+
+Bereits gespeicherte Images erhalten die neuen MVC-Klassen, Methoden und zusätzlichen Framework-Variablen. Bestehende benutzerdefinierte Methoden und Block-Aktionen bleiben erhalten. Das bisherige `SystemWindow`-Layout bleibt unverändert.
 
 ## Erster Versuch
 

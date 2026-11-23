@@ -11,7 +11,7 @@ struct UserInterfaceTests {
 
     @Test func exampleProjectsNestedLayoutsAndDispatchesTextAndButtons() async throws {
         let session = SmalltalkSession()
-        let opened = await session.evaluate(SmalltalkExamples.userInterface)
+        let opened = await session.evaluate(SmalltalkExamples.legacyUserInterface)
         #expect(opened.error == nil)
         let window = try #require(opened.windows.first { $0.kind == .custom })
         #expect(window.title == "Meine Smalltalk-Oberfläche")
@@ -88,7 +88,7 @@ struct UserInterfaceTests {
 
     @Test func localVariablesCapturedByActionsSurviveImageLoad() async throws {
         let session = SmalltalkSession()
-        let opened = await session.evaluate(SmalltalkExamples.userInterface)
+        let opened = await session.evaluate(SmalltalkExamples.legacyUserInterface)
         let window = try #require(opened.windows.first { $0.kind == .custom })
         let field = try #require(elements(window.content).first { $0.kind == .textField })
         _ = await session.uiAction(.text(windowID: window.id, elementID: field.id, value: "Gespeichert"))

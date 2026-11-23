@@ -136,10 +136,12 @@ public actor SmalltalkSession {
     public func compile(_ source: String, in className: String) async -> EvaluationResult {
         await worker.submit { runtime in
             runtime.transcript = ""
+            runtime.steps = 0
+            runtime.depth = 0
             do {
                 guard let stClass = runtime.classes[className] else { throw SmalltalkError("Klasse \(className) existiert nicht.") }
                 let selector = try runtime.compile(source, in: stClass)
-                return runtime.snapshot(value: "\(className) » \(selector)")
+                return runtime.finishEvaluation(value: "\(className) » \(selector)")
             } catch { return runtime.snapshot(error: error.localizedDescription) }
         }
     }
@@ -248,8 +250,8 @@ final class SmalltalkRuntime {
         transcript = ""
         steps = 0
         depth = 0
-        do { return snapshot(value: printValue(try evaluate(source))) }
-        catch { return snapshot(error: error.localizedDescription) }
+        do { return finishEvaluation(value: printValue(try evaluate(source))) }
+        catch { return finishEvaluation(error: error.localizedDescription) }
     }
 
     func evaluate(_ source: String) throws -> Value {

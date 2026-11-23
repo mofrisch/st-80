@@ -26,7 +26,7 @@ final class ToolWindowState {
 
 @MainActor
 @Observable
-final class AppModel {
+final class AppController {
     var states: [Int64: ToolWindowState] = [:]
     var windowInfos: [ToolWindowInfo] = []
     var activeWindowID: Int64?
@@ -41,7 +41,9 @@ final class AppModel {
     var result = "Bereit."
     var error: String?
     var isRunning = false {
-        didSet { if !isRunning { scheduleSynchronization() } }
+        didSet {
+            if !isRunning { scheduleSynchronization(); scheduleInputSynchronization() }
+        }
     }
     var search = ""
     var imageURL: URL?
@@ -56,6 +58,12 @@ final class AppModel {
         let elementID: String
     }
     private var pendingInputs: [InputAddress: String] = [:]
+    private var inputOrder: [InputAddress: UInt64] = [:]
+    @ObservationIgnored private var inputSequence: UInt64 = 0
+    private var liveInputs: Set<InputAddress> = []
+    @ObservationIgnored private var inputDebounce: Task<Void, Never>?
+    @ObservationIgnored private var inputFlush: (id: UUID, task: Task<Bool, Never>)?
+    @ObservationIgnored private var inputEpoch = 0
     private var pendingFrames: [Int64: NSRect] = [:]
     private var pendingMinimized: [Int64: Bool] = [:]
     private var pendingClose: Set<Int64> = []
@@ -86,7 +94,7 @@ final class AppModel {
         nativeWindows = NativeWindowManager(
             content: { [weak self] id in
                 guard let self else { return AnyView(EmptyView()) }
-                return AnyView(ToolContentView(model: self, windowID: id))
+                return AnyView(ToolContentView(controller: self, windowID: id))
             },
             onActivate: { [weak self] id in self?.activated(id) },
             onClose: { [weak self] id in
@@ -134,7 +142,7 @@ final class AppModel {
             self.synchronization = nil
             guard !self.isRunning else { return }
             self.isRunning = true
-            await self.flushWindowState()
+            await self.flushWindowState(allowInputFailure: true)
             self.isRunning = false
         }
     }
@@ -169,14 +177,21 @@ final class AppModel {
             }
         }
         var visibleInputs: Set<InputAddress> = []
+        var visibleLiveInputs: Set<InputAddress> = []
         func collectInputs(_ node: UIElementInfo, windowID: Int64) {
-            if node.kind == .textField { visibleInputs.insert(InputAddress(windowID: windowID, elementID: node.id)) }
+            if node.kind == .textField {
+                let address = InputAddress(windowID: windowID, elementID: node.id)
+                visibleInputs.insert(address)
+                if node.liveInput { visibleLiveInputs.insert(address) }
+            }
             for child in node.children { collectInputs(child, windowID: windowID) }
         }
         for info in evaluation.windows {
             if let content = info.content { collectInputs(content, windowID: info.id) }
         }
         pendingInputs = pendingInputs.filter { visibleInputs.contains($0.key) }
+        inputOrder = inputOrder.filter { visibleInputs.contains($0.key) }
+        liveInputs = visibleLiveInputs
         restoring = false
         windowInfos = evaluation.windows
         if pendingActive == nil { activeWindowID = evaluation.activeWindowID }
@@ -214,29 +229,72 @@ final class AppModel {
         }
     }
 
-    /// Flush local edits before evaluating Smalltalk or taking an image snapshot.
-    @discardableResult
-    private func flushWindowState() async -> Bool {
-        captureGeometry()
-        // Keep typing local and responsive. Flush every field before a button
-        // action, workspace evaluation or image save so Smalltalk sees the edits.
+    private func scheduleInputSynchronization() {
+        inputDebounce?.cancel()
+        guard hasLoaded, !isRunning, pendingInputs.keys.contains(where: { liveInputs.contains($0) }) else { return }
+        inputDebounce = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(80)) } catch { return }
+            guard let self, !self.isRunning else { return }
+            _ = await self.synchronizeInputs()
+        }
+    }
+
+    /// Join an in-flight live edit before running a command. Typing itself never
+    /// toggles isRunning, so changing the model does not disable the focused field.
+    private func synchronizeInputs() async -> Bool {
+        while true {
+            if let running = inputFlush {
+                let success = await running.task.value
+                if inputFlush?.id == running.id { inputFlush = nil }
+                if !success { return false }
+            } else if pendingInputs.isEmpty {
+                return true
+            } else {
+                let id = UUID()
+                let task = Task { [weak self] in await self?.performInputFlush() ?? true }
+                inputFlush = (id, task)
+            }
+        }
+    }
+
+    private func performInputFlush() async -> Bool {
+        let epoch = inputEpoch
         var latestInput: EvaluationResult?
         var inputOutput = ""
-        for (address, text) in pendingInputs.sorted(by: { $0.key.elementID < $1.key.elementID }) {
+        var acknowledged: [(InputAddress, String)] = []
+        func acknowledgeInputs() {
+            for (address, text) in acknowledged where pendingInputs[address] == text {
+                pendingInputs.removeValue(forKey: address)
+                inputOrder.removeValue(forKey: address)
+            }
+        }
+        for (address, text) in pendingInputs.sorted(by: { (inputOrder[$0.key] ?? 0) < (inputOrder[$1.key] ?? 0) }) {
             let evaluation = await session.uiAction(.text(windowID: address.windowID, elementID: address.elementID, value: text))
+            guard inputEpoch == epoch else { return true }
             inputOutput += evaluation.transcript
             if evaluation.executionError != nil {
+                acknowledgeInputs()
                 apply(evaluation, appendTranscript: false)
                 states[address.windowID]?.error = evaluation.error
                 transcript += inputOutput
                 return false
             }
             states[address.windowID]?.error = nil
-            if pendingInputs[address] == text { pendingInputs.removeValue(forKey: address) }
+            acknowledged.append((address, text))
             latestInput = evaluation
         }
+        acknowledgeInputs()
         if let latestInput { apply(latestInput, appendTranscript: false) }
         transcript += inputOutput
+        return true
+    }
+
+    /// Flush local edits before evaluating Smalltalk or taking an image snapshot.
+    @discardableResult
+    private func flushWindowState(allowInputFailure: Bool = false) async -> Bool {
+        captureGeometry()
+        let inputsValid = await synchronizeInputs()
+        guard inputsValid || allowInputFailure else { return false }
         var actions: [WindowAction] = []
         for id in dirtyText.sorted() {
             if let state = states[id] { actions.append(.text(id, state.text)) }
@@ -278,8 +336,12 @@ final class AppModel {
     }
 
     func editInput(windowID: Int64, elementID: String, text: String) {
-        pendingInputs[InputAddress(windowID: windowID, elementID: elementID)] = text
+        let address = InputAddress(windowID: windowID, elementID: elementID)
+        pendingInputs[address] = text
+        inputSequence &+= 1
+        inputOrder[address] = inputSequence
         imageHasChanges = true
+        scheduleInputSynchronization()
     }
 
     func clickControl(windowID: Int64, elementID: String) async {
@@ -297,7 +359,7 @@ final class AppModel {
         guard !isRunning else { return }
         isRunning = true
         defer { isRunning = false }
-        guard await flushWindowState() else { return }
+        guard await flushWindowState(allowInputFailure: true) else { return }
         apply(await session.windowAction(.open(kind)))
         imageHasChanges = true
     }
@@ -307,7 +369,7 @@ final class AppModel {
         guard let id = workspaceState?.id else { await openTool(.workspace); return }
         isRunning = true
         defer { isRunning = false }
-        guard await flushWindowState() else { return }
+        guard await flushWindowState(allowInputFailure: true) else { return }
         apply(await session.windowAction(.activate(id)))
     }
 
@@ -318,7 +380,9 @@ final class AppModel {
         let text = state.text as NSString
         let selection = state.selection
         let source = selection.length > 0 && NSMaxRange(selection) <= text.length ? text.substring(with: selection) : state.text
-        guard await flushWindowState() else { return }
+        // A broken model/controller method must remain repairable from code,
+        // while its pending field value stays available for a subsequent retry.
+        guard await flushWindowState(allowInputFailure: true) else { return }
         let evaluation = await session.evaluate(source)
         apply(evaluation)
         state.result = evaluation.value ?? ""
@@ -331,7 +395,7 @@ final class AppModel {
         guard !isRunning, let selectedClass, !isPrimitive else { return }
         isRunning = true
         defer { isRunning = false }
-        guard await flushWindowState() else { return }
+        guard await flushWindowState(allowInputFailure: true) else { return }
         let evaluation = await session.compile(methodSource, in: selectedClass)
         apply(evaluation)
         if evaluation.error == nil {
@@ -442,8 +506,12 @@ final class AppModel {
 
     private func clearPending() {
         synchronization?.cancel(); synchronization = nil
+        inputEpoch += 1
+        inputDebounce?.cancel(); inputDebounce = nil
         dirtyText.removeAll(); pendingFrames.removeAll(); pendingMinimized.removeAll(); pendingClose.removeAll(); pendingActive = nil
         pendingInputs.removeAll()
+        inputOrder.removeAll()
+        liveInputs.removeAll()
     }
 
     private func restoreImage(from url: URL) async throws {

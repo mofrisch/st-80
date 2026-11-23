@@ -2,7 +2,7 @@ import SmalltalkCore
 import SwiftUI
 
 struct UserInterfaceView: View {
-    @Bindable var model: AppModel
+    @Bindable var controller: AppController
     @Bindable var state: ToolWindowState
 
     var body: some View {
@@ -10,7 +10,7 @@ struct UserInterfaceView: View {
             GeometryReader { geometry in
                 ScrollView {
                     if let content = state.content {
-                        UIElementView(model: model, windowID: state.id, element: content)
+                        UIElementView(controller: controller, windowID: state.id, element: content)
                             .frame(maxWidth: .infinity, minHeight: geometry.size.height, alignment: .topLeading)
                     }
                 }
@@ -27,13 +27,13 @@ struct UserInterfaceView: View {
 }
 
 private struct UIElementView: View {
-    @Bindable var model: AppModel
+    @Bindable var controller: AppController
     let windowID: Int64
     let element: UIElementInfo
 
     var body: some View {
         elementContent
-            .disabled(!element.enabled || model.isRunning)
+            .disabled(!element.enabled || controller.isRunning)
     }
 
     @ViewBuilder
@@ -44,15 +44,15 @@ private struct UIElementView: View {
                 .accessibilityIdentifier("ui-\(element.id)")
         case .button:
             Button(element.text) {
-                Task { await model.clickControl(windowID: windowID, elementID: element.id) }
+                Task { await controller.clickControl(windowID: windowID, elementID: element.id) }
             }
             .accessibilityIdentifier("ui-\(element.id)")
         case .textField:
             VStack(alignment: .leading, spacing: 4) {
                 if !element.label.isEmpty { Text(element.label).font(.callout) }
                 TextField(element.placeholder, text: Binding(
-                    get: { model.inputText(windowID: windowID, element: element) },
-                    set: { model.editInput(windowID: windowID, elementID: element.id, text: $0) }
+                    get: { controller.inputText(windowID: windowID, element: element) },
+                    set: { controller.editInput(windowID: windowID, elementID: element.id, text: $0) }
                 ))
                 .textFieldStyle(.roundedBorder)
                 .accessibilityLabel(element.label.isEmpty ? element.placeholder : element.label)
@@ -62,13 +62,13 @@ private struct UIElementView: View {
             VStack(alignment: .leading, spacing: CGFloat(element.spacing)) {
                 ForEach(element.children) { child in
                     // Type erasure bounds SwiftUI's recursive view type.
-                    AnyView(UIElementView(model: model, windowID: windowID, element: child))
+                    AnyView(UIElementView(controller: controller, windowID: windowID, element: child))
                 }
             }.padding(CGFloat(element.padding))
         case .row:
             HStack(alignment: .top, spacing: CGFloat(element.spacing)) {
                 ForEach(element.children) { child in
-                    AnyView(UIElementView(model: model, windowID: windowID, element: child))
+                    AnyView(UIElementView(controller: controller, windowID: windowID, element: child))
                 }
             }.padding(CGFloat(element.padding))
         case .spacer:

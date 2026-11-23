@@ -1,24 +1,45 @@
-"Einmal ausführen; danach öffnet GreetingWindow new open weitere Exemplare."
-UIWindow subclass: #GreetingWindow instanceVariableNames: 'nameField greeting'.
+"Model: Fachliche Daten, berechnete Werte und Änderungsnachrichten."
+(Model subclasses select: [ :each | each name = #GreetingModel ]) isEmpty ifTrue: [
+    Model subclass: #GreetingModel instanceVariableNames: 'name' ].
+GreetingModel compile: 'initialize super initialize. name := '''''.
+GreetingModel compile: 'name ^ name'.
+GreetingModel compile: 'name: aString name := aString. self changed'.
+GreetingModel compile: 'greeting
+    name size = 0 ifTrue: [ ^ ''Noch keine Begrüßung.'' ].
+    ^ ''Hallo, '', name, ''!'''.
 
-GreetingWindow compile: '
-initialize
-    | column button |
-    super initialize.
-    self title: ''Mein Begrüßungsfenster''.
-    nameField := UITextField new.
-    nameField label: ''Name''; placeholder: ''Dein Name''.
-    greeting := UILabel new.
-    greeting text: ''Bereit.''.
-    button := UIButton new.
-    button title: ''Begrüßen''; action: [ self greet ].
+"Controller: Benutzereingaben verändern ausschließlich das Model."
+(Controller subclasses select: [ :each | each name = #GreetingController ]) isEmpty ifTrue: [
+    Controller subclass: #GreetingController instanceVariableNames: '' ].
+GreetingController compile: 'nameChanged: aString model name: aString'.
+GreetingController compile: 'useExample model name: ''Moritz'''.
+GreetingController compile: 'clear model name: '''''.
+
+"View: Layout, Bindungen und Weiterleitung von Eingaben."
+(UIWindow subclasses select: [ :each | each name = #GreetingView ]) isEmpty ifTrue: [
+    UIWindow subclass: #GreetingView instanceVariableNames: '' ].
+GreetingView compile: 'initialize super initialize. self title: ''Meine MVC-Oberfläche'''.
+GreetingView compile: 'model: aModel controller: aController
+    | column input output buttons exampleButton clearButton |
+    input := UITextField new.
+    input label: ''Name''; placeholder: ''Dein Name''.
+    input bind: #text to: aModel aspect: #name.
+    input onChangeSend: #nameChanged: to: aController.
+    output := UILabel new.
+    output bind: #text to: aModel aspect: #greeting.
+    exampleButton := UIButton new.
+    exampleButton title: ''Beispielname''; onClickSend: #useExample to: aController.
+    clearButton := UIButton new.
+    clearButton title: ''Leeren''; onClickSend: #clear to: aController.
+    buttons := UIRow new.
+    buttons spacing: 12; add: exampleButton; add: clearButton.
     column := UIColumn new.
     column padding: 20; spacing: 12.
-    column add: nameField; add: button; add: greeting.
+    column add: input; add: buttons; add: output.
     self content: column'.
 
-GreetingWindow compile: '
-greet
-    greeting text: ''Hallo, '', nameField text, ''!'''.
-
-GreetingWindow new open
+greetingModel := GreetingModel new.
+greetingController := GreetingController new.
+greetingController model: greetingModel.
+greetingView := GreetingView new.
+greetingView model: greetingModel controller: greetingController; open

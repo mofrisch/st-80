@@ -1,0 +1,44 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:st-80}",
+            "name": "Debug Smalltalk80",
+            "target": "Smalltalk80",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug Smalltalk80"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:st-80}",
+            "name": "Release Smalltalk80",
+            "target": "Smalltalk80",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release Smalltalk80"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:st-80}",
+            "name": "Debug st80-bootstrap",
+            "target": "st80-bootstrap",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug st80-bootstrap"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:st-80}",
+            "name": "Release st80-bootstrap",
+            "target": "st80-bootstrap",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release st80-bootstrap"
+        }
+    ]
+}

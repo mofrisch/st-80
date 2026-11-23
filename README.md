@@ -25,7 +25,7 @@ Voraussetzungen: macOS 14 oder neuer und Xcode mit Swift 6.
 
 - **Workspace:** Code markieren und **⌘D** drücken. Ohne Auswahl wird der gesamte Inhalt ausgeführt.
 - **⌘P:** Ausführen und den Ergebniswert zusätzlich ins Transcript schreiben.
-- **Browser:** Links eine Klasse und eine Instanzmethode auswählen. Methode bearbeiten und mit **⌘S** akzeptieren. Bereits existierende Objekte verwenden sofort die neue Methode.
+- Im **System Browser** führen vier Listen von der Klassenkategorie über Klasse und Protokoll zur Instanzmethode. Bearbeite den Quelltext darunter und akzeptiere ihn mit **⌘S**. Bereits existierende Objekte verwenden sofort die neue Methode.
 - Über **+** lassen sich Klassen und Methoden anlegen. Im Klassenbrowser stehen die eigenen Methoden; geerbte Methoden findet man bei der Oberklasse.
 - Rechts erscheinen die Workspace-Variablen, ihre Klassen und ihre Werte.
 - **⌘N:** Einen weiteren, unabhängigen Workspace öffnen.
@@ -123,7 +123,7 @@ Fenstertexte werden vor einer Auswertung oder dem Speichern eines Images an die 
 
 `40-Tools.st` definiert `WorkspaceWindow`, `BrowserWindow` und `TranscriptWindow`. Du kannst diese Klassen im Browser bearbeiten und für neue Fenster ableiten. `DesktopManager>>windowClassFor:` legt fest, welche Klasse beim Öffnen eines Werkzeugs verwendet wird.
 
-Im Workspace wählen die Smalltalk-Aktionen zwischen der nativen Textauswahl und dem ganzen Puffer. Der Browser verwaltet Filter, Auswahl, Entwürfe, Klassenanlage und Methodenannahme in Smalltalk. Er liest die VM-Reflexion über `ToolVM` und `Class`. `Transcript show:`, `cr` und `clear` pflegen das beobachtbare `TranscriptBuffer`-Model mit den letzten 64 KiB Ausgabetext.
+Im Workspace wählen die Smalltalk-Aktionen zwischen der nativen Textauswahl und dem ganzen Puffer. Der Browser verwaltet Filter, Auswahl, Entwürfe, Klassenanlage und Methodenannahme in Smalltalk. Er liest die VM-Reflexion über `ToolVM` und `Class` und leitet die angezeigten Protokolle aus den Selektoren und VM-Primitiven ab. `Transcript show:`, `cr` und `clear` pflegen das beobachtbare `TranscriptBuffer`-Model mit den letzten 64 KiB Ausgabetext.
 
 Der SwiftUI-Renderer verwendet denselben Control-Baum für die Werkzeuge und eigene Fenster. Dateidialoge, Tastenkürzel, native Textbearbeitung und die Darstellung der Controls liegen an der macOS-Grenze. Die Klassen der zusätzlichen Controls stehen in `35-NativeControls.st`.
 
@@ -188,7 +188,7 @@ Bindbar sind `text` bei Labels und Textfeldern, `title` bei Buttons, `enabled` u
 | `UITextField` | `label:`, `placeholder:`, `text:`, `text`, `onChangeSend:to:` |
 | `UICodeEditor` | Wie ein Textfeld, zusätzlich `readOnly:` und native Textauswahl |
 | `UIList` | `items:` mit eindeutigen Strings, `selection:`, `onSelectSend:to:` |
-| `UISplit`, `UIScroll`, `UIMenu` | Container für geteilte Ansicht, Scrollbereich bzw. Menü. `UIMenu` hat zusätzlich `title:`. |
+| `UISplit`, `UIScroll`, `UIMenu` | Container für geteilte Ansicht, Scrollbereich bzw. Menü. `UISplit` stapelt die Bereiche mit `role: #vertical`. `UIMenu` hat zusätzlich `title:`. |
 | `UIDivider` | Trennlinie |
 | `UIColumn`, `UIRow` | `add:`, `remove:`, `removeAll`, `children:`, `spacing:`, `padding:` |
 | `UISpacer` | Flexibler Abstand innerhalb einer Zeile oder Spalte |

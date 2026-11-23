@@ -8,6 +8,46 @@ struct ToolWindowTests {
         return root.children.lazy.compactMap { element(id, in: $0) }.first
     }
 
+    @Test func browserFiltersClassesAndMethodsThroughFourPanes() async throws {
+        let session = SmalltalkSession()
+        let snapshot = await session.snapshot()
+        let browser = try #require(snapshot.windows.first(where: { $0.kind == .browser }))
+        let navigation = try #require(element("browserNavigation", in: browser.content))
+        #expect(navigation.children.map { $0.children.last?.accessibilityID } == ["categoryList", "classList", "protocolList", "methodList"])
+
+        let categories = try #require(element("categoryList", in: browser.content))
+        let classes = try #require(element("classList", in: browser.content))
+        let protocols = try #require(element("protocolList", in: browser.content))
+        let methods = try #require(element("methodList", in: browser.content))
+        let editor = try #require(element("methodEditor", in: browser.content))
+        let accept = try #require(element("executeButton", in: browser.content))
+
+        func select(_ list: UIElementInfo, _ entry: String) async -> UIElementInfo? {
+            let result = await session.uiAction(.select(windowID: browser.id, elementID: list.id, value: entry))
+            #expect(result.error == nil)
+            return result.windows.first(where: { $0.id == browser.id })?.content
+        }
+
+        let kernel = await select(categories, "Kernel")
+        #expect(element("classList", in: kernel)?.items.contains("Object") == true)
+        #expect(element("classList", in: kernel)?.selection == nil)
+        let examples = await select(categories, "Beispiele")
+        #expect(element("classList", in: examples)?.items == ["Counter"])
+        let counter = await select(classes, "Counter")
+        #expect(element("protocolList", in: counter)?.items == ["Alle", "Initialisierung", "Unär", "Schlüsselwort"])
+        let unary = await select(protocols, "Unär")
+        #expect(element("methodList", in: unary)?.items == ["increment", "value"])
+        let value = await select(methods, "value")
+        #expect(element("methodEditor", in: value)?.text == "value ^ count")
+
+        _ = await session.uiAction(.text(windowID: browser.id, elementID: editor.id, value: "adjusted: amount ^ count + amount"))
+        let accepted = await session.uiAction(.click(windowID: browser.id, elementID: accept.id))
+        #expect(accepted.error == nil)
+        let content = accepted.windows.first(where: { $0.id == browser.id })?.content
+        #expect(element("protocolList", in: content)?.selection == "Alle")
+        #expect(element("methodList", in: content)?.selection == "adjusted:")
+    }
+
     @Test func toolLayoutsAndActionsRunFromTheImage() async throws {
         let session = SmalltalkSession()
         let snapshot = await session.snapshot()

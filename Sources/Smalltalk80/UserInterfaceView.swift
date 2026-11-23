@@ -84,18 +84,13 @@ private struct UIElementView: View {
                 label: element.label
             )
         case .list:
-            List(selection: Binding(
-                get: { element.selection },
-                set: { value in
-                    Task { await controller.selectControl(windowID: windowID, elementID: element.id, value: value) }
+            Group {
+                if element.role == "pane" {
+                    list.listStyle(.bordered).controlSize(.small)
+                } else {
+                    list.listStyle(.sidebar)
                 }
-            )) {
-                ForEach(element.items, id: \.self) { entry in
-                    Text(entry).font(.system(size: 12, design: .monospaced)).tag(entry)
-                }
-            }
-            .listStyle(.sidebar)
-            .accessibilityIdentifier(identifier)
+            }.accessibilityIdentifier(identifier)
         case .column:
             VStack(alignment: .leading, spacing: CGFloat(element.spacing)) { children }
                 .padding(CGFloat(element.padding))
@@ -103,7 +98,11 @@ private struct UIElementView: View {
             HStack(alignment: .center, spacing: CGFloat(element.spacing)) { children }
                 .padding(CGFloat(element.padding))
         case .split:
-            HSplitView { children }
+            if element.role == "vertical" {
+                VSplitView { children }
+            } else {
+                HSplitView { children }
+            }
         case .scroll:
             ScrollViewReader { reader in
                 ScrollView {
@@ -131,6 +130,19 @@ private struct UIElementView: View {
         ForEach(element.children) { child in
             // Type erasure bounds the recursive SwiftUI view type.
             AnyView(UIElementView(controller: controller, windowID: windowID, element: child))
+        }
+    }
+
+    private var list: some View {
+        List(selection: Binding(
+            get: { element.selection },
+            set: { value in
+                Task { await controller.selectControl(windowID: windowID, elementID: element.id, value: value) }
+            }
+        )) {
+            ForEach(element.items, id: \.self) { entry in
+                Text(entry).font(.system(size: 12, design: .monospaced)).tag(entry)
+            }
         }
     }
 

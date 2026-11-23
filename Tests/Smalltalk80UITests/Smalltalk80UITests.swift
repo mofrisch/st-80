@@ -15,10 +15,18 @@ final class Smalltalk80UITests: XCTestCase {
         workspace.textViews["workspaceEditor"].typeKey("2", modifierFlags: .command)
         let browser = app.windows["toolWindow-2"]
         XCTAssertTrue(browser.waitForExistence(timeout: 5))
+        let panes = ["Klassenkategorien", "Klassen", "Protokolle", "Methoden"].map { browser.staticTexts[$0] }
+        for pane in panes { XCTAssertTrue(pane.waitForExistence(timeout: 5)) }
+        for (left, right) in zip(panes, panes.dropFirst()) {
+            XCTAssertLessThan(left.frame.minX, right.frame.minX)
+        }
+        browser.staticTexts["Beispiele"].firstMatch.click()
         browser.staticTexts["Counter"].firstMatch.click()
+        browser.staticTexts["Unär"].firstMatch.click()
         browser.staticTexts["value"].firstMatch.click()
         let method = browser.textViews["methodEditor"]
         XCTAssertTrue(method.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(method.frame.minY, panes[0].frame.maxY)
         replaceText(in: method, with: "value\n    ^ count + 10")
         method.typeKey("s", modifierFlags: .command)
         let editor = workspace.textViews["workspaceEditor"]

@@ -12,6 +12,8 @@ UIElement compile: 'identifier: aString identifier := aString'.
 
 UIElement compile: 'role: aSymbol role := aSymbol'.
 
+UIElement compile: 'visible ^ visible'.
+
 UIElement compile: 'visible: aBoolean visible := aBoolean'.
 
 UIElement compile: 'widthFrom: minimum to: maximum minWidth := minimum. maxWidth := maximum'.

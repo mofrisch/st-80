@@ -118,7 +118,18 @@ private struct UIElementView: View {
                 }
             }
         case .menu:
-            Menu(element.text) { children }
+            if element.role == "paneMenu" {
+                Menu {
+                    children
+                } label: {
+                    Image(systemName: "ellipsis.circle").accessibilityLabel(element.text)
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .accessibilityIdentifier(identifier)
+            } else {
+                Menu(element.text) { children }
+            }
         case .spacer:
             Spacer(minLength: 8)
         case .divider:

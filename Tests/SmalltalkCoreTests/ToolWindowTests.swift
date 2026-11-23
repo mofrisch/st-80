@@ -44,8 +44,100 @@ struct ToolWindowTests {
         let accepted = await session.uiAction(.click(windowID: browser.id, elementID: accept.id))
         #expect(accepted.error == nil)
         let content = accepted.windows.first(where: { $0.id == browser.id })?.content
-        #expect(element("protocolList", in: content)?.selection == "All")
+        #expect(element("protocolList", in: content)?.selection == "Unary")
+        #expect(element("methodList", in: content)?.items == ["adjusted:", "increment", "value"])
         #expect(element("methodList", in: content)?.selection == "adjusted:")
+    }
+
+    @Test func browserOrganizationEditsSurviveClosingTheBrowserAndLoadingAnImage() async throws {
+        let session = SmalltalkSession()
+        let snapshot = await session.snapshot()
+        let browser = try #require(snapshot.windows.first(where: { $0.kind == .browser }))
+        var content = try #require(browser.content)
+
+        func perform(_ identifier: String, _ action: (String) -> UIAction) async throws {
+            let control = try #require(element(identifier, in: content))
+            let result = await session.uiAction(action(control.id))
+            try #require(result.error == nil, "\(identifier): \(result.error ?? "")")
+            content = try #require(result.windows.first(where: { $0.id == browser.id })?.content)
+        }
+
+        func click(_ identifier: String) async throws {
+            try await perform(identifier) { .click(windowID: browser.id, elementID: $0) }
+        }
+
+        func select(_ identifier: String, _ value: String) async throws {
+            try await perform(identifier) { .select(windowID: browser.id, elementID: $0, value: value) }
+        }
+
+        func edit(_ identifier: String, _ value: String) async throws {
+            try await perform(identifier) { .text(windowID: browser.id, elementID: $0, value: value) }
+        }
+
+        func submitName(_ value: String) async throws {
+            try await edit("organizationName", value)
+            try await click("applyOrganizationEdit")
+        }
+
+        try await click("newCategory")
+        try await submitName("Domain")
+        #expect(element("categoryList", in: content)?.selection == "Domain")
+        #expect(element("classList", in: content)?.items == [])
+
+        try await click("newCategory")
+        try await submitName("Domain")
+        #expect(element("evaluationResult", in: content)?.text == "That name is already in use.")
+        try await click("cancelOrganizationEdit")
+
+        try await select("categoryList", "Examples")
+        try await select("classList", "Counter")
+        try await click("moveClass")
+        try await select("organizationDestinations", "Domain")
+        try await click("applyOrganizationEdit")
+        try await click("renameCategory")
+        try await submitName("Domain Models")
+        #expect(element("categoryList", in: content)?.selection == "Domain Models")
+        #expect(element("classList", in: content)?.items == ["Counter"])
+
+        try await click("newProtocol")
+        try await submitName("Reading")
+        #expect(element("protocolList", in: content)?.selection == "Reading")
+        #expect(element("methodList", in: content)?.items == [])
+        try await edit("methodEditor", "answer ^ 42")
+        try await click("executeButton")
+        #expect(element("methodList", in: content)?.items == ["answer"])
+
+        try await click("renameProtocol")
+        try await submitName("Accessing")
+        try await select("protocolList", "Unary")
+        try await select("methodList", "value")
+        try await click("moveMethod")
+        try await select("organizationDestinations", "Accessing")
+        try await click("applyOrganizationEdit")
+        #expect(element("protocolList", in: content)?.selection == "Accessing")
+        #expect(element("methodList", in: content)?.items == ["answer", "value"])
+        #expect(element("methodList", in: content)?.selection == "value")
+        #expect(await session.evaluate("Counter new answer").value == "42")
+        #expect(await session.evaluate("(SystemOrganization protocolsOf: String) names includes: 'Accessing'").value == "false")
+
+        try await click("newProtocol")
+        try await submitName("Editing")
+        #expect(element("methodList", in: content)?.items == [])
+
+        let closed = await session.windowAction(.close(browser.id))
+        #expect(closed.windows.allSatisfy { $0.kind != .browser })
+        let restored = SmalltalkSession()
+        _ = try await restored.loadImage(session.imageData())
+        let reopened = await restored.windowAction(.open(.browser))
+        let restoredBrowser = try #require(reopened.windows.first(where: { $0.kind == .browser }))
+        let restoredCategories = try #require(element("categoryList", in: restoredBrowser.content))
+        #expect(restoredCategories.items.contains("Domain Models"))
+        #expect(!restoredCategories.items.contains("Domain"))
+        let restoredProtocols = try #require(element("protocolList", in: restoredBrowser.content))
+        #expect(restoredProtocols.items.contains("Accessing"))
+        #expect(restoredProtocols.items.contains("Editing"))
+        let filtered = await restored.uiAction(.select(windowID: restoredBrowser.id, elementID: restoredProtocols.id, value: "Accessing"))
+        #expect(element("methodList", in: filtered.windows.first(where: { $0.kind == .browser })?.content)?.items == ["answer", "value"])
     }
 
     @Test func toolLayoutsAndActionsRunFromTheImage() async throws {

@@ -98,10 +98,10 @@ WorkspaceWindow compile: 'exampleButton: aTitle key: exampleKey
         workspace := Desktop openWorkspace.
         workspace notNil ifTrue: [ workspace text: (ToolVM exampleAt: exampleKey) ] ]; yourself'.
 
-DevelopmentWindow subclass: #BrowserWindow instanceVariableNames: 'categoryList classList protocolList methodList queryField editor category className protocolName selector originalSource header hint accept versions inspector inspectorPane creation nameField fieldsField'.
+DevelopmentWindow subclass: #BrowserWindow instanceVariableNames: 'categoryList classList protocolList methodList queryField editor category className protocolName selector originalSource header hint accept versions inspector inspectorPane creation nameField fieldsField organizationForm renameCategoryItem moveClassItem newProtocolItem renameProtocolItem moveMethodItem'.
 
 BrowserWindow compile: 'initialize
-    | root navigation split source actions toolbar |
+    | root navigation split source actions toolbar categoryMenu protocolMenu |
     super initialize.
     self kind: #browser.
     self title: ''System Browser''.
@@ -125,19 +125,32 @@ BrowserWindow compile: 'initialize
     actions add: (UIButton new title: ''New Method''; onClickSend: #newMethod to: self; yourself).
     actions add: (UIButton new title: ''Details''; action: [ inspectorPane visible: inspectorPane visible not ]; yourself).
 
+    renameCategoryItem := self organizationItem: ''Rename Category …'' id: ''renameCategory'' send: #renameCategory.
+    moveClassItem := self organizationItem: ''Move Class …'' id: ''moveClass'' send: #moveClass.
+    categoryMenu := UIMenu new title: ''Class Category Actions''; identifier: ''categoryActions''; role: #paneMenu; yourself.
+    categoryMenu add: (self organizationItem: ''New Category …'' id: ''newCategory'' send: #newCategory).
+    categoryMenu add: renameCategoryItem; add: moveClassItem.
+
+    newProtocolItem := self organizationItem: ''New Protocol …'' id: ''newProtocol'' send: #newProtocol.
+    renameProtocolItem := self organizationItem: ''Rename Protocol …'' id: ''renameProtocol'' send: #renameProtocol.
+    moveMethodItem := self organizationItem: ''Move Method …'' id: ''moveMethod'' send: #moveMethod.
+    protocolMenu := UIMenu new title: ''Method Protocol Actions''; identifier: ''protocolActions''; role: #paneMenu; yourself.
+    protocolMenu add: newProtocolItem; add: renameProtocolItem; add: moveMethodItem.
+
     navigation := UISplit new identifier: ''browserNavigation''; heightFrom: 135 to: 220; yourself.
-    navigation add: (self pane: ''Class Categories'' list: categoryList).
-    navigation add: (self pane: ''Classes'' list: classList).
-    navigation add: (self pane: ''Protocols'' list: protocolList).
-    navigation add: (self pane: ''Methods'' list: methodList).
+    navigation add: (self pane: ''Class Categories'' list: categoryList menu: categoryMenu).
+    navigation add: (self pane: ''Classes'' list: classList menu: nil).
+    navigation add: (self pane: ''Protocols'' list: protocolList menu: protocolMenu).
+    navigation add: (self pane: ''Methods'' list: methodList menu: nil).
 
     toolbar := UIRow new padding: 8; yourself.
     toolbar add: (UIColumn new spacing: 2; add: header; add: hint; yourself); add: UISpacer new; add: versions; add: accept.
     creation := self classForm.
+    organizationForm := BrowserOrganizationForm new.
     inspector := UILabel new role: #code; yourself.
     inspectorPane := UIScroll new widthFrom: 150 to: 245; padding: 12; visible: false; add: inspector; yourself.
     source := UIColumn new spacing: 0; heightFrom: 135 to: nil; yourself.
-    source add: toolbar; add: UIDivider new; add: creation; add: (UISplit new add: editor; add: inspectorPane; yourself).
+    source add: toolbar; add: UIDivider new; add: creation; add: organizationForm; add: (UISplit new add: editor; add: inspectorPane; yourself).
     split := UISplit new role: #vertical; add: navigation; add: source; yourself.
     root := UIColumn new spacing: 0; yourself.
     root add: actions; add: UIDivider new; add: split; add: UIDivider new.
@@ -150,10 +163,14 @@ BrowserWindow compile: 'initialize
 BrowserWindow compile: 'list: identifier selecting: message
     ^ UIList new identifier: identifier; role: #pane; onSelectSend: message to: self; yourself'.
 
-BrowserWindow compile: 'pane: aTitle list: aList
+BrowserWindow compile: 'pane: aTitle list: aList menu: aMenu
     | labelBar |
     labelBar := UIRow new padding: 8; add: (self caption: aTitle); add: UISpacer new; yourself.
-    ^ UIColumn new spacing: 0; widthFrom: 116 to: nil; add: labelBar; add: aList; yourself'.
+    aMenu notNil ifTrue: [ labelBar add: aMenu ].
+    ^ UIColumn new spacing: 0; widthFrom: 145 to: nil; add: labelBar; add: aList; yourself'.
+
+BrowserWindow compile: 'organizationItem: aTitle id: identifier send: message
+    ^ UIButton new title: aTitle; identifier: identifier; onClickSend: message to: self; yourself'.
 
 BrowserWindow compile: 'selectedClass
     className isNil ifTrue: [ ^ nil ].
@@ -165,45 +182,45 @@ BrowserWindow compile: 'primitiveSelected
 
 BrowserWindow compile: 'filter: aString queryField text: aString. self refreshClasses'.
 
-BrowserWindow compile: 'classCategoryFor: name
-    (#(''Object'' ''Class'' ''UndefinedObject'' ''Boolean'' ''True'' ''False'' ''Number'' ''Integer'' ''SmallInteger'' ''String'' ''Symbol'' ''Array'' ''BlockClosure'') includes: name) ifTrue: [ ^ ''Kernel'' ].
-    (#(''STCompilerList'' ''STScanner'' ''STCompiler'') includes: name) ifTrue: [ ^ ''Compiler'' ].
-    (#(''Transcript'' ''TranscriptModel'' ''ToolServices'' ''DevelopmentWindow'' ''WorkspaceWindow'' ''BrowserWindow'' ''TranscriptWindow'') includes: name) ifTrue: [ ^ ''Tools'' ].
-    (#(''Model'' ''Controller'' ''UIBinding'' ''SystemWindow'' ''DesktopModel'' ''DisplayScreen'' ''DesktopManager''
-       ''UIElement'' ''UILabel'' ''UIButton'' ''UITextField'' ''UIContainer'' ''UIColumn'' ''UIRow'' ''UISpacer''
-       ''UIWindow'' ''UICodeEditor'' ''UIList'' ''UISplit'' ''UIScroll'' ''UIMenu'' ''UIDivider'') includes: name)
-        ifTrue: [ ^ ''Interface'' ].
-    name = ''Counter'' ifTrue: [ ^ ''Examples'' ].
-    ^ ''User Classes'''.
-
 BrowserWindow compile: 'matchesCategory: name
-    ^ category = ''All'' or: [ (self classCategoryFor: name) = category ]'.
+    ^ category = ''All'' or: [ (SystemOrganization categoryOf: name) = category ]'.
+
+BrowserWindow compile: 'withAll: entries
+    | result |
+    result := Array new: entries size + 1.
+    result at: 1 put: ''All''.
+    1 to: entries size do: [ :index | result at: index + 1 put: (entries at: index) ].
+    ^ result'.
 
 BrowserWindow compile: 'refreshClasses
-    | query |
+    | query names |
     query := queryField text.
-    categoryList items: #(''All'' ''Kernel'' ''Compiler'' ''Interface'' ''Tools'' ''Examples'' ''User Classes''); selection: category.
+    names := SystemOrganization classCategories names.
+    (category ~= ''All'' and: [ (names includes: category) not ]) ifTrue: [ category := ''All'' ].
+    categoryList items: (self withAll: names); selection: category.
     classList items: (ToolVM classNames select: [ :each |
         (self matchesCategory: each) and: [ query size = 0 or: [ each includesIgnoringCase: query ] ] ]).
     classList selection: className'.
 
 BrowserWindow compile: 'protocolOf: name in: target
-    (target isPrimitiveAt: name) ifTrue: [ ^ ''VM Primitives'' ].
-    name = ''initialize'' ifTrue: [ ^ ''Initialization'' ].
-    (name includes: '':'') ifTrue: [ ^ ''Keyword'' ].
-    (name at: 1) isLetter ifTrue: [ ^ ''Unary'' ].
-    ^ ''Binary'''.
+    ^ (SystemOrganization protocolsOf: target) groupOf: name default: (SystemOrganization defaultProtocolFor: name in: target)'.
 
 BrowserWindow compile: 'refreshMethods
-    | target methods protocols |
+    | target methods protocols names |
     target := self selectedClass.
-    methods := target isNil ifTrue: [ #() ] ifFalse: [ target methodNames ].
+    target isNil ifTrue: [
+        protocolName := ''All''.
+        protocolList items: #(''All''); selection: protocolName.
+        methodList items: #(); selection: nil.
+        ^ self ].
+    methods := target methodNames.
     protocols := methods collect: [ :each | self protocolOf: each in: target ].
-    (protocolName notNil and: [ protocols includes: protocolName ]) ifFalse: [ protocolName := ''All'' ].
-    protocolList items: (#(''All'' ''Initialization'' ''Unary'' ''Keyword'' ''Binary'' ''VM Primitives'') select: [ :each |
-        each = ''All'' or: [ protocols includes: each ] ]); selection: protocolName.
-    methodList items: (protocolName = ''All'' ifTrue: [ methods ] ifFalse: [
-        methods select: [ :each | (self protocolOf: each in: target) = protocolName ] ]).
+    names := (SystemOrganization protocolsOf: target) namesWith: protocols.
+    (names includes: protocolName) ifFalse: [ protocolName := ''All'' ].
+    protocolList items: (self withAll: names); selection: protocolName.
+    protocolName ~= ''All'' ifTrue: [
+        methods := methods select: [ :each | (self protocolOf: each in: target) = protocolName ] ].
+    methodList items: methods.
     methodList selection: selector'.
 
 BrowserWindow compile: 'refreshTools
@@ -215,6 +232,7 @@ BrowserWindow compile: 'refreshTools
         textValue := target methodSourceAt: selector.
         (textValue notNil and: [ textValue ~= originalSource and: [ editor text = originalSource ] ]) ifTrue: [
             editor text: textValue. originalSource := textValue. self refreshEditor ] ].
+    self refreshOrganizationActions.
     self refreshInspector'.
 
 BrowserWindow compile: 'refreshInspector
@@ -234,6 +252,7 @@ BrowserWindow compile: 'refreshEditor
     hint text: (primitive ifTrue: [ ''VM Primitive'' ] ifFalse: [ ''Instance Side'' ]).
     editor readOnly: (primitive or: [ className isNil ]).
     versions enabled: (selector notNil and: [ primitive not ]).
+    self refreshOrganizationActions.
     self draftChanged: editor text'.
 
 BrowserWindow compile: 'draftChanged: aString
@@ -242,7 +261,8 @@ BrowserWindow compile: 'draftChanged: aString
 BrowserWindow compile: 'chooseCategory: name
     category := name isNil ifTrue: [ ''All'' ] ifFalse: [ name ].
     (className notNil and: [ (self matchesCategory: className) not ]) ifTrue: [ ^ self chooseClass: nil ].
-    self refreshClasses'.
+    self refreshClasses.
+    self refreshOrganizationActions'.
 
 BrowserWindow compile: 'chooseClass: name
     className := name.
@@ -254,7 +274,8 @@ BrowserWindow compile: 'chooseProtocol: name
     protocolName := name.
     (selector notNil and: [ name notNil and: [ name ~= ''All'' and: [ (self protocolOf: selector in: self selectedClass) ~= name ] ] ])
         ifTrue: [ self chooseMethod: nil ].
-    self refreshMethods'.
+    self refreshMethods.
+    self refreshOrganizationActions'.
 
 BrowserWindow compile: 'chooseMethod: name
     selector := name.
@@ -278,7 +299,7 @@ BrowserWindow compile: 'acceptMethod
     (outcome at: 1) ifTrue: [
         selector := outcome at: 2.
         originalSource := editor text.
-        (protocolName ~= ''All'' and: [ (self protocolOf: selector in: target) ~= protocolName ]) ifTrue: [ protocolName := ''All'' ].
+        protocolName ~= ''All'' ifTrue: [ (SystemOrganization protocolsOf: target) move: selector to: protocolName ].
         self refreshTools.
         self refreshEditor.
         self result: (ToolVM success: className , '' » '' , selector)
@@ -299,20 +320,101 @@ BrowserWindow compile: 'classForm
     ^ form'.
 
 BrowserWindow compile: 'showCreation
+    organizationForm cancel.
     nameField text: ''''. fieldsField text: ''''. creation visible: true'.
 
 BrowserWindow compile: 'hideCreation creation visible: false'.
 
 BrowserWindow compile: 'createClass
-    | outcome |
+    | outcome created |
     outcome := ToolVM createSubclass: nameField text fields: fieldsField text.
     (outcome at: 1) ifTrue: [
+        created := outcome at: 2.
         self hideCreation.
-        category := ''User Classes''.
+        category = ''All''
+            ifTrue: [ category := SystemOrganization categoryOf: created ]
+            ifFalse: [ SystemOrganization classCategories move: created to: category ].
         queryField text: ''''.
-        self chooseClass: (outcome at: 2).
+        self chooseClass: created.
         self newMethod ].
     self result: outcome'.
+
+BrowserWindow compile: 'refreshOrganizationActions
+    renameCategoryItem enabled: category ~= ''All''.
+    moveClassItem enabled: className notNil.
+    newProtocolItem enabled: className notNil.
+    renameProtocolItem enabled: (className notNil and: [ protocolName ~= ''All'' ]).
+    moveMethodItem enabled: (className notNil and: [ selector notNil ])'.
+
+BrowserWindow compile: 'editGroupIn: grouping named: oldName prompt: prompt selecting: onSuccess
+    self hideCreation.
+    organizationForm edit: prompt name: (oldName isNil ifTrue: [ '''' ] ifFalse: [ oldName ]) do: [ :value |
+        | failure |
+        failure := oldName isNil
+            ifTrue: [ grouping addGroup: value ]
+            ifFalse: [ grouping renameGroup: oldName to: value ].
+        failure isNil ifTrue: [ onSuccess value: value ].
+        self organizationEdited: failure ]'.
+
+BrowserWindow compile: 'moveItem: item in: grouping from: current prompt: prompt selecting: onSuccess
+    self hideCreation.
+    organizationForm move: prompt choices: grouping names selected: current do: [ :value |
+        | failure |
+        failure := grouping move: item to: value.
+        failure isNil ifTrue: [ onSuccess value: value ].
+        self organizationEdited: failure ]'.
+
+BrowserWindow compile: 'organizationEdited: failure
+    | outcome |
+    failure notNil ifTrue: [
+        outcome := Array new: 2.
+        outcome at: 1 put: false; at: 2 put: failure.
+        ^ self result: outcome ].
+    organizationForm cancel.
+    self refreshTools.
+    Desktop windows do: [ :window |
+        ((window == self) not and: [ window respondsTo: #refreshTools ]) ifTrue: [ window refreshTools ] ].
+    self result: (ToolVM success: ''Organization updated.'')'.
+
+BrowserWindow compile: 'newCategory
+    self editGroupIn: SystemOrganization classCategories named: nil prompt: ''New Class Category'' selecting: [ :value |
+        self chooseCategory: value ]'.
+
+BrowserWindow compile: 'renameCategory
+    category = ''All'' ifTrue: [ ^ self ].
+    self editGroupIn: SystemOrganization classCategories named: category prompt: ''Rename Class Category'' selecting: [ :value |
+        self chooseCategory: value ]'.
+
+BrowserWindow compile: 'moveClass
+    | selected |
+    className isNil ifTrue: [ ^ self ].
+    selected := className.
+    self moveItem: selected in: SystemOrganization classCategories from: (SystemOrganization categoryOf: selected)
+        prompt: ''Move Class '' , selected selecting: [ :value |
+            className = selected ifTrue: [ self chooseCategory: value ] ]'.
+
+BrowserWindow compile: 'newProtocol
+    | target |
+    target := self selectedClass.
+    target isNil ifTrue: [ ^ self ].
+    self editGroupIn: (SystemOrganization protocolsOf: target) named: nil prompt: ''New Protocol in '' , className selecting: [ :value |
+        target == self selectedClass ifTrue: [ self chooseProtocol: value ] ]'.
+
+BrowserWindow compile: 'renameProtocol
+    | target |
+    target := self selectedClass.
+    (target isNil or: [ protocolName = ''All'' ]) ifTrue: [ ^ self ].
+    self editGroupIn: (SystemOrganization protocolsOf: target) named: protocolName prompt: ''Rename Method Protocol'' selecting: [ :value |
+        target == self selectedClass ifTrue: [ self chooseProtocol: value ] ]'.
+
+BrowserWindow compile: 'moveMethod
+    | target selected |
+    target := self selectedClass.
+    (target isNil or: [ selector isNil ]) ifTrue: [ ^ self ].
+    selected := selector.
+    self moveItem: selected in: (SystemOrganization protocolsOf: target) from: (self protocolOf: selected in: target)
+        prompt: ''Move Method '' , selected selecting: [ :value |
+            (target == self selectedClass and: [ selector = selected ]) ifTrue: [ self chooseProtocol: value ] ]'.
 
 DevelopmentWindow subclass: #TranscriptWindow instanceVariableNames: ''.
 

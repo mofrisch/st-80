@@ -121,7 +121,9 @@ The app sends window text to the Smalltalk objects before an evaluation or image
 
 `40-Tools.st` defines `WorkspaceWindow`, `BrowserWindow`, and `TranscriptWindow`. You can edit those classes in the browser and subclass them to create new windows. `DesktopManager>>windowClassFor:` chooses the class to instantiate when opening a tool.
 
-Smalltalk workspace actions use the native text selection when present and the whole buffer otherwise. The browser manages filters, selection, drafts, class creation, and method acceptance in Smalltalk. It reads VM reflection through `ToolVM` and `Class` and derives the displayed protocols from selectors and VM primitives. `Transcript show:`, `cr`, and `clear` update the observable `TranscriptBuffer` model, which retains the last 64 KiB of output.
+Smalltalk workspace actions use the native text selection when present and the whole buffer otherwise. The browser manages filters, selection, drafts, class creation, and method acceptance in Smalltalk. It reads VM reflection through `ToolVM` and `Class`. `Transcript show:`, `cr`, and `clear` update the observable `TranscriptBuffer` model, which retains the last 64 KiB of output.
+
+The **⋯** menus in **Class Categories** and **Protocols** let you create and rename groups and move the selected class or method. Select an existing group before choosing **Rename Category …** or **Rename Protocol …**. Use **Move Class …** or **Move Method …** to choose a destination. The browser files classes and methods created there into the current category or protocol when one is selected. Protocols are specific to each class. The system supplies defaults for definitions with no explicit assignment. `SystemOrganization` holds these names and assignments in Smalltalk, and saving the image preserves them even if the browser is closed.
 
 The SwiftUI renderer uses the same control tree for built-in tools and custom windows. File dialogs, keyboard shortcuts, native text editing, and control rendering sit at the macOS boundary. See `35-NativeControls.st` for the additional controls.
 

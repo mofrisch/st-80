@@ -3,6 +3,36 @@ import XCTest
 
 @MainActor
 final class Smalltalk80UITests: XCTestCase {
+    func testBrowserOrganizationMenusCreateCategoriesAndProtocols() {
+        let app = launchFreshApp()
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        editor.typeKey("2", modifierFlags: .command)
+        let browser = app.windows["toolWindow-2"]
+        XCTAssertTrue(browser.waitForExistence(timeout: 5))
+
+        func add(_ menu: String, item: String, named name: String) {
+            let actions = browser.descendants(matching: .any).matching(identifier: menu).firstMatch
+            XCTAssertTrue(actions.waitForExistence(timeout: 5))
+            actions.click()
+            let command = app.menuItems[item].firstMatch
+            XCTAssertTrue(command.waitForExistence(timeout: 5))
+            command.click()
+            let field = browser.textFields["organizationName"]
+            XCTAssertTrue(field.waitForExistence(timeout: 5))
+            field.click()
+            field.typeText(name)
+            browser.buttons["applyOrganizationEdit"].click()
+            XCTAssertTrue(browser.staticTexts[name].firstMatch.waitForExistence(timeout: 5))
+        }
+
+        add("categoryActions", item: "New Category …", named: "Domain Models")
+        browser.staticTexts["Examples"].firstMatch.click()
+        browser.staticTexts["Counter"].firstMatch.click()
+        add("protocolActions", item: "New Protocol …", named: "Reading")
+    }
+
     func testWorkspaceAndLiveMethodEditing() {
         let app = launchFreshApp()
         let workspace = app.windows["toolWindow-1"]

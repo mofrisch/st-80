@@ -203,7 +203,7 @@ BrowserWindow compile: 'refreshClasses
     classList selection: className'.
 
 BrowserWindow compile: 'protocolOf: name in: target
-    ^ (SystemOrganization protocolsOf: target) groupOf: name default: (SystemOrganization defaultProtocolFor: name in: target)'.
+    ^ (SystemOrganization protocolsOf: target) groupOf: name default: ''Unclassified'''.
 
 BrowserWindow compile: 'refreshMethods
     | target methods protocols names |

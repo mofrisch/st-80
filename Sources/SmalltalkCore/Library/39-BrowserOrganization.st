@@ -35,6 +35,9 @@ BrowserGrouping compile: 'defineDefaults: names
     names do: [ :name |
         groups := groups copyWith: (BrowserGroup new name: name; defaultName: name; yourself) ]'.
 
+BrowserGrouping compile: 'defineGroup: name items: selectors
+    groups := groups copyWith: (BrowserGroup new name: name; items: selectors; yourself)'.
+
 BrowserGrouping compile: 'names ^ groups collect: [ :group | group name ]'.
 
 BrowserGrouping compile: 'namesWith: populated
@@ -93,11 +96,12 @@ BrowserGrouping compile: 'move: item to: name
     previous notNil ifTrue: [ previous items: remaining ].
     ^ nil'.
 
-Object subclass: #BrowserOrganization instanceVariableNames: 'classCategories catalogs'.
+Object subclass: #BrowserOrganization instanceVariableNames: 'classCategories catalogs systemProtocols'.
 
 BrowserOrganization compile: 'initialize
     classCategories := BrowserGrouping new.
     classCategories defineDefaults: #(''Kernel'' ''Compiler'' ''Interface'' ''Tools'' ''Examples'' ''User Classes'').
+    systemProtocols := self shippedProtocols.
     catalogs := #()'.
 
 BrowserOrganization compile: 'classCategories ^ classCategories'.
@@ -118,21 +122,19 @@ BrowserOrganization compile: 'defaultCategoryOf: name
     ^ ''User Classes'''.
 
 BrowserOrganization compile: 'protocolsOf: target
-    | grouping entry |
+    | grouping entry className |
     catalogs do: [ :each | (each at: 1) == target ifTrue: [ ^ each at: 2 ] ].
     grouping := BrowserGrouping new.
-    grouping defineDefaults: #(''Initialization'' ''Unary'' ''Keyword'' ''Binary'' ''VM Primitives'').
+    className := target name asString.
+    systemProtocols do: [ :definition |
+        (definition at: 1) = className ifTrue: [
+            (definition at: 2) do: [ :entrySpec |
+                grouping defineGroup: (entrySpec at: 1) items: (entrySpec at: 2) ] ] ].
+    grouping defineDefaults: #(''Unclassified'').
     entry := Array new: 2.
     entry at: 1 put: target; at: 2 put: grouping.
     catalogs := catalogs copyWith: entry.
     ^ grouping'.
-
-BrowserOrganization compile: 'defaultProtocolFor: name in: target
-    (target isPrimitiveAt: name) ifTrue: [ ^ ''VM Primitives'' ].
-    name = ''initialize'' ifTrue: [ ^ ''Initialization'' ].
-    (name includes: '':'') ifTrue: [ ^ ''Keyword'' ].
-    (name at: 1) isLetter ifTrue: [ ^ ''Unary'' ].
-    ^ ''Binary'''.
 
 UIColumn subclass: #BrowserOrganizationForm instanceVariableNames: 'heading entry destinations destination applyButton operation'.
 

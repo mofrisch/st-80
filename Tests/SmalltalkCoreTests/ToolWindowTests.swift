@@ -8,6 +8,51 @@ struct ToolWindowTests {
         return root.children.lazy.compactMap { element(id, in: $0) }.first
     }
 
+    @Test func everyShippedBrowserMethodBelongsToExactlyOneProtocol() throws {
+        let runtime = SmalltalkRuntime()
+        let organization = try #require(runtime.globals["SystemOrganization"])
+
+        func elements(_ value: Value) throws -> [Value] {
+            guard case .array(let array) = value else {
+                throw SmalltalkError("Expected an array in the shipped protocol declarations.")
+            }
+            return array.elements
+        }
+
+        let declarations = try elements(runtime.send(organization, "shippedProtocols", []))
+        var selectorsByClass: [String: Set<String>] = [:]
+        for declaration in declarations {
+            let classEntry = try elements(declaration)
+            try #require(classEntry.count == 2)
+            let className = try runtime.string(classEntry[0])
+            #expect(selectorsByClass[className] == nil, "Repeated class \(className)")
+            var protocolNames: Set<String> = []
+            var selectors: Set<String> = []
+            for specification in try elements(classEntry[1]) {
+                let protocolEntry = try elements(specification)
+                try #require(protocolEntry.count == 2)
+                let title = try runtime.string(protocolEntry[0])
+                #expect(protocolNames.insert(title).inserted, "Repeated protocol \(className) » \(title)")
+                for value in try elements(protocolEntry[1]) {
+                    let selector = try runtime.string(value)
+                    #expect(selectors.insert(selector).inserted, "Repeated selector \(className) » \(selector)")
+                }
+            }
+            selectorsByClass[className] = selectors
+        }
+
+        var shippedClasses: Set<String> = []
+        for (name, stClass) in runtime.classes {
+            let reflected = try elements(runtime.send(.classObject(stClass), "methodNames", [])).map(runtime.string)
+            if !reflected.isEmpty { shippedClasses.insert(name) }
+            let expected = Set(reflected)
+            let assigned = selectorsByClass[name] ?? []
+            #expect(expected.subtracting(assigned).isEmpty, "Unclassified on \(name): \(expected.subtracting(assigned).sorted())")
+            #expect(assigned.subtracting(expected).isEmpty, "Unknown on \(name): \(assigned.subtracting(expected).sorted())")
+        }
+        #expect(Set(selectorsByClass.keys) == shippedClasses)
+    }
+
     @Test func browserFiltersClassesAndMethodsThroughFourPanes() async throws {
         let session = SmalltalkSession()
         let snapshot = await session.snapshot()
@@ -34,18 +79,18 @@ struct ToolWindowTests {
         let examples = await select(categories, "Examples")
         #expect(element("classList", in: examples)?.items == ["Counter"])
         let counter = await select(classes, "Counter")
-        #expect(element("protocolList", in: counter)?.items == ["All", "Initialization", "Unary", "Keyword"])
-        let unary = await select(protocols, "Unary")
-        #expect(element("methodList", in: unary)?.items == ["increment", "value"])
-        let value = await select(methods, "value")
-        #expect(element("methodEditor", in: value)?.text == "value ^ count")
+        #expect(element("protocolList", in: counter)?.items == ["All", "Initialization", "Accessing", "Counting"])
+        let counting = await select(protocols, "Counting")
+        #expect(element("methodList", in: counting)?.items == ["add:", "increment"])
+        let increment = await select(methods, "increment")
+        #expect(element("methodEditor", in: increment)?.text == "increment count := count + 1")
 
         _ = await session.uiAction(.text(windowID: browser.id, elementID: editor.id, value: "adjusted: amount ^ count + amount"))
         let accepted = await session.uiAction(.click(windowID: browser.id, elementID: accept.id))
         #expect(accepted.error == nil)
         let content = accepted.windows.first(where: { $0.id == browser.id })?.content
-        #expect(element("protocolList", in: content)?.selection == "Unary")
-        #expect(element("methodList", in: content)?.items == ["adjusted:", "increment", "value"])
+        #expect(element("protocolList", in: content)?.selection == "Counting")
+        #expect(element("methodList", in: content)?.items == ["add:", "adjusted:", "increment"])
         #expect(element("methodList", in: content)?.selection == "adjusted:")
     }
 
@@ -108,17 +153,17 @@ struct ToolWindowTests {
         #expect(element("methodList", in: content)?.items == ["answer"])
 
         try await click("renameProtocol")
-        try await submitName("Accessing")
-        try await select("protocolList", "Unary")
+        try await submitName("Queries")
+        try await select("protocolList", "Accessing")
         try await select("methodList", "value")
         try await click("moveMethod")
-        try await select("organizationDestinations", "Accessing")
+        try await select("organizationDestinations", "Queries")
         try await click("applyOrganizationEdit")
-        #expect(element("protocolList", in: content)?.selection == "Accessing")
+        #expect(element("protocolList", in: content)?.selection == "Queries")
         #expect(element("methodList", in: content)?.items == ["answer", "value"])
         #expect(element("methodList", in: content)?.selection == "value")
         #expect(await session.evaluate("Counter new answer").value == "42")
-        #expect(await session.evaluate("(SystemOrganization protocolsOf: String) names includes: 'Accessing'").value == "false")
+        #expect(await session.evaluate("(SystemOrganization protocolsOf: String) names includes: 'Queries'").value == "false")
 
         try await click("newProtocol")
         try await submitName("Editing")
@@ -134,9 +179,9 @@ struct ToolWindowTests {
         #expect(restoredCategories.items.contains("Domain Models"))
         #expect(!restoredCategories.items.contains("Domain"))
         let restoredProtocols = try #require(element("protocolList", in: restoredBrowser.content))
-        #expect(restoredProtocols.items.contains("Accessing"))
+        #expect(restoredProtocols.items.contains("Queries"))
         #expect(restoredProtocols.items.contains("Editing"))
-        let filtered = await restored.uiAction(.select(windowID: restoredBrowser.id, elementID: restoredProtocols.id, value: "Accessing"))
+        let filtered = await restored.uiAction(.select(windowID: restoredBrowser.id, elementID: restoredProtocols.id, value: "Queries"))
         #expect(element("methodList", in: filtered.windows.first(where: { $0.kind == .browser })?.content)?.items == ["answer", "value"])
     }
 
@@ -170,6 +215,8 @@ struct ToolWindowTests {
         #expect(accepted.error == nil)
         let methodList = element("methodList", in: accepted.windows.first(where: { $0.id == browser.id })?.content)
         #expect(methodList?.selection == "answer")
+        let protocolList = element("protocolList", in: accepted.windows.first(where: { $0.id == browser.id })?.content)
+        #expect(protocolList?.items == ["All", "Unclassified"])
         #expect(await session.evaluate("ToolExample new answer").value == "73")
 
         let restored = SmalltalkSession()

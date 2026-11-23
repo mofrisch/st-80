@@ -52,7 +52,7 @@ final class Smalltalk80UITests: XCTestCase {
         }
         browser.staticTexts["Examples"].firstMatch.click()
         browser.staticTexts["Counter"].firstMatch.click()
-        browser.staticTexts["Unary"].firstMatch.click()
+        browser.staticTexts["Accessing"].firstMatch.click()
         browser.staticTexts["value"].firstMatch.click()
         let method = browser.textViews["methodEditor"]
         XCTAssertTrue(method.waitForExistence(timeout: 5))

@@ -26,17 +26,17 @@ extension SmalltalkRuntime {
     }
 
     private func withCompiler<T>(_ source: String, selector: String, decode: (Value) throws -> T) throws -> T {
-        guard source.utf8.count <= 262_144 else { throw SmalltalkError("Quelltext ist zu groß (maximal 256 KiB).") }
+        guard source.utf8.count <= 262_144 else { throw SmalltalkError("Source code exceeds the 256 KiB limit.") }
         let workspace = SmalltalkRuntime(bootstrap: false, compilationMode: true)
         for name in Self.compilerClassNames {
             guard let original = classes[name], original.superclass?.name == "Object",
-                  let parent = workspace.classes["Object"] else { throw SmalltalkError("Compilerklasse \(name) fehlt.") }
+                  let parent = workspace.classes["Object"] else { throw SmalltalkError("Compiler class \(name) is missing.") }
             let copy = STClass(name, superclass: parent, fields: original.ownFields)
             copy.methods = original.methods
             workspace.classes[name] = copy
             workspace.globals[name] = .classObject(copy)
         }
-        guard let compiler = workspace.globals["STCompiler"] else { throw SmalltalkError("Smalltalk-Compiler fehlt.") }
+        guard let compiler = workspace.globals["STCompiler"] else { throw SmalltalkError("The Smalltalk compiler is missing.") }
         let instance = try workspace.send(compiler, "new", [])
         return try decode(workspace.send(instance, selector, [.string(source)]))
     }
@@ -69,7 +69,7 @@ private enum CompilerOutput {
     }
 
     private static func expression(_ value: Value, depth: Int) throws -> Expression {
-        guard depth <= 128 else { throw SmalltalkError("Ausdruck ist zu tief verschachtelt.") }
+        guard depth <= 128 else { throw SmalltalkError("Expression is nested too deeply.") }
         let fields = try parts(value, count: 5)
         guard case .symbol(let tag) = fields[0],
               case .integer(let line) = fields[1], case .integer(let column) = fields[2],
@@ -99,7 +99,7 @@ private enum CompilerOutput {
     }
 
     private static func literal(_ value: Value, depth: Int) throws -> Literal {
-        guard depth <= 32 else { throw SmalltalkError("Literal ist zu tief verschachtelt.") }
+        guard depth <= 32 else { throw SmalltalkError("Literal is nested too deeply.") }
         switch value {
         case .integer(let number): return .integer(number)
         case .string(let text): return .string(text)
@@ -109,7 +109,7 @@ private enum CompilerOutput {
         }
     }
 
-    private static func invalid() -> SmalltalkError { SmalltalkError("Ungültiger Syntaxbaum des Smalltalk-Compilers.") }
+    private static func invalid() -> SmalltalkError { SmalltalkError("The Smalltalk compiler produced an invalid syntax tree.") }
 }
 
 /// Shared checks for executable code, whether it comes from the compiler or an
@@ -144,35 +144,35 @@ enum CodeValidator {
         } else if arguments == 1 && !selector.isEmpty && selector.allSatisfy({ binary.contains($0) }) {
             return
         }
-        throw SmalltalkError("Ungültiger Selektor oder falsche Argumentzahl für \(selector).")
+        throw SmalltalkError("Invalid selector or argument count for \(selector).")
     }
 
     static func check(_ method: Method, fields: [String]) throws {
         try checkSelector(method.selector, arguments: method.parameters.count)
         guard validNames(method.parameters), Set(method.parameters).isDisjoint(with: method.body.temporaries) else {
-            throw SmalltalkError("Ungültige Methodenargumente.")
+            throw SmalltalkError("Invalid method arguments.")
         }
         guard Set(method.parameters + method.body.temporaries).isDisjoint(with: fields) else {
-            throw SmalltalkError("Lokale Variable verdeckt eine Instanzvariable.")
+            throw SmalltalkError("A local variable shadows an instance variable.")
         }
         try check(method.body)
     }
 
     static func check(_ body: Body) throws {
-        guard validNames(body.temporaries) else { throw SmalltalkError("Ungültige lokale Variablen.") }
+        guard validNames(body.temporaries) else { throw SmalltalkError("Invalid local variables.") }
         var pending = body.expressions
         while let expression = pending.popLast() {
-            guard expression.position.line > 0, expression.position.column > 0 else { throw SmalltalkError("Ungültige Quellposition.") }
+            guard expression.position.line > 0, expression.position.column > 0 else { throw SmalltalkError("Invalid source position.") }
             switch expression.kind {
             case .block(let parameters, let body):
                 guard validNames(parameters), validNames(body.temporaries), Set(parameters).isDisjoint(with: body.temporaries) else {
-                    throw SmalltalkError("Ungültige Blockvariablen.")
+                    throw SmalltalkError("Invalid block variables.")
                 }
                 pending.append(contentsOf: body.expressions)
             case .variable(let name):
-                guard identifier(name) else { throw SmalltalkError("Ungültige Variable.") }
+                guard identifier(name) else { throw SmalltalkError("Invalid variable.") }
             case .assignment(let name, let value):
-                guard identifier(name) else { throw SmalltalkError("Ungültiges Zuweisungsziel.") }
+                guard identifier(name) else { throw SmalltalkError("Invalid assignment target.") }
                 pending.append(value)
             case .returnValue(let value):
                 pending.append(value)
@@ -181,7 +181,7 @@ enum CodeValidator {
                 pending.append(receiver)
                 pending.append(contentsOf: args)
             case .cascade(let receiver, let messages):
-                guard !messages.isEmpty else { throw SmalltalkError("Leere Kaskade.") }
+                guard !messages.isEmpty else { throw SmalltalkError("Empty cascade.") }
                 pending.append(receiver)
                 for message in messages {
                     try checkSelector(message.selector, arguments: message.arguments.count)
@@ -190,7 +190,7 @@ enum CodeValidator {
             case .literal(let value):
                 var literals = [(value, 0)]
                 while let (literal, depth) = literals.popLast() {
-                    guard depth <= 32 else { throw SmalltalkError("Literal ist zu tief verschachtelt.") }
+                    guard depth <= 32 else { throw SmalltalkError("Literal is nested too deeply.") }
                     if case .array(let elements) = literal {
                         literals.append(contentsOf: elements.map { ($0, depth + 1) })
                     }

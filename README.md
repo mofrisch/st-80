@@ -1,149 +1,147 @@
 # Smalltalk/80
 
-Ein kleines, natives macOS-System mit einer von Smalltalk-80 inspirierten Sprache.
-Die native App und die VM sind in Swift geschrieben. Der Compiler und die Systembibliothek sind in Smalltalk implementiert.
+A small native macOS system with a language inspired by Smalltalk-80. The native app and VM are written in Swift. The compiler and system library are written in Smalltalk.
 
-## In Xcode starten
+## Run in Xcode
 
-1. **`Smalltalk80.xcodeproj` öffnen.**
-2. Scheme **Smalltalk80**, Ziel **My Mac** auswählen.
-3. Mit **⌘R** starten.
+1. Open `Smalltalk80.xcodeproj`.
+2. Select the **Smalltalk80** scheme and **My Mac** as the destination.
+3. Press **⌘R**.
 
-Das Projekt enthält vier Targets:
+The project contains four targets.
 
-| Target | Aufgabe |
+| Target | Purpose |
 | --- | --- |
-| Smalltalk80 | Native macOS-Fenster mit SwiftUI-Inhalt und AppKit-Texteditor |
-| SmalltalkCore | Swift-VM mit Objektspeicher, Syntaxbaumausführung und Smalltalk-Compiler |
-| SmalltalkCoreTests | Sprach-, Image- und Fenstermodelltests |
-| Smalltalk80UITests | Workspaces, Methodenänderungen, native Fenster und Image-Neustart |
+| Smalltalk80 | Native macOS windows with SwiftUI content and an AppKit text editor |
+| SmalltalkCore | Swift VM with object memory, syntax tree execution, and the Smalltalk compiler |
+| SmalltalkCoreTests | Language, image, and window model tests |
+| Smalltalk80UITests | Workspaces, live method editing, native windows, and image restoration after relaunch |
 
-Die lokale App wird ad hoc signiert; zum Ausprobieren ist kein Development Team nötig.
-Voraussetzungen: macOS 14 oder neuer und Xcode mit Swift 6.
+Local builds use ad hoc signing, so you can run the app without a development team. You need macOS 14 or later and Xcode with Swift 6.
 
-## Benutzung
+## Usage
 
-- **Workspace:** Code markieren und **⌘D** drücken. Ohne Auswahl wird der gesamte Inhalt ausgeführt.
-- **⌘P:** Ausführen und den Ergebniswert zusätzlich ins Transcript schreiben.
-- Im **System Browser** führen vier Listen von der Klassenkategorie über Klasse und Protokoll zur Instanzmethode. Bearbeite den Quelltext darunter und akzeptiere ihn mit **⌘S**. Bereits existierende Objekte verwenden sofort die neue Methode.
-- Über **+** lassen sich Klassen und Methoden anlegen. Im Klassenbrowser stehen die eigenen Methoden; geerbte Methoden findet man bei der Oberklasse.
-- Rechts erscheinen die Workspace-Variablen, ihre Klassen und ihre Werte.
-- **⌘N:** Einen weiteren, unabhängigen Workspace öffnen.
-- **⌘1 / ⌘2 / ⌘3:** Workspace, Browser oder Transcript nach vorne holen.
-- **⌘O:** UTF-8-Quelltext in einem neuen Workspace öffnen. **⌘S** speichert im Workspace den Quelltext als `.st`.
-- Das Menü **Beispiele** enthält Zähler, Arrays und Blöcke, Klassendefinitionen und Nachrichtenreihenfolge.
+- In a **Workspace**, select code and press **⌘D** to run it. With no selection, the entire buffer runs.
+- **⌘P** also prints the result to the Transcript.
+- In the **System Browser**, navigate from a class category to a class, a protocol, and an instance method. Edit the source below the lists and press **⌘S** to accept it. Existing objects use the new method immediately.
+- Use **Create Class …** and **New Method** to add definitions. The browser shows the selected class's own methods. Select its superclass to browse inherited methods.
+- **Details** in the browser shows the class information and shared workspace variables, including their classes and values.
+- **⌘N** opens an independent workspace.
+- **⌘1 / ⌘2 / ⌘3** brings a workspace, the System Browser, or the Transcript to the front.
+- **⌘O** opens UTF-8 source code in a new workspace. In a workspace, **⌘S** saves the source as a `.st` file.
+- The **Examples** menu contains sample code for counters, arrays and blocks, class definitions, native windows, and custom interfaces.
 
-## Images speichern und laden
+## Save and load images
 
-- **⌘⇧S – Image speichern:** Sichert die laufende Sitzung als `.stimage`. Beim ersten Speichern erscheint der native Dateidialog; danach wird dieselbe Datei atomar ersetzt.
-- **⌘⌥⇧S – Image speichern unter:** Legt eine weitere Image-Datei an.
-- **⌘⇧O – Image öffnen:** Ersetzt die Sitzung durch einen gespeicherten Stand.
-- Beim App-Start wird das zuletzt erfolgreich gespeicherte oder geöffnete Image automatisch geladen. Weitere Änderungen müssen ausdrücklich gespeichert werden; beim Beenden wird die Datei nicht automatisch überschrieben.
-- Rechts stehen der Image-Dateiname und der Speicherstatus. Im Browser Methoden vor dem Speichern mit **⌘S** akzeptieren; noch nicht akzeptierter Methodenquelltext gehört nicht zum Image.
+- **⌘⇧S — Save Image** saves the running session as a `.stimage` file. The first save opens the native file dialog. Subsequent saves replace the same file atomically.
+- **⌘⌥⇧S — Save Image As …** saves to another image file.
+- **⌘⇧O — Open Image …** replaces the session with a saved one.
+- The app loads the last successfully saved or opened image at launch. Save subsequent changes explicitly. Quitting leaves the last saved file as it was.
+- The image bar shows the file name and save status. Accept browser edits with **⌘S** before saving an image. The image stores accepted methods.
 
-Ein Image erhält Klassen und ihre Hierarchie, akzeptierte Methoden (auch Änderungen an Basisklassen), Workspace-Variablen, Instanzvariablen, Arrays und gespeicherte Blöcke samt lexikalischen Kontexten. Gemeinsam genutzte Referenzen und zyklische Objektgraphen bleiben erhalten. Alle Workspace-Texte, offene Fenster samt Größe, Position, Reihenfolge und Minimierungszustand sowie das Transcript werden ebenfalls gesichert. Nicht mehr erreichbare Objekte werden weggelassen.
+An image preserves classes and their hierarchy, accepted methods (including changes to built-in classes), workspace variables, instance variables, arrays, and saved blocks with their lexical contexts. It preserves shared references and cyclic object graphs. It also saves all workspace buffers, open windows with their size, position, order, and minimized state, and the Transcript. Unreachable objects are omitted.
 
-Beim Laden wird zuerst eine separate Sitzung vollständig aufgebaut und geprüft. Fehlerhafte oder inkompatible Dateien lassen die bisherige Sitzung bestehen. Die VM prüft die Struktur der gespeicherten Methoden und ihre Quellenreferenzen. Beim Laden wird weder neu kompiliert noch Smalltalk-Code ausgeführt. Bereits beendete Rücksprungkontexte von Blöcken bleiben beendet.
+The VM builds and validates a separate session before replacing the active one. It validates the saved method structure and source references. Loading performs no compilation or Smalltalk execution and leaves completed block return contexts closed. If an image is invalid or incompatible, the active session remains available.
 
-**Sitzung zurücksetzen** beginnt einen frischen Stand und löst die automatische Image-Zuordnung. Bereits gespeicherte Dateien bleiben bestehen. **Workspace speichern** mit **⌘S** sichert weiterhin ausschließlich den Quelltext als `.st`.
+**Reset Session** starts a fresh session, clears the automatic association with the last image, and leaves saved files on disk. In a workspace, **⌘S** saves the source text as `.st`.
 
-Das Imageformat ist versioniertes JSON (`format: st80-image`, `version: 4`) mit Objekttabelle, ausführbaren Syntaxbäumen und Quellenverweisen. Ältere Alpha-Images werden abgewiesen. Die Core-API `imageData` liefert eine portable Fassung mit eingebetteten Methodenquellen. Es gelten 32 MiB pro Image und 40.000 erreichbare Referenzobjekte.
+The versioned JSON image format (`format: st80-image`, `version: 4`) stores an object table, executable syntax trees, and source references. Earlier alpha image formats are unsupported. The core API `imageData` produces a portable image with embedded method sources. Each image can contain up to 32 MiB and 40,000 reachable reference objects.
 
-### Sources und Changes
+### Sources and changes
 
-Beim Speichern entstehen drei zusammengehörende Dateien:
+Saving produces three related files.
 
-| Datei | Inhalt |
+| File | Contents |
 |---|---|
-| `MeineWelt.stimage` | Objektwelt, Klassen, ausführbare Methoden und letzter gesicherter Changes-Stand |
-| `Smalltalk80-<Quellen-ID>.sources` | Unveränderliches Quellenarchiv des Basissystems; von mehreren Images teilbar |
-| `MeineWelt.changes` | Fortlaufendes Protokoll akzeptierter Klassen- und Methodendefinitionen einschließlich früherer Versionen |
+| `MyWorld.stimage` | Object graph, classes, executable methods, and the last saved changes checkpoint |
+| `Smalltalk80-<sources-id>.sources` | Immutable source archive for the base system, shareable by multiple images |
+| `MyWorld.changes` | Append-only log of accepted class and method definitions, including earlier versions |
 
-Die Originalquellen liegen in `Sources/SmalltalkCore/Library/*.st`. Xcode und Swift Package Manager bündeln das daraus erzeugte `Smalltalk80.sources` zusammen mit dem ausführbaren `Kernel.seed.json`. Die VM installiert beim Kaltstart die vorkompilierten Methoden und der geladene Smalltalk-Compiler übersetzt `InitialWorld.st`.
+The original sources live in `Sources/SmalltalkCore/Library/*.st`. Xcode and Swift Package Manager bundle the generated `Smalltalk80.sources` with the executable `Kernel.seed.json`. On a cold start, the VM installs the precompiled methods and the Smalltalk compiler compiles `InitialWorld.st`.
 
-Akzeptieren schreibt und synchronisiert zuerst den Changes-Eintrag; erst danach wird die Methode im laufenden Image ersetzt. Das geschieht auch bei `SomeClass compile:` im Workspace. Ein Schreibfehler verhindert die Installation. Vor dem ersten Image-Speichern liegt das Protokoll unter `~/Library/Application Support/Smalltalk80/Changes/`; sein Pfad steht im Änderungsfenster. **Smalltalk → Changes-Datei öffnen …** liest auch ein Protokoll aus einer noch nie gespeicherten Sitzung zur Prüfung ein.
+Accepting code writes and syncs the changes entry before installing the method in the live image. This also applies to `SomeClass compile:` in a workspace. A write failure prevents installation. Before the first image save, the log lives in `~/Library/Application Support/Smalltalk80/Changes/`. The Code Changes window shows its path. **Smalltalk → Open Changes File …** can import a log for review even if its session never saved an image.
 
-**Smalltalk → Codeänderungen …** öffnet die Historie; **Versionen …** im Browser filtert nach der gewählten Methode und zeigt zusätzlich deren ausgelieferte Basisfassung aus dem Sources-Archiv. **Version übernehmen** kompiliert die gewählte Fassung und protokolliert diese Wiederherstellung als neue Änderung. Einträge nach dem gespeicherten Image-Stand werden gekennzeichnet. Beim Laden werden sie nicht automatisch ausgeführt. Neue Klassen zunächst über ihre Klassendefinition, danach über ihre Methoden wiederherstellen. Das Protokoll speichert Codeänderungen, keine beliebigen Objektmutationen oder noch nicht akzeptierten Editortext.
+**Smalltalk → Code Changes …** opens the history. **Versions …** in the browser filters the history to the selected method and shows its shipped baseline from the sources archive. **Restore Version** compiles the selected source and logs the restoration as a new change. Entries after the saved image checkpoint are marked and are never replayed automatically on load. To restore a new class, restore its definition before its methods. The log records accepted code changes. Arbitrary object mutations and unaccepted editor contents belong to the live session.
 
-Image und gleichnamige Changes-Datei zusammen mit dem referenzierten Sources-Archiv kopieren. Sources und Changes nicht mit einem Texteditor verändern. Fehlende, beschädigte oder nicht passende Begleitdateien lassen die aktuelle Sitzung bestehen. Eine unvollständige letzte Changes-Zeile nach einem Absturz wird ignoriert und beim nächsten Eintrag entfernt. Ein vollständiger beschädigter Eintrag wird als Fehler gemeldet. Die Changes-Grenze liegt bei 64 MiB und 100.000 Einträgen; die Oberfläche zeigt die letzten 2.000.
+Keep the image, its matching `.changes` file, and its referenced sources archive together when copying them. Avoid editing the companion files in a text editor. Missing, corrupt, or mismatched companion files leave the active session intact. After a crash, the loader ignores a truncated final log record. The next append removes it. A corrupt complete record is reported as an error. A changes log can contain up to 64 MiB and 100,000 records. The window shows the latest 2,000.
 
-**Image speichern unter** verzweigt die bisherige Historie in eine eigene Changes-Datei. Ein vorhandenes fremdes Protokoll wird nicht überschrieben. Das Image wird erst nach den Begleitdateien atomar ersetzt; ein fehlgeschlagenes Speichern lässt den vorherigen Image-Stand und dessen Quellenverweise nutzbar.
+**Save Image As …** branches the existing history into a separate changes file. The app preserves any existing log that belongs to another image. It writes the companion files before replacing the image atomically, so a failed save leaves the previous image and its source references usable.
 
-## Smalltalk-Compiler und Startimage
+## Smalltalk compiler and boot image
 
-`02-Scanner.st` und `03-Compiler.st` enthalten Scanner und Parser. Derselbe Compiler verarbeitet **Do it**, **Methode akzeptieren** und `Class>>compile:`. Er erzeugt Syntaxbäume in einem temporären Objektspeicher. Die Swift-VM prüft diese Daten, bevor sie Code ausführt oder eine Methode installiert.
+`02-Scanner.st` and `03-Compiler.st` contain the scanner and parser. The same compiler handles **Do it**, **Accept Method**, and `Class>>compile:`. It builds syntax trees in temporary object memory. The Swift VM validates these trees before executing code or installing a method.
 
-Nach einer Änderung der nummerierten Systemquellen werden die beiden mitgelieferten Build-Artefakte im Projektordner so neu erzeugt:
+After changing a numbered system source file, rebuild both bundled artifacts from the project directory.
 
 ```sh
 python3 scripts/generate-sources.py
 ```
 
-Der Build lädt den bisherigen Smalltalk-Compiler aus dem Startimage. Er erzeugt eine neue Compilergeneration und prüft, dass deren Selbstbau reproduzierbar ist. Mit `--check` überprüft das Skript die vorhandenen Artefakte. Der normale Xcode-Build bündelt sie. Beim Öffnen eines gespeicherten Images wird dessen eigener Compilerstand geladen.
+The bootstrap loads the previous Smalltalk compiler from the boot image, generates a new compiler, and verifies that the new compiler can rebuild itself reproducibly. Use `--check` to verify the existing artifacts. The regular Xcode build bundles them. Opening a saved image loads the compiler stored in that image.
 
-## Native Fensterverwaltung
+## Native window management
 
-Workspace, System Browser und Transcript sind getrennte macOS-Fenster. Sie lassen sich über die normalen Titelleisten verschieben, skalieren, minimieren und schließen. Alle Workspaces teilen dieselbe Smalltalk-Sitzung, behalten aber jeweils ihren eigenen Text, ihre Auswahl und ihr letztes Ausführungsergebnis.
+The Workspace, System Browser, and Transcript are separate macOS windows. Use the standard title bars to move, resize, minimize, and close them. Workspaces share one Smalltalk session and each keeps its own text, selection, and last result.
 
-Die Fensterverwaltung ist in Smalltalk implementiert. Die globale Variable `Desktop` enthält den Controller `DesktopManager`; dessen `DesktopModel` verwaltet Fensterliste, Reihenfolge, aktives Fenster und Bildschirmdaten. `SystemWindow` ist eine Unterklasse von `Model` und meldet Zustandsänderungen über das gewöhnliche Beobachterprotokoll.
+Smalltalk implements window management. The global `Desktop` holds the `DesktopManager` controller. Its `DesktopModel` tracks the window list, order, active window, and display information. `SystemWindow` is a subclass of `Model` that reports state changes through the standard observer protocol.
 
-`Library/20-Windows.st` enthält Öffnen, Schließen, Aktivieren, Minimieren, Mindest- und Höchstgrößen, Platzierung, Bildschirmwahl und Wiederherstellung. Diese Methoden lassen sich im Browser ändern. Die Bildschirmwahl bevorzugt die größte Überlappung und bei Gleichstand den nächstgelegenen Bildschirm. Bei einem entfernten Monitor passen sich Fenster an die verbleibenden sichtbaren Bildschirmbereiche an. Die logische Mindestgröße bleibt erhalten, auch wenn ein kleiner Bildschirm vorübergehend kleinere native Grenzen erfordert.
+`Library/20-Windows.st` implements opening, closing, activation, minimization, size limits, placement, display selection, and restoration. You can edit these methods in the browser. The display with the largest overlap wins, with distance breaking ties. When a monitor is disconnected, windows are constrained to the remaining visible display areas. Logical minimum sizes are preserved even if a small display temporarily requires smaller native limits.
 
-`NativeWindowBackend` erstellt und bedient ausschließlich die einzelnen AppKit-Fenster, meldet verfügbare Bildschirmflächen und native Ereignisse und zeichnet die SwiftUI-Inhalte. Es enthält keine Größen- oder Platzierungsregeln. Native Schließversuche sind Anfragen an `canClose`; Verschieben, Skalieren und Fokuswechsel sind bereits eingetretene Tatsachen. Smalltalk-Anforderungen erhalten eine Revisionsnummer; das Backend meldet die tatsächlich angewendete Geometrie zurück. Sitzungskennungen, fortlaufende Ereignisnummern und Bestätigungen verhindern, dass alte Rückmeldungen neue Anforderungen oder ein neu geladenes Image überschreiben. Auch native Ereignisse werden zeitnah ohne Deaktivieren der Editoren verarbeitet.
+`NativeWindowBackend` manages the individual AppKit windows, reports available display areas and native events, and displays SwiftUI content. Smalltalk owns the size and placement rules. A native close attempt asks `canClose`. Moves, resizes, and focus changes report events that have already occurred. The backend acknowledges revisioned Smalltalk requests with the native geometry it applied. Session identifiers, event sequence numbers, and acknowledgements prevent stale events from overriding new requests or a newly loaded image. Native events are processed promptly while the editors stay usable.
 
 ```smalltalk
 window := Desktop openWorkspace.
-window title: 'Mein Workspace'.
+window title: 'My Workspace'.
 window text: '6 * 7'.
 window moveToX: 180 y: 240.
 window resizeWidth: 700 height: 500
 ```
 
-Weitere Befehle sind `Desktop openBrowser`, `Desktop openTranscript`, `Desktop openChanges`, `Desktop windows`, `Desktop activeWindow`, `Desktop activate: window` und `Desktop close: window`.
+Other messages include `Desktop openBrowser`, `Desktop openTranscript`, `Desktop openChanges`, `Desktop windows`, `Desktop activeWindow`, `Desktop activate: window`, and `Desktop close: window`.
 
 ```smalltalk
 window minimumWidth: 600 height: 400.
 window maximumWidth: 1200 height: 900.
 
-"Eigene Fenster können eine Schließanfrage ablehnen:"
+"A custom window can veto a close request."
 UIWindow subclass: #ProtectedWindow instanceVariableNames: ''.
 ProtectedWindow compile: 'canClose ^ false'.
 ProtectedWindow new open
 ```
 
-Ein vollständiges Beispiel mit Schließprüfung liegt in `Examples/WindowPolicy.st`.
+See `Examples/WindowPolicy.st` for a complete example of a close veto.
 
-Eine eigene `DesktopManager`-Unterklasse kann beispielsweise `screenFor:`, `constrain:`, `requestClose:` oder `createKind:title:` überschreiben. Die Basisklassen und ihr Model bleiben gewöhnliche, im Image gespeicherte Smalltalk-Objekte.
+A custom `DesktopManager` subclass can override `screenFor:`, `constrain:`, `requestClose:`, or `createKind:title:`, for example. The base classes and their model are ordinary Smalltalk objects stored in the image.
 
-Browser und Transcript werden beim erneuten Öffnen nach vorne geholt. Jeder Aufruf von `openWorkspace` erzeugt ein neues Fenster. Bis zu 128 Fenster sind vorgesehen. Die Koordinaten bezeichnen macOS-Bildschirmpunkte mit Ursprung unten links; beim Laden werden Fenster an die verfügbaren Bildschirme angepasst.
+Opening the browser or Transcript again brings its current window to the front. Each call to `openWorkspace` creates a new window. The system supports up to 128 windows. Coordinates use macOS screen points with the origin at the bottom left. On load, windows are adjusted to the available displays.
 
-Fenstertexte werden vor einer Auswertung oder dem Speichern eines Images an die Smalltalk-Objekte übertragen. Das Transcript und die Browserauswahl gehören zum gespeicherten Objektgraphen.
+The app sends window text to the Smalltalk objects before an evaluation or image save. The saved object graph includes the Transcript and the browser selection.
 
-## Werkzeuge in Smalltalk
+## Tools in Smalltalk
 
-`40-Tools.st` definiert `WorkspaceWindow`, `BrowserWindow` und `TranscriptWindow`. Du kannst diese Klassen im Browser bearbeiten und für neue Fenster ableiten. `DesktopManager>>windowClassFor:` legt fest, welche Klasse beim Öffnen eines Werkzeugs verwendet wird.
+`40-Tools.st` defines `WorkspaceWindow`, `BrowserWindow`, and `TranscriptWindow`. You can edit those classes in the browser and subclass them to create new windows. `DesktopManager>>windowClassFor:` chooses the class to instantiate when opening a tool.
 
-Im Workspace wählen die Smalltalk-Aktionen zwischen der nativen Textauswahl und dem ganzen Puffer. Der Browser verwaltet Filter, Auswahl, Entwürfe, Klassenanlage und Methodenannahme in Smalltalk. Er liest die VM-Reflexion über `ToolVM` und `Class` und leitet die angezeigten Protokolle aus den Selektoren und VM-Primitiven ab. `Transcript show:`, `cr` und `clear` pflegen das beobachtbare `TranscriptBuffer`-Model mit den letzten 64 KiB Ausgabetext.
+Smalltalk workspace actions use the native text selection when present and the whole buffer otherwise. The browser manages filters, selection, drafts, class creation, and method acceptance in Smalltalk. It reads VM reflection through `ToolVM` and `Class` and derives the displayed protocols from selectors and VM primitives. `Transcript show:`, `cr`, and `clear` update the observable `TranscriptBuffer` model, which retains the last 64 KiB of output.
 
-Der SwiftUI-Renderer verwendet denselben Control-Baum für die Werkzeuge und eigene Fenster. Dateidialoge, Tastenkürzel, native Textbearbeitung und die Darstellung der Controls liegen an der macOS-Grenze. Die Klassen der zusätzlichen Controls stehen in `35-NativeControls.st`.
+The SwiftUI renderer uses the same control tree for built-in tools and custom windows. File dialogs, keyboard shortcuts, native text editing, and control rendering sit at the macOS boundary. See `35-NativeControls.st` for the additional controls.
 
-## Oberflächen mit MVC
+## Interfaces with MVC
 
-Unter **Beispiele → Eigene Oberfläche** im Workspace liegt ein vollständiges MVC-Beispiel. Den gleichen Quelltext findest du in `Examples/GreetingWindow.st`; du kannst ihn mit **⌘O** öffnen und ausführen.
+Choose **Examples → Custom Interface** in the workspace for a complete MVC example. You can also open and run `Examples/GreetingWindow.st` using **⌘O**.
 
-| Rolle | Zuständigkeit im Beispiel |
+| Role | Responsibility in the example |
 | --- | --- |
-| `GreetingModel`, Unterklasse von `Model` | Hält `name`, berechnet `greeting` und meldet Änderungen. Kennt keine UI-Klassen. |
-| `GreetingView`, Unterklasse von `UIWindow` | Definiert Layout, Bedienelemente und Bindungen. Leitet Eingaben an den Controller weiter. |
-| `GreetingController`, Unterklasse von `Controller` | Verarbeitet Eingaben und Buttons und verändert ausschließlich das Model. Aktualisiert keine Labels oder Felder selbst. |
+| `GreetingModel`, a subclass of `Model` | Holds `name`, computes `greeting`, and notifies observers. It is independent of UI classes. |
+| `GreetingView`, a subclass of `UIWindow` | Defines the layout, controls, and bindings. It forwards input to the controller. |
+| `GreetingController`, a subclass of `Controller` | Handles input and button actions by updating the model. Bindings update the labels and fields. |
 
-Nach dem Ausführen reicht im Workspace:
+After running the example, evaluate this in the workspace.
 
 ```smalltalk
 greetingModel name: 'Ada'
 ```
 
-Das Eingabefeld und die Begrüßung aktualisieren sich automatisch. Eine zweite View kann dasselbe Model beobachten:
+The input field and greeting update automatically. A second view can observe the same model.
 
 ```smalltalk
 secondView := GreetingView new.
@@ -151,11 +149,11 @@ secondView moveToX: 650 y: 200.
 secondView model: greetingModel controller: greetingController; open
 ```
 
-Änderungen am Model erscheinen in beiden Fenstern. Das funktioniert auch während des Tippens, ohne Return oder einen Button-Klick.
+Model changes appear in both windows as you type, without pressing Return or clicking a button.
 
-### Änderungsprotokoll und Bindungen
+### Change notifications and bindings
 
-Ein Fachmodell erbt von `Model`. Seine Setter melden Änderungen über `self changed` (alle Aspekte) oder `self changed: #name` (nur diesen Aspekt). Ein Setter im Beispiel lautet:
+A domain model inherits from `Model`. Its setters use `self changed` to announce changes to all aspects or `self changed: #name` for a single aspect. The example specifies the setter below.
 
 ```smalltalk
 name: aString
@@ -163,7 +161,7 @@ name: aString
     self changed
 ```
 
-Die View bindet eine Eigenschaft an einen Getter des Models und weist Eingaben einem Controller zu:
+The view binds properties to model getters and routes input to the controller.
 
 ```smalltalk
 input bind: #text to: greetingModel aspect: #name.
@@ -172,39 +170,39 @@ output bind: #text to: greetingModel aspect: #greeting.
 button onClickSend: #clear to: greetingController
 ```
 
-`nameChanged:` im Controller sendet `model name: aString`. Das Model benachrichtigt seine Beobachter; die Bindungen lesen die betroffenen Getter und setzen die View-Eigenschaften. Der Controller muss weder die View kennen noch einen Refresh aufrufen. Für berechnete Werte wie `greeting` meldet das Beispiel alle Aspekte mit `changed`.
+The controller's `nameChanged:` method sends `model name: aString`. The model notifies its observers, then the bindings read the affected getters and set the view properties. For computed values such as `greeting`, the example uses `changed` to notify observers about all aspects.
 
-`Model` bietet außerdem `addDependent:`, `removeDependent:` und `dependents`. Eigene Beobachter implementieren `update:`; dessen Argument ist der geänderte Aspekt oder `nil` für alle Aspekte. Mehrfaches Anmelden desselben Beobachters erzeugt keine doppelten Benachrichtigungen.
+`Model` also provides `addDependent:`, `removeDependent:`, and `dependents`. Custom observers implement `update:`, which receives the changed aspect or `nil` for all aspects. Registering the same observer again does not duplicate notifications.
 
-Bindbar sind `text` bei Labels und Textfeldern, `title` bei Buttons, `enabled` und `visible` bei allen UI-Elementen sowie `spacing` und `padding` bei Layouts. `unbind: #text` entfernt eine einzelne Bindung, `unbindAll` alle Bindungen einer View. Erneutes Binden derselben Eigenschaft ersetzt die alte Bindung. Am Ende einer Auswertung oder eines nativen Ereignisses werden Bindungen entfernter Bedienelemente und geschlossener Fenster abgemeldet. Beim Wiederöffnen werden sie mit den aktuellen Model-Werten verbunden.
+You can bind `text` on labels and text fields, `title` on buttons, `enabled` and `visible` on all UI elements, and `spacing` and `padding` on layouts. Use `unbind: #text` to remove one binding or `unbindAll` to clear a view's bindings. Rebinding a property replaces the previous binding. At the end of an evaluation or native event, bindings on removed controls and closed windows disconnect. Reopening reconnects them with the current model values.
 
-### Bedienelemente und Darstellung
+### Controls and rendering
 
-| Klasse | Nachrichten |
+| Class | Messages |
 | --- | --- |
 | `UIWindow` | `title:`, `content:`, `open`, `moveToX:y:`, `resizeWidth:height:` |
 | `UILabel` | `text:`, `text` |
-| `UIButton` | `title:`, `action:`, `onClickSend:to:`, `selectionFrom:action:` für Aktionen mit der Auswahl eines Code-Editors |
+| `UIButton` | `title:`, `action:`, `onClickSend:to:`, `selectionFrom:action:` for actions that use the code editor selection |
 | `UITextField` | `label:`, `placeholder:`, `text:`, `text`, `onChangeSend:to:` |
-| `UICodeEditor` | Wie ein Textfeld, zusätzlich `readOnly:` und native Textauswahl |
-| `UIList` | `items:` mit eindeutigen Strings, `selection:`, `onSelectSend:to:` |
-| `UISplit`, `UIScroll`, `UIMenu` | Container für geteilte Ansicht, Scrollbereich bzw. Menü. `UISplit` stapelt die Bereiche mit `role: #vertical`. `UIMenu` hat zusätzlich `title:`. |
-| `UIDivider` | Trennlinie |
+| `UICodeEditor` | Text field messages, plus `readOnly:` and native text selection |
+| `UIList` | `items:` with unique strings, `selection:`, `onSelectSend:to:` |
+| `UISplit`, `UIScroll`, `UIMenu` | Containers for split views, scrolling, and menus. `UISplit` stacks its panes with `role: #vertical`. `UIMenu` also supports `title:`. |
+| `UIDivider` | Separator |
 | `UIColumn`, `UIRow` | `add:`, `remove:`, `removeAll`, `children:`, `spacing:`, `padding:` |
-| `UISpacer` | Flexibler Abstand innerhalb einer Zeile oder Spalte |
-| Alle UI-Elemente | `enabled:`, `visible:`, `identifier:`, `role:`, `widthFrom:to:`, `heightFrom:to:`, `bind:to:aspect:`, `unbind:`, `unbindAll` |
+| `UISpacer` | Flexible space in a row or column |
+| All UI elements | `enabled:`, `visible:`, `identifier:`, `role:`, `widthFrom:to:`, `heightFrom:to:`, `bind:to:aspect:`, `unbind:`, `unbindAll` |
 
-Zeilen und Spalten lassen sich verschachteln. `add:` gibt das hinzugefügte Element zurück. `spacing:` akzeptiert 0 bis 128 Punkte, `padding:` 0 bis 256. Eine Oberfläche ist ein Baum mit maximal 512 Elementen und 16 Verschachtelungsebenen; ein Element darf innerhalb eines Fensters nur einmal vorkommen. Ein deaktiviertes Layout deaktiviert auch seine enthaltenen Elemente.
+You can nest rows and columns. `add:` returns the added element. `spacing:` accepts 0 to 128 points and `padding:` accepts 0 to 256. An interface is a tree of at most 512 elements and 16 nesting levels. Each element can appear only once in a window. A disabled layout also disables its children.
 
-Die Smalltalk-Objekte bleiben auf dem Interpreter-Thread. Die native SwiftUI-View zeichnet unveränderliche Zustände und führt keine Model-Getter aus. `AppController` vermittelt native Ereignisse und übernimmt die fertigen Zustände zur Darstellung. Das Änderungsprotokoll selbst läuft in Smalltalk, ohne Polling.
+Smalltalk objects stay on the interpreter thread. The native SwiftUI view renders immutable snapshots. `AppController` forwards native events and publishes the resulting snapshots. Smalltalk handles change notifications directly without polling.
 
-Textfelder mit einem Eingabe-Controller übertragen Änderungen nach einer kurzen Tipp-Pause von 80 ms. Dabei wird das Feld nicht deaktiviert. Vor Buttons, Workspace-Auswertungen und dem Speichern eines Images werden ausstehende Eingaben vollständig und in Eingabereihenfolge übertragen. Änderungen aus Model-Benachrichtigungen lösen keine erneuten Eingabeereignisse aus. Auch bei einer fehlerhaften Model- oder Controller-Methode bleiben Workspace und Methodenbrowser zum Reparieren benutzbar; ausstehende Eingaben werden danach erneut übertragen.
+Text fields with an input controller send changes after an 80 ms pause while keeping the field active. Before button actions, workspace evaluations, and image saves, the app flushes pending input in order. Model-driven changes do not generate more input events. If a model or controller method fails, the workspace and browser remain available for repair. Once repaired, the app retries pending input.
 
 ### Images
 
-Images erhalten Fachmodelle, Controller, Views, Bindungen und Beobachterbeziehungen. Nach dem Laden funktionieren Model-Änderungen und Eingaben weiter. Beim Laden werden weder `initialize` noch gebundene Getter ausgeführt; dafür enthalten Images auch den zuletzt gültigen Darstellungszustand.
+Images preserve domain models, controllers, views, bindings, and observer relationships. Model updates and input work after loading. The image stores the last valid view state so loading can display it without calling `initialize` or bound getters.
 
-## Erster Versuch
+## Try it
 
 ```smalltalk
 counter := Counter new.
@@ -212,59 +210,59 @@ counter := Counter new.
 counter value
 ```
 
-Ergebnis: `5`. Nun im Browser `Counter » value` ändern und akzeptieren:
+The result is `5`. In the browser, change `Counter » value` to the following and accept it.
 
 ```smalltalk
 value
     ^ count + 100
 ```
 
-Anschließend im Workspace nur `counter value` markieren und ausführen. Das bestehende Objekt antwortet jetzt mit `105`.
+Back in the workspace, select just `counter value` and evaluate it. The existing object now answers `105`.
 
-Eigene Klassen können auch über Nachrichten entstehen:
+You can also create classes by sending messages.
 
 ```smalltalk
 Object subclass: #Greeter instanceVariableNames: 'name'.
 Greeter compile: 'name: aString
     name := aString'.
 Greeter compile: 'greeting
-    ^ ''Hallo, '', name'.
+    ^ ''Hello, '', name'.
 
 greeter := Greeter new.
 greeter name: 'Moritz'.
 greeter greeting
 ```
 
-## Sprachumfang
+## Language support
 
-Implementiert sind Ganzzahlen mit geprüfter 64-Bit-Arithmetik, Strings, Symbole, Arrays, `nil`, Boolesche Werte, Zuweisungen, lokale Variablen, unäre/binäre/Keyword-Nachrichten, Kaskaden, lexikalische Blöcke, nichtlokale Rückgaben mit `^`, Klassen, Instanzvariablen, einfache Vererbung und `super`.
+The language supports checked 64-bit integers, strings, symbols, arrays, `nil`, booleans, assignments, local variables, unary, binary, and keyword messages, cascades, lexical blocks, non-local returns with `^`, classes, instance variables, single inheritance, and `super`.
 
-Nachrichten folgen der Smalltalk-Reihenfolge: unär vor binär vor Keyword; binäre Nachrichten werden untereinander von links nach rechts ausgewertet. `3 + 4 * 2` ergibt daher `14`. Die Orientierung ist Goldberg/Robsons [Smalltalk-80: The Language and Its Implementation](https://rmod-files.lille.inria.fr/FreeBooks/BlueBookHughes/BlueBookImplementationTOC.html).
+Unary messages bind before binary messages, and binary messages before keyword messages. Binary messages are evaluated left to right, so `3 + 4 * 2` evaluates to `14`. The language follows Goldberg and Robson's [Smalltalk-80: The Language and Its Implementation](https://rmod-files.lille.inria.fr/FreeBooks/BlueBookHughes/BlueBookImplementationTOC.html).
 
-Für den Prototyp gelten bewusste Vereinfachungen:
+The prototype has these limits.
 
-- Der Interpreter führt einen Syntaxbaum aus; es gibt noch keine Blue-Book-Bytecode-VM und keine Kompatibilität zu historischen Images.
-- Klassen teilen sich die vereinfachte Klasse `Class`; eine vollständige Metaklassenhierarchie und separate Klassenmethoden fehlen.
-- `subclass:instanceVariableNames:` ist eine Kurzform. Die längere Smalltalk-80-Nachricht wird mit leeren Klassenvariablen und Pool-Dictionaries ebenfalls akzeptiert.
-- `new` sendet `initialize`. Ohne explizites `^` gibt eine Methode `self`, ein Block seinen letzten Ausdruck zurück.
-- Nicht deklarierte Workspace-Zuweisungen erzeugen bleibende Workspace-Variablen. `| temp |` bleibt lokal zur jeweiligen Ausführung.
-- Strings sind Unicode-Werte; `at:` liefert einen String mit einem Zeichen. `==` vergleicht bei Strings deren Wert. Character, Fraction, Float und LargeInteger fehlen.
-- Der Objektspeicher verwendet zunächst eine Arena und wird beim Zurücksetzen freigegeben. Ein Garbage Collector, Prozesse, Debugger und BitBlt fehlen noch.
-- Derzeit sind bis zu 100.000 Ausführungsschritte, 128 Aufrufebenen, 32 syntaktische Verschachtelungen, 20.000 Arena-Einträge und 4.096 Elemente pro Array vorgesehen. Fehler machen bereits ausgeführte Änderungen nicht rückgängig.
+- The interpreter executes syntax trees. The VM does not implement Blue Book bytecode or load historical images.
+- Classes share a simplified `Class`. The system does not yet implement a full metaclass hierarchy or separate class methods.
+- `subclass:instanceVariableNames:` is the short form. The longer Smalltalk-80 message is accepted with empty class variables and pool dictionaries.
+- `new` sends `initialize`. With no explicit `^`, a method returns `self` and a block returns its last expression.
+- Assigning an undeclared name in a workspace creates a persistent workspace variable. `| temp |` declares a local that lasts for the evaluation.
+- Strings are Unicode values. `at:` returns a one-character string and `==` compares strings by value. `Character`, `Fraction`, `Float`, and `LargeInteger` are not implemented.
+- Object memory uses an arena, which is freed on reset. The system does not yet include garbage collection, processes, a debugger, or BitBlt.
+- An evaluation can take up to 100,000 steps, 128 call levels, and 32 syntactic nesting levels. The arena supports 20,000 entries and arrays can hold 4,096 elements. Changes already performed survive an evaluation error.
 
-## App-Icon
+## App icon
 
-Das App-Icon verbindet überlappende Programmfenster mit einer Nachrichtenblase. Die transparente Originalgrafik liegt in `Design/AppIcon.png`, die verwendeten ImageGen-Prompts in `Design/AppIcon-prompt.txt`.
+The app icon combines overlapping windows with a message bubble. The original transparent artwork is in `Design/AppIcon.png` and the ImageGen prompts are in `Design/AppIcon-prompt.txt`.
 
-Das Xcode-Target verwendet `Assets.xcassets/AppIcon.appiconset` mit allen zehn macOS-Größen von 16 bis 1024 Pixeln. Die Ableitungen lassen sich mit den macOS-Bordmitteln erneut erzeugen:
+The Xcode target uses `Assets.xcassets/AppIcon.appiconset` with all ten macOS sizes from 16 to 1024 pixels. Regenerate the renditions with macOS system tools.
 
 ```sh
 python3 scripts/prepare-app-icon.py Design/AppIcon.png
 ```
 
-Der Projektgenerator erhält die Asset-Katalog-Zuordnung und die App-Icon-Einstellung für Debug und Release.
+The project generator preserves the asset catalog and app icon settings for Debug and Release.
 
-## Prüfen und bauen
+## Build and test
 
 ```sh
 xcodebuild -project Smalltalk80.xcodeproj -scheme Smalltalk80 \
@@ -279,8 +277,8 @@ xcodebuild -project Smalltalk80.xcodeproj -scheme Smalltalk80 \
   -only-testing:Smalltalk80UITests test
 ```
 
-Alternativ lassen sich die Kerntests über `swift test` ausführen. Das Xcode-Projekt liegt direkt im Projektverzeichnis und benötigt keinen Generator zum Öffnen oder Bauen. Bei neuen Quelldateien lässt es sich mit `python3 scripts/generate-project.py` reproduzieren; manuelle Änderungen am Projekt würden dabei ersetzt.
+You can also run the core tests with `swift test`. The checked-in Xcode project is ready to open and build. After adding source files, use `python3 scripts/generate-project.py` to recreate it. Regeneration replaces manual project edits.
 
-## Nächste Ausbaustufe
+## Next steps
 
-Als Nächstes bietet sich ein Objektinspektor mit einzelnen Feldern an. Danach können Bytecodes und Garbage Collection den zunächst absichtlich kleinen Interpreter ablösen.
+A natural next step is an object inspector that shows individual fields. Bytecode execution and garbage collection could then extend the current interpreter.

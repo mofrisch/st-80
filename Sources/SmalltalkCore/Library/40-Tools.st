@@ -5,7 +5,7 @@ Model subclass: #TranscriptModel instanceVariableNames: 'contents'.
 TranscriptModel compile: 'initialize super initialize. contents := '''''.
 
 TranscriptModel compile: 'text
-    contents size = 0 ifTrue: [ ^ ''Transcript show: ''''Hallo''''; cr.'' ].
+    contents size = 0 ifTrue: [ ^ ''Transcript show: ''''Hello''''; cr.'' ].
     ^ contents'.
 
 TranscriptModel compile: 'append: aString
@@ -26,7 +26,7 @@ DevelopmentWindow compile: 'caption: aString
 
 DevelopmentWindow compile: 'resultPane
     | scroll |
-    resultCaption := self caption: ''ERGEBNIS''.
+    resultCaption := self caption: ''RESULT''.
     resultLabel := UILabel new role: #code; identifier: ''evaluationResult''; yourself.
     scroll := UIScroll new padding: 12; spacing: 5; heightFrom: 72 to: 110; yourself.
     scroll add: resultCaption; add: resultLabel.
@@ -35,7 +35,7 @@ DevelopmentWindow compile: 'resultPane
 DevelopmentWindow compile: 'result: outcome
     | success |
     success := outcome at: 1.
-    resultCaption text: (success ifTrue: [ ''ERGEBNIS'' ] ifFalse: [ ''FEHLER'' ]).
+    resultCaption text: (success ifTrue: [ ''RESULT'' ] ifFalse: [ ''ERROR'' ]).
     resultLabel role: (success ifTrue: [ #code ] ifFalse: [ #error ]).
     resultLabel text: ((outcome at: 2) suffixFittingUTF8: 65536)'.
 
@@ -44,7 +44,7 @@ DevelopmentWindow compile: 'imageBar
     status := UIColumn new spacing: 3; yourself.
     status add: (UILabel new role: #imageName; identifier: ''imageName''; yourself).
     status add: (UILabel new role: #imageStatus; identifier: ''imageStatus''; yourself).
-    save := UIButton new title: ''Image speichern''; identifier: ''saveImageButton''; action: [ ToolVM requestSaveImage ]; yourself.
+    save := UIButton new title: ''Save Image''; identifier: ''saveImageButton''; action: [ ToolVM requestSaveImage ]; yourself.
     bar := UIRow new padding: 12; yourself.
     bar add: status; add: UISpacer new; add: save.
     ^ bar'.
@@ -68,7 +68,7 @@ WorkspaceWindow compile: 'initialize
     root := UIColumn new spacing: 0; yourself.
     root add: bar; add: UIDivider new; add: editor; add: UIDivider new; add: self resultPane; add: UIDivider new; add: self imageBar.
     self content: root.
-    self result: (ToolVM success: ''Bereit. Auswahl oder gesamten Workspace mit ⌘D ausführen.'')'.
+    self result: (ToolVM success: ''Ready. Press ⌘D to run the selection or the entire workspace.'')'.
 
 WorkspaceWindow compile: 'text: aString
     super text: aString.
@@ -84,12 +84,12 @@ WorkspaceWindow compile: 'execute: selected printing: aBoolean
 
 WorkspaceWindow compile: 'examplesMenu
     | menu |
-    menu := UIMenu new title: ''Beispiele''; yourself.
-    menu add: (self exampleButton: ''Zähler'' key: #workspace).
-    menu add: (self exampleButton: ''Arrays und Blöcke'' key: #collections).
-    menu add: (self exampleButton: ''Eine eigene Klasse'' key: #classes).
-    menu add: (self exampleButton: ''Fenster öffnen'' key: #windows).
-    menu add: (self exampleButton: ''Eigene Oberfläche'' key: #userInterface).
+    menu := UIMenu new title: ''Examples''; yourself.
+    menu add: (self exampleButton: ''Counter'' key: #workspace).
+    menu add: (self exampleButton: ''Arrays and Blocks'' key: #collections).
+    menu add: (self exampleButton: ''Create a Class'' key: #classes).
+    menu add: (self exampleButton: ''Open Windows'' key: #windows).
+    menu add: (self exampleButton: ''Custom Interface'' key: #userInterface).
     ^ menu'.
 
 WorkspaceWindow compile: 'exampleButton: aTitle key: exampleKey
@@ -105,31 +105,31 @@ BrowserWindow compile: 'initialize
     super initialize.
     self kind: #browser.
     self title: ''System Browser''.
-    category := ''Alle''.
+    category := ''All''.
     className := ''Counter''.
-    protocolName := ''Alle''.
+    protocolName := ''All''.
     categoryList := self list: ''categoryList'' selecting: #chooseCategory:.
     classList := self list: ''classList'' selecting: #chooseClass:.
     protocolList := self list: ''protocolList'' selecting: #chooseProtocol:.
     methodList := self list: ''methodList'' selecting: #chooseMethod:.
-    queryField := UITextField new identifier: ''classFilter''; placeholder: ''Klassen filtern''; widthFrom: 135 to: 220; onChangeSend: #filter: to: self; yourself.
-    editor := UICodeEditor new identifier: ''methodEditor''; label: ''Methodenquelltext''; onChangeSend: #draftChanged: to: self; yourself.
+    queryField := UITextField new identifier: ''classFilter''; placeholder: ''Filter Classes''; widthFrom: 135 to: 220; onChangeSend: #filter: to: self; yourself.
+    editor := UICodeEditor new identifier: ''methodEditor''; label: ''Method Source''; onChangeSend: #draftChanged: to: self; yourself.
     header := self heading: ''''.
     hint := self caption: ''''.
-    accept := UIButton new title: ''Akzeptieren''; identifier: ''executeButton''; role: #primary; command: #acceptMethod; onClickSend: #acceptMethod to: self; yourself.
-    versions := UIButton new title: ''Versionen …''; identifier: ''methodVersionsButton''; onClickSend: #showVersions to: self; yourself.
+    accept := UIButton new title: ''Accept''; identifier: ''executeButton''; role: #primary; command: #acceptMethod; onClickSend: #acceptMethod to: self; yourself.
+    versions := UIButton new title: ''Versions …''; identifier: ''methodVersionsButton''; onClickSend: #showVersions to: self; yourself.
 
     actions := UIRow new padding: 8; yourself.
     actions add: queryField; add: UISpacer new.
-    actions add: (UIButton new title: ''Klasse anlegen …''; onClickSend: #showCreation to: self; yourself).
-    actions add: (UIButton new title: ''Neue Methode''; onClickSend: #newMethod to: self; yourself).
+    actions add: (UIButton new title: ''Create Class …''; onClickSend: #showCreation to: self; yourself).
+    actions add: (UIButton new title: ''New Method''; onClickSend: #newMethod to: self; yourself).
     actions add: (UIButton new title: ''Details''; action: [ inspectorPane visible: inspectorPane visible not ]; yourself).
 
     navigation := UISplit new identifier: ''browserNavigation''; heightFrom: 135 to: 220; yourself.
-    navigation add: (self pane: ''Klassenkategorien'' list: categoryList).
-    navigation add: (self pane: ''Klassen'' list: classList).
-    navigation add: (self pane: ''Protokolle'' list: protocolList).
-    navigation add: (self pane: ''Methoden'' list: methodList).
+    navigation add: (self pane: ''Class Categories'' list: categoryList).
+    navigation add: (self pane: ''Classes'' list: classList).
+    navigation add: (self pane: ''Protocols'' list: protocolList).
+    navigation add: (self pane: ''Methods'' list: methodList).
 
     toolbar := UIRow new padding: 8; yourself.
     toolbar add: (UIColumn new spacing: 2; add: header; add: hint; yourself); add: UISpacer new; add: versions; add: accept.
@@ -143,7 +143,7 @@ BrowserWindow compile: 'initialize
     root add: actions; add: UIDivider new; add: split; add: UIDivider new.
     root add: (self resultPane heightFrom: 52 to: 78; yourself); add: UIDivider new; add: self imageBar.
     self content: root.
-    self result: (ToolVM success: ''Bereit.'').
+    self result: (ToolVM success: ''Ready.'').
     self refreshTools.
     self refreshEditor'.
 
@@ -168,41 +168,41 @@ BrowserWindow compile: 'filter: aString queryField text: aString. self refreshCl
 BrowserWindow compile: 'classCategoryFor: name
     (#(''Object'' ''Class'' ''UndefinedObject'' ''Boolean'' ''True'' ''False'' ''Number'' ''Integer'' ''SmallInteger'' ''String'' ''Symbol'' ''Array'' ''BlockClosure'') includes: name) ifTrue: [ ^ ''Kernel'' ].
     (#(''STCompilerList'' ''STScanner'' ''STCompiler'') includes: name) ifTrue: [ ^ ''Compiler'' ].
-    (#(''Transcript'' ''TranscriptModel'' ''ToolServices'' ''DevelopmentWindow'' ''WorkspaceWindow'' ''BrowserWindow'' ''TranscriptWindow'') includes: name) ifTrue: [ ^ ''Werkzeuge'' ].
+    (#(''Transcript'' ''TranscriptModel'' ''ToolServices'' ''DevelopmentWindow'' ''WorkspaceWindow'' ''BrowserWindow'' ''TranscriptWindow'') includes: name) ifTrue: [ ^ ''Tools'' ].
     (#(''Model'' ''Controller'' ''UIBinding'' ''SystemWindow'' ''DesktopModel'' ''DisplayScreen'' ''DesktopManager''
        ''UIElement'' ''UILabel'' ''UIButton'' ''UITextField'' ''UIContainer'' ''UIColumn'' ''UIRow'' ''UISpacer''
        ''UIWindow'' ''UICodeEditor'' ''UIList'' ''UISplit'' ''UIScroll'' ''UIMenu'' ''UIDivider'') includes: name)
-        ifTrue: [ ^ ''Oberfläche'' ].
-    name = ''Counter'' ifTrue: [ ^ ''Beispiele'' ].
-    ^ ''Benutzerklassen'''.
+        ifTrue: [ ^ ''Interface'' ].
+    name = ''Counter'' ifTrue: [ ^ ''Examples'' ].
+    ^ ''User Classes'''.
 
 BrowserWindow compile: 'matchesCategory: name
-    ^ category = ''Alle'' or: [ (self classCategoryFor: name) = category ]'.
+    ^ category = ''All'' or: [ (self classCategoryFor: name) = category ]'.
 
 BrowserWindow compile: 'refreshClasses
     | query |
     query := queryField text.
-    categoryList items: #(''Alle'' ''Kernel'' ''Compiler'' ''Oberfläche'' ''Werkzeuge'' ''Beispiele'' ''Benutzerklassen''); selection: category.
+    categoryList items: #(''All'' ''Kernel'' ''Compiler'' ''Interface'' ''Tools'' ''Examples'' ''User Classes''); selection: category.
     classList items: (ToolVM classNames select: [ :each |
         (self matchesCategory: each) and: [ query size = 0 or: [ each includesIgnoringCase: query ] ] ]).
     classList selection: className'.
 
 BrowserWindow compile: 'protocolOf: name in: target
-    (target isPrimitiveAt: name) ifTrue: [ ^ ''VM-Primitiven'' ].
-    name = ''initialize'' ifTrue: [ ^ ''Initialisierung'' ].
-    (name includes: '':'') ifTrue: [ ^ ''Schlüsselwort'' ].
-    (name at: 1) isLetter ifTrue: [ ^ ''Unär'' ].
-    ^ ''Binär'''.
+    (target isPrimitiveAt: name) ifTrue: [ ^ ''VM Primitives'' ].
+    name = ''initialize'' ifTrue: [ ^ ''Initialization'' ].
+    (name includes: '':'') ifTrue: [ ^ ''Keyword'' ].
+    (name at: 1) isLetter ifTrue: [ ^ ''Unary'' ].
+    ^ ''Binary'''.
 
 BrowserWindow compile: 'refreshMethods
     | target methods protocols |
     target := self selectedClass.
     methods := target isNil ifTrue: [ #() ] ifFalse: [ target methodNames ].
     protocols := methods collect: [ :each | self protocolOf: each in: target ].
-    (protocolName notNil and: [ protocols includes: protocolName ]) ifFalse: [ protocolName := ''Alle'' ].
-    protocolList items: (#(''Alle'' ''Initialisierung'' ''Unär'' ''Schlüsselwort'' ''Binär'' ''VM-Primitiven'') select: [ :each |
-        each = ''Alle'' or: [ protocols includes: each ] ]); selection: protocolName.
-    methodList items: (protocolName = ''Alle'' ifTrue: [ methods ] ifFalse: [
+    (protocolName notNil and: [ protocols includes: protocolName ]) ifFalse: [ protocolName := ''All'' ].
+    protocolList items: (#(''All'' ''Initialization'' ''Unary'' ''Keyword'' ''Binary'' ''VM Primitives'') select: [ :each |
+        each = ''All'' or: [ protocols includes: each ] ]); selection: protocolName.
+    methodList items: (protocolName = ''All'' ifTrue: [ methods ] ifFalse: [
         methods select: [ :each | (self protocolOf: each in: target) = protocolName ] ]).
     methodList selection: selector'.
 
@@ -221,17 +221,17 @@ BrowserWindow compile: 'refreshInspector
     | target description |
     target := self selectedClass.
     description := target isNil ifTrue: [ '''' ] ifFalse: [
-        ''KLASSE IM BROWSER'' , ToolVM lineBreak , className , ToolVM lineBreak ,
+        ''BROWSER CLASS'' , ToolVM lineBreak , className , ToolVM lineBreak ,
         (target superclass isNil ifTrue: [ '''' ] ifFalse: [ target superclass name asString ]) , ToolVM lineBreak ,
-        ''Instanzvariablen: '' , target instanceVariableNamesText , ToolVM lineBreak , ToolVM lineBreak ].
-    inspector text: (description , ''GEMEINSAME VARIABLEN'' , ToolVM lineBreak , ToolVM bindingSummary)'.
+        ''Instance Variables: '' , target instanceVariableNamesText , ToolVM lineBreak , ToolVM lineBreak ].
+    inspector text: (description , ''SHARED VARIABLES'' , ToolVM lineBreak , ToolVM bindingSummary)'.
 
 BrowserWindow compile: 'refreshEditor
     | primitive name |
     primitive := self primitiveSelected.
-    name := className isNil ifTrue: [ ''Keine Klasse ausgewählt'' ] ifFalse: [ className ].
+    name := className isNil ifTrue: [ ''No Class Selected'' ] ifFalse: [ className ].
     header text: (selector isNil ifTrue: [ name ] ifFalse: [ name , '' » '' , selector ]).
-    hint text: (primitive ifTrue: [ ''VM-Primitive'' ] ifFalse: [ ''Instanzseite'' ]).
+    hint text: (primitive ifTrue: [ ''VM Primitive'' ] ifFalse: [ ''Instance Side'' ]).
     editor readOnly: (primitive or: [ className isNil ]).
     versions enabled: (selector notNil and: [ primitive not ]).
     self draftChanged: editor text'.
@@ -240,19 +240,19 @@ BrowserWindow compile: 'draftChanged: aString
     accept enabled: (className notNil and: [ self primitiveSelected not and: [ aString size > 0 ] ])'.
 
 BrowserWindow compile: 'chooseCategory: name
-    category := name isNil ifTrue: [ ''Alle'' ] ifFalse: [ name ].
+    category := name isNil ifTrue: [ ''All'' ] ifFalse: [ name ].
     (className notNil and: [ (self matchesCategory: className) not ]) ifTrue: [ ^ self chooseClass: nil ].
     self refreshClasses'.
 
 BrowserWindow compile: 'chooseClass: name
     className := name.
-    protocolName := ''Alle''.
+    protocolName := ''All''.
     self chooseMethod: nil.
     self refreshTools'.
 
 BrowserWindow compile: 'chooseProtocol: name
     protocolName := name.
-    (selector notNil and: [ name notNil and: [ name ~= ''Alle'' and: [ (self protocolOf: selector in: self selectedClass) ~= name ] ] ])
+    (selector notNil and: [ name notNil and: [ name ~= ''All'' and: [ (self protocolOf: selector in: self selectedClass) ~= name ] ] ])
         ifTrue: [ self chooseMethod: nil ].
     self refreshMethods'.
 
@@ -278,7 +278,7 @@ BrowserWindow compile: 'acceptMethod
     (outcome at: 1) ifTrue: [
         selector := outcome at: 2.
         originalSource := editor text.
-        (protocolName ~= ''Alle'' and: [ (self protocolOf: selector in: target) ~= protocolName ]) ifTrue: [ protocolName := ''Alle'' ].
+        (protocolName ~= ''All'' and: [ (self protocolOf: selector in: target) ~= protocolName ]) ifTrue: [ protocolName := ''All'' ].
         self refreshTools.
         self refreshEditor.
         self result: (ToolVM success: className , '' » '' , selector)
@@ -289,13 +289,13 @@ BrowserWindow compile: 'showVersions
 
 BrowserWindow compile: 'classForm
     | form buttons |
-    nameField := UITextField new label: ''Klassenname''; placeholder: ''Greeter''; yourself.
-    fieldsField := UITextField new label: ''Instanzvariablen''; placeholder: ''name age''; yourself.
+    nameField := UITextField new label: ''Class Name''; placeholder: ''Greeter''; yourself.
+    fieldsField := UITextField new label: ''Instance Variables''; placeholder: ''name age''; yourself.
     buttons := UIRow new yourself.
-    buttons add: (UIButton new title: ''Abbrechen''; onClickSend: #hideCreation to: self; yourself).
-    buttons add: (UIButton new title: ''Anlegen''; role: #primary; onClickSend: #createClass to: self; yourself).
+    buttons add: (UIButton new title: ''Cancel''; onClickSend: #hideCreation to: self; yourself).
+    buttons add: (UIButton new title: ''Create''; role: #primary; onClickSend: #createClass to: self; yourself).
     form := UIColumn new padding: 12; visible: false; yourself.
-    form add: (self heading: ''Eine neue Klasse''); add: nameField; add: fieldsField; add: buttons.
+    form add: (self heading: ''Create a Class''); add: nameField; add: fieldsField; add: buttons.
     ^ form'.
 
 BrowserWindow compile: 'showCreation
@@ -308,7 +308,7 @@ BrowserWindow compile: 'createClass
     outcome := ToolVM createSubclass: nameField text fields: fieldsField text.
     (outcome at: 1) ifTrue: [
         self hideCreation.
-        category := ''Benutzerklassen''.
+        category := ''User Classes''.
         queryField text: ''''.
         self chooseClass: (outcome at: 2).
         self newMethod ].
@@ -323,7 +323,7 @@ TranscriptWindow compile: 'initialize
     self title: ''Transcript''.
     toolbar := UIRow new padding: 12; yourself.
     toolbar add: (self heading: ''Transcript''); add: UISpacer new.
-    toolbar add: (UIButton new title: ''Leeren''; onClickSend: #clear to: TranscriptBuffer; yourself).
+    toolbar add: (UIButton new title: ''Clear''; onClickSend: #clear to: TranscriptBuffer; yourself).
     output := UILabel new identifier: ''transcriptOutput''; role: #code; yourself.
     output bind: #text to: TranscriptBuffer aspect: #text.
     scroll := UIScroll new role: #followEnd; padding: 12; yourself.

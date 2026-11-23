@@ -8,7 +8,7 @@ public enum SmalltalkBootstrap {
     }
 
     public static func rebuild(in directory: URL, checkOnly: Bool, progress: (String) -> Void) throws {
-        progress("Startimage und Systemquellen laden …")
+        progress("Loading the boot image and system sources …")
         let oldLibrary = try SystemLibrary(directory: directory)
         let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
             .filter { $0.pathExtension == "st" && $0.lastPathComponent.first?.isNumber == true }
@@ -19,30 +19,30 @@ public enum SmalltalkBootstrap {
 
         // The previous compiler builds a transition generation. The resulting
         // compiler then builds itself twice to verify a stable executable.
-        progress("[1/3] Systemquellen mit dem bisherigen Compiler übersetzen …")
+        progress("[1/3] Compiling the system sources with the previous compiler …")
         let transition = try compilerFor(build(sources, using: compiler))
-        progress("[2/3] Systemquellen mit dem neuen Compiler übersetzen …")
+        progress("[2/3] Compiling the system sources with the new compiler …")
         let final = try build(sources, using: transition)
         let rebuilt = try compilerFor(final)
         let artifacts = try encode(final)
-        progress("[3/3] Reproduzierbarkeit des Selbstbaus prüfen …")
+        progress("[3/3] Checking that the bootstrap is reproducible …")
         let repeated = try encode(build(sources, using: rebuilt))
         guard artifacts.0 == repeated.0, artifacts.1 == repeated.1 else {
-            throw SmalltalkError("Der neu gebaute Smalltalk-Compiler erzeugt beim Selbstbau abweichenden Code.")
+            throw SmalltalkError("The new Smalltalk compiler produces different code when it rebuilds itself.")
         }
-        progress("InitialWorld.st ausführen …")
+        progress("Running InitialWorld.st …")
         _ = try rebuilt.evaluate(oldLibrary.initialWorld)
         if let error = rebuilt.projectWindows().error { throw SmalltalkError(error) }
 
         let sourcesURL = directory.appendingPathComponent("Smalltalk80.sources")
         let seedURL = directory.appendingPathComponent("Kernel.seed.json")
         if checkOnly {
-            progress("Quellenarchiv und Startimage vergleichen …")
+            progress("Checking the sources archive and boot image …")
             guard try Data(contentsOf: sourcesURL) == artifacts.0, try Data(contentsOf: seedURL) == artifacts.1 else {
-                throw SmalltalkError("Startimage oder Sources-Archiv sind veraltet. Starte den Bootstrap-Build erneut.")
+                throw SmalltalkError("The boot image or sources archive is out of date. Run the bootstrap again.")
             }
         } else {
-            progress("Quellenarchiv und Startimage schreiben …")
+            progress("Writing the sources archive and boot image …")
             try artifacts.0.write(to: sourcesURL, options: .atomic)
             try artifacts.1.write(to: seedURL, options: .atomic)
         }
@@ -57,7 +57,7 @@ public enum SmalltalkBootstrap {
         let runtime = SmalltalkRuntime(bootstrap: false)
         for definition in build.sources.definitions {
             guard let parent = runtime.classes[definition.superclass] else {
-                throw SmalltalkError("System-Oberklasse \(definition.superclass) fehlt.")
+                throw SmalltalkError("System superclass \(definition.superclass) is missing.")
             }
             let stClass = try runtime.subclass(of: parent, name: definition.name, fields: definition.fields.joined(separator: " "))
             stClass.methods = build.methods[definition.name] ?? [:]
@@ -75,30 +75,30 @@ public enum SmalltalkBootstrap {
         var methods: [String: [String: Method]] = [:]
         for script in scripts {
             let body = try compiler.compileWorkspace(script)
-            guard body.temporaries.isEmpty else { throw SmalltalkError("Systemquellen dürfen keine Workspace-Variablen deklarieren.") }
+            guard body.temporaries.isEmpty else { throw SmalltalkError("System sources cannot declare workspace variables.") }
             for expression in body.expressions {
                 guard case .send(let receiver, let selector, let arguments) = expression.kind,
                       case .variable(let name) = receiver.kind, let stClass = classes.classes[name] else {
-                    throw SmalltalkError("Ungültige Deklaration in den Systemquellen.")
+                    throw SmalltalkError("Invalid declaration in the system sources.")
                 }
                 switch selector {
                 case "subclass:instanceVariableNames:":
                     guard arguments.count == 2, case .literal(.symbol(let child)) = arguments[0].kind,
                           case .literal(.string(let fields)) = arguments[1].kind else {
-                        throw SmalltalkError("Ungültige Klassendeklaration für \(name).")
+                        throw SmalltalkError("Invalid class declaration for \(name).")
                     }
                     let newClass = try classes.subclass(of: stClass, name: child, fields: fields)
                     definitions.append(.init(name: child, superclass: name, fields: newClass.ownFields))
                 case "compile:":
                     guard arguments.count == 1, case .literal(.string(let source)) = arguments[0].kind else {
-                        throw SmalltalkError("Ungültige Methodendeklaration für \(name).")
+                        throw SmalltalkError("Invalid method declaration for \(name).")
                     }
                     let method = try compiler.compileMethod(source, fields: stClass.fields)
                     guard methods[name, default: [:]].updateValue(method, forKey: method.selector) == nil else {
-                        throw SmalltalkError("Doppelte Systemmethode \(name)>>\(method.selector).")
+                        throw SmalltalkError("Duplicate system method \(name)>>\(method.selector).")
                     }
                 default:
-                    throw SmalltalkError("Systemquellen dürfen nur Klassen und Methoden deklarieren.")
+                    throw SmalltalkError("System sources can only declare classes and methods.")
                 }
             }
         }

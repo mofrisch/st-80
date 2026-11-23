@@ -30,12 +30,12 @@ struct Smalltalk80App: App {
     private var controller: AppController { delegate.controller }
 
     var body: some Scene {
-        Settings { Text("Fenster und Sitzung werden im Smalltalk-Image gespeichert.").padding(24) }
+        Settings { Text("Windows and session state are stored in the Smalltalk image.").padding(24) }
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("Neuer Workspace") { Task { await controller.openTool(.workspace) } }.keyboardShortcut("n").disabled(controller.isRunning)
-                Button("Workspace öffnen …") { Task { await controller.openWorkspace() } }.keyboardShortcut("o").disabled(controller.isRunning)
-                Button(controller.activeKind == .browser ? "Methode akzeptieren" : "Workspace speichern …") {
+                Button("New Workspace") { Task { await controller.openTool(.workspace) } }.keyboardShortcut("n").disabled(controller.isRunning)
+                Button("Open Workspace …") { Task { await controller.openWorkspace() } }.keyboardShortcut("o").disabled(controller.isRunning)
+                Button(controller.activeKind == .browser ? "Accept Method" : "Save Workspace …") {
                     Task {
                         if controller.activeKind == .browser { await controller.performCommand("acceptMethod") }
                         else { await controller.saveWorkspace() }
@@ -44,11 +44,11 @@ struct Smalltalk80App: App {
                 .keyboardShortcut("s")
                 .disabled(controller.isRunning || controller.activeKind == .browser && !controller.hasCommand("acceptMethod"))
                 Divider()
-                Button("Image öffnen …") { Task { await controller.openImage() } }
+                Button("Open Image …") { Task { await controller.openImage() } }
                     .keyboardShortcut("o", modifiers: [.command, .shift]).disabled(controller.isRunning)
-                Button(controller.imageURL == nil ? "Image speichern …" : "Image speichern") { Task { await controller.saveImage() } }
+                Button(controller.imageURL == nil ? "Save Image …" : "Save Image") { Task { await controller.saveImage() } }
                     .keyboardShortcut("s", modifiers: [.command, .shift]).disabled(controller.isRunning)
-                Button("Image speichern unter …") { Task { await controller.saveImage(asNewFile: true) } }
+                Button("Save Image As …") { Task { await controller.saveImage(asNewFile: true) } }
                     .keyboardShortcut("s", modifiers: [.command, .option, .shift]).disabled(controller.isRunning)
             }
             CommandMenu("Smalltalk") {
@@ -57,13 +57,13 @@ struct Smalltalk80App: App {
                 Button("Print it") { Task { await controller.performCommand("printIt") } }.keyboardShortcut("p")
                     .disabled(controller.isRunning || !controller.hasCommand("printIt"))
                 Divider()
-                Button("Workspace anzeigen") { Task { await controller.showWorkspace() } }.keyboardShortcut("1")
-                Button("Browser öffnen") { Task { await controller.openTool(.browser) } }.keyboardShortcut("2")
-                Button("Transcript öffnen") { Task { await controller.openTool(.transcript) } }.keyboardShortcut("3")
-                Button("Codeänderungen …") { Task { await controller.showChanges() } }.disabled(controller.isRunning)
-                Button("Changes-Datei öffnen …") { Task { await controller.openChanges() } }.disabled(controller.isRunning)
+                Button("Show Workspace") { Task { await controller.showWorkspace() } }.keyboardShortcut("1")
+                Button("Open Browser") { Task { await controller.openTool(.browser) } }.keyboardShortcut("2")
+                Button("Open Transcript") { Task { await controller.openTool(.transcript) } }.keyboardShortcut("3")
+                Button("Code Changes …") { Task { await controller.showChanges() } }.disabled(controller.isRunning)
+                Button("Open Changes File …") { Task { await controller.openChanges() } }.disabled(controller.isRunning)
                 Divider()
-                Button("Sitzung zurücksetzen") { Task { await controller.reset() } }.disabled(controller.isRunning)
+                Button("Reset Session") { Task { await controller.reset() } }.disabled(controller.isRunning)
             }
         }
     }

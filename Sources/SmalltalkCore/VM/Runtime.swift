@@ -144,7 +144,7 @@ public actor SmalltalkSession {
             runtime.steps = 0
             runtime.depth = 0
             do {
-                guard let stClass = runtime.classes[className] else { throw SmalltalkError("Klasse \(className) existiert nicht.") }
+                guard let stClass = runtime.classes[className] else { throw SmalltalkError("Class \(className) does not exist.") }
                 let selector = try runtime.compile(source, in: stClass)
                 return runtime.finishEvaluation(value: "\(className) » \(selector)")
             } catch { return runtime.snapshot(error: error.localizedDescription) }
@@ -233,13 +233,13 @@ final class SmalltalkRuntime {
     func tick() throws {
         steps += 1
         guard steps <= (compilationMode ? 24_000_000 : 100_000) else {
-            throw SmalltalkError(compilationMode ? "Aufwandsgrenze des Smalltalk-Compilers erreicht." : "Ausführung nach 100.000 Schritten angehalten. Prüfe Schleifen und Rekursion.")
+            throw SmalltalkError(compilationMode ? "The Smalltalk compiler reached its execution limit." : "Execution stopped after 100,000 steps. Check loops and recursion.")
         }
     }
 
     func enter() throws {
         try tick()
-        guard depth < (compilationMode ? 1400 : 128) else { throw SmalltalkError("Maximale Aufruftiefe erreicht.") }
+        guard depth < (compilationMode ? 1400 : 128) else { throw SmalltalkError("Maximum call depth reached.") }
         depth += 1
     }
 
@@ -255,12 +255,12 @@ final class SmalltalkRuntime {
             environments.removeAll { $0.value == nil }
         }
         guard environments.count + objects.count + arrays.count < allocationLimit else {
-            throw SmalltalkError("Objektspeicher des Prototyps ist voll. Setze die Sitzung zurück.")
+            throw SmalltalkError("The object memory is full. Reset the session.")
         }
     }
 
     func array(_ values: [Value]) throws -> Value {
-        guard values.count <= arrayLimit else { throw SmalltalkError("Arrays sind auf \(arrayLimit.formatted(.number.locale(Locale(identifier: "de_DE")))) Elemente begrenzt.") }
+        guard values.count <= arrayLimit else { throw SmalltalkError("Arrays are limited to \(arrayLimit.formatted(.number.locale(Locale(identifier: "en_US")))) elements.") }
         try checkAllocation()
         let array = STArray(values)
         arrays.append(array)
@@ -320,7 +320,7 @@ final class SmalltalkRuntime {
             case .block(let parameters, let body):
                 return .block(STBlock(parameters: parameters, body: body, context: context))
             case .returnValue(let expression):
-                guard activeHomes.contains(context.homeID) else { throw SmalltalkError("Der Heimkontext dieses Blocks ist bereits beendet; ^ kann nicht zurückkehren.") }
+                guard activeHomes.contains(context.homeID) else { throw SmalltalkError("The home context of this block has already returned, so ^ cannot return from it.") }
                 throw ReturnSignal(value: try evaluate(expression, context: context), homeID: context.homeID)
             }
         } catch var error as SmalltalkError {
@@ -331,7 +331,7 @@ final class SmalltalkRuntime {
 
     func messageReceiver(_ expression: Expression, context: Context) throws -> (Value, STClass?) {
         if case .variable("super") = expression.kind {
-            guard let superclass = context.homeClass?.superclass else { throw SmalltalkError("super ist hier nicht verfügbar.") }
+            guard let superclass = context.homeClass?.superclass else { throw SmalltalkError("super is unavailable here.") }
             return (context.receiver, superclass)
         }
         return (try evaluate(expression, context: context), nil)
@@ -343,27 +343,27 @@ final class SmalltalkRuntime {
         case "true": return .boolean(true)
         case "false": return .boolean(false)
         case "self": return context.receiver
-        case "super": throw SmalltalkError("super muss Empfänger einer Nachricht sein.")
+        case "super": throw SmalltalkError("super must be the receiver of a message.")
         default: break
         }
         if let environment = context.environment.binding(name), let value = environment.values[name] { return value }
         if case .object(let object) = context.receiver, let value = object.fields[name] { return value }
         if let value = globals[name] { return value }
-        throw SmalltalkError("Unbekannte Variable: \(name)")
+        throw SmalltalkError("Unknown variable: \(name)")
     }
 
     func assign(_ name: String, value: Value, context: Context) throws {
         guard !["nil", "true", "false", "self", "super", "thisContext", "Transcript"].contains(name), classes[name] == nil else {
-            throw SmalltalkError("\(name) darf nicht überschrieben werden.")
+            throw SmalltalkError("\(name) cannot be reassigned.")
         }
         if let environment = context.environment.binding(name) { environment.values[name] = value; return }
         if case .object(let object) = context.receiver, object.fields[name] != nil { object.fields[name] = value; return }
         if context.isWorkspace || globals[name] != nil {
-            guard globals.count < 1_024 || globals[name] != nil else { throw SmalltalkError("Zu viele Workspace-Variablen.") }
+            guard globals.count < 1_024 || globals[name] != nil else { throw SmalltalkError("Too many workspace variables.") }
             globals[name] = value
             return
         }
-        throw SmalltalkError("Variable \(name) ist nicht deklariert.")
+        throw SmalltalkError("Variable \(name) is undeclared.")
     }
 
     func value(_ literal: Literal) throws -> Value {
@@ -395,16 +395,16 @@ final class SmalltalkRuntime {
     func send(_ receiver: Value, _ selector: String, _ arguments: [Value], startingAt startClass: STClass? = nil) throws -> Value {
         try enter()
         defer { depth -= 1 }
-        guard arguments.count == CodeValidator.arity(of: selector) else { throw SmalltalkError("Falsche Argumentzahl für \(selector).") }
+        guard arguments.count == CodeValidator.arity(of: selector) else { throw SmalltalkError("Wrong number of arguments for \(selector).") }
         if let (method, owner) = (startClass ?? classOf(receiver)).lookup(selector) {
             return try invoke(method, owner: owner, receiver: receiver, arguments: arguments)
         }
         if let result = try primitive(receiver, selector, arguments) { return result }
-        throw SmalltalkError("\(classOf(receiver).name) versteht die Nachricht \(selector) nicht.")
+        throw SmalltalkError("\(classOf(receiver).name) does not understand \(selector).")
     }
 
     func invoke(_ method: Method, owner: STClass, receiver: Value, arguments: [Value]) throws -> Value {
-        guard method.parameters.count == arguments.count else { throw SmalltalkError("Falsche Argumentzahl für \(method.selector).") }
+        guard method.parameters.count == arguments.count else { throw SmalltalkError("Wrong number of arguments for \(method.selector).") }
         let environment = try environment()
         for (name, value) in zip(method.parameters, arguments) { environment.values[name] = value }
         nextHome += 1
@@ -419,8 +419,8 @@ final class SmalltalkRuntime {
     }
 
     func invokeBlock(_ value: Value, _ arguments: [Value] = []) throws -> Value {
-        guard case .block(let block) = value else { throw SmalltalkError("Ein Block [...] wird erwartet.") }
-        guard block.parameters.count == arguments.count else { throw SmalltalkError("Block erwartet \(block.parameters.count) Argumente, erhalten: \(arguments.count).") }
+        guard case .block(let block) = value else { throw SmalltalkError("Expected a block [...].") }
+        guard block.parameters.count == arguments.count else { throw SmalltalkError("Expected \(block.parameters.count) block arguments, got \(arguments.count).") }
         try enter()
         defer { depth -= 1 }
         let environment = try environment(parent: block.context.environment)
@@ -431,9 +431,9 @@ final class SmalltalkRuntime {
 
     @discardableResult
     func compile(_ source: String, in stClass: STClass) throws -> String {
-        guard !compilationMode else { throw SmalltalkError("Eine laufende Übersetzung kann keine weitere Übersetzung starten.") }
+        guard !compilationMode else { throw SmalltalkError("Compilation is already in progress.") }
         let method = try compileMethod(source, fields: stClass.fields)
-        guard stClass.methods.count < 512 || stClass.methods[method.selector] != nil else { throw SmalltalkError("Zu viele Methoden in \(stClass.name).") }
+        guard stClass.methods.count < 512 || stClass.methods[method.selector] != nil else { throw SmalltalkError("Too many methods in \(stClass.name).") }
         if recordingChanges {
             try journal.append(kind: .method, className: stClass.name, selector: method.selector, source: source)
         }
@@ -457,7 +457,7 @@ final class SmalltalkRuntime {
         case .array(let array):
             let values = array.elements.prefix(32).map { printValue($0, depth: depth + 1) }.joined(separator: " ")
             return "#(\(values)\(array.elements.count > 32 ? " …" : ""))"
-        case .block(let block): return "[Block · \(block.parameters.count) Argumente]"
+        case .block(let block): return "[Block · \(block.parameters.count) arguments]"
         case .transcript: return "Transcript"
         }
     }

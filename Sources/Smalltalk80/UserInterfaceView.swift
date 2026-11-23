@@ -168,9 +168,9 @@ private struct UIElementView: View {
         case "code": Text(element.text).font(.system(size: 13, design: .monospaced))
         case "error": Text(element.text).font(.system(size: 13, design: .monospaced)).foregroundStyle(.red)
         case "imageName":
-            Text(controller.imageURL?.lastPathComponent ?? "Noch kein Image gespeichert").font(.caption.weight(.medium))
+            Text(controller.imageURL?.lastPathComponent ?? "No image saved yet").font(.caption.weight(.medium))
         case "imageStatus":
-            Text(controller.imageHasChanges ? "Änderungen noch nicht gespeichert" : "Gespeicherter Stand")
+            Text(controller.imageHasChanges ? "Unsaved changes" : "Saved")
                 .font(.caption).foregroundStyle(.secondary)
         default: Text(element.text)
         }

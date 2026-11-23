@@ -26,7 +26,7 @@ struct SourceJournalTests {
         let file = try FileHandle(forWritingTo: log)
         try file.seekToEnd(); try file.write(contentsOf: Data("external\n".utf8)); try file.close()
         let failed = await session.compile("answer ^ 73", in: "Counter")
-        #expect(failed.error?.contains("außerhalb") == true)
+        #expect(failed.error?.contains("outside") == true)
         let current = await session.evaluate("Counter new answer")
         #expect(current.value == "42")
     }

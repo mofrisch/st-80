@@ -23,7 +23,7 @@ extension SmalltalkRuntime {
             return .string(String(summary.prefix(10_000)))
         case "evaluateSource:":
             return try outcome {
-                guard !evaluatingToolSource else { throw SmalltalkError("Eine Workspace-Auswertung läuft bereits.") }
+                guard !evaluatingToolSource else { throw SmalltalkError("A workspace evaluation is already running.") }
                 let enclosingDepth = depth
                 let enclosingSteps = steps
                 evaluatingToolSource = true
@@ -38,11 +38,11 @@ extension SmalltalkRuntime {
                 return printValue(try evaluate(string(args[0])))
             }
         case "compileSource:in:":
-            guard case .classObject(let target) = args[1] else { throw SmalltalkError("Klasse erwartet.") }
+            guard case .classObject(let target) = args[1] else { throw SmalltalkError("Expected a class.") }
             return try outcome { try compile(string(args[0]), in: target) }
         case "createSubclass:fields:":
             return try outcome {
-                guard let root = classes["Object"] else { throw SmalltalkError("Basisklasse Object fehlt.") }
+                guard let root = classes["Object"] else { throw SmalltalkError("The base class Object is missing.") }
                 let target = try subclass(of: root, name: string(args[0]), fields: string(args[1]))
                 return target.name
             }
@@ -53,9 +53,9 @@ extension SmalltalkRuntime {
             case "workspace": return .string(SmalltalkExamples.workspace)
             case "collections": return .string(SmalltalkExamples.collections)
             case "classes": return .string(SmalltalkExamples.classes)
-            case "windows": return .string("window := Desktop openWorkspace.\nwindow title: 'Mein Workspace'.\nwindow text: '6 * 7'")
+            case "windows": return .string("window := Desktop openWorkspace.\nwindow title: 'My Workspace'.\nwindow text: '6 * 7'")
             case "userInterface": return .string(SmalltalkExamples.userInterface)
-            default: throw SmalltalkError("Unbekanntes Workspace-Beispiel.")
+            default: throw SmalltalkError("Unknown workspace example.")
             }
         case "requestSaveImage":
             toolRequests.append(.saveImage)

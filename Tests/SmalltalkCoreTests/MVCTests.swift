@@ -44,7 +44,7 @@ struct MVCTests {
         #expect(changed.error == nil)
         for window in changed.windows.filter({ $0.kind == .custom }) {
             #expect(elements(window.content).contains { $0.kind == .textField && $0.liveInput && $0.text == "Ada 👋" })
-            #expect(elements(window.content).contains { $0.kind == .label && $0.text == "Hallo, Ada 👋!" })
+            #expect(elements(window.content).contains { $0.kind == .label && $0.text == "Hello, Ada 👋!" })
         }
         let dependencies = await session.evaluate("greetingModel dependents size")
         #expect(dependencies.value == "4")
@@ -61,10 +61,10 @@ struct MVCTests {
         let field = try #require(elements(window.content).first { $0.kind == .textField })
         let input = await session.uiAction(.text(windowID: window.id, elementID: field.id, value: "Grace"))
         #expect(input.error == nil)
-        #expect(elements(input.windows.last?.content).contains { $0.kind == .label && $0.text == "Hallo, Grace!" })
+        #expect(elements(input.windows.last?.content).contains { $0.kind == .label && $0.text == "Hello, Grace!" })
         let writes = await session.evaluate("writes")
         #expect(writes.value == "1")
-        let button = try #require(elements(window.content).first { $0.kind == .button && $0.text == "Beispielname" })
+        let button = try #require(elements(window.content).first { $0.kind == .button && $0.text == "Use Example Name" })
         let clicked = await session.uiAction(.click(windowID: window.id, elementID: button.id))
         #expect(clicked.error == nil)
         #expect(elements(clicked.windows.last?.content).contains { $0.id == field.id && $0.text == "Moritz" })
@@ -77,20 +77,20 @@ struct MVCTests {
         let opened = await session.evaluate(SmalltalkExamples.userInterface + """
         . label := greetingView content children at: 3.
         GreetingModel compile: 'silentName: aString name := aString'.
-        greetingModel silentName: 'Gezielt'; changed: #name
+        greetingModel silentName: 'Targeted'; changed: #name
         """)
         #expect(opened.error == nil)
         let window = try #require(opened.windows.first { $0.kind == .custom })
-        #expect(elements(window.content).contains { $0.kind == .textField && $0.text == "Gezielt" })
-        #expect(elements(window.content).contains { $0.kind == .label && $0.text == "Noch keine Begrüßung." })
+        #expect(elements(window.content).contains { $0.kind == .textField && $0.text == "Targeted" })
+        #expect(elements(window.content).contains { $0.kind == .label && $0.text == "No greeting yet." })
         let greeting = await session.evaluate("greetingModel changed: #greeting")
-        #expect(elements(greeting.windows.last?.content).contains { $0.kind == .label && $0.text == "Hallo, Gezielt!" })
+        #expect(elements(greeting.windows.last?.content).contains { $0.kind == .label && $0.text == "Hello, Targeted!" })
         let rebound = await session.evaluate("label bind: #text to: greetingModel aspect: #name. greetingModel dependents size")
         #expect(rebound.error == nil)
         #expect(rebound.value == "2")
-        let unbound = await session.evaluate("label unbind: #text. greetingModel name: 'Neu'. greetingModel dependents size")
+        let unbound = await session.evaluate("label unbind: #text. greetingModel name: 'New'. greetingModel dependents size")
         #expect(unbound.value == "1")
-        #expect(elements(unbound.windows.last?.content).contains { $0.kind == .label && $0.text == "Gezielt" })
+        #expect(elements(unbound.windows.last?.content).contains { $0.kind == .label && $0.text == "Targeted" })
         _ = await session.windowAction(.close(window.id))
         let closed = await session.evaluate("greetingModel name: 'Geschlossen'. greetingModel dependents size")
         #expect(closed.value == "0")
@@ -108,7 +108,7 @@ struct MVCTests {
     @Test func restoredBindingsAndControllersWorkWithoutRunningGettersDuringLoad() async throws {
         let original = SmalltalkSession()
         let opened = await original.evaluate(SmalltalkExamples.userInterface + """
-        . greetingModel name: 'Gespeichert'.
+        . greetingModel name: 'Saved'.
         loadEffects := 0.
         GreetingModel compile: 'initialize loadEffects := loadEffects + 1. super initialize. name := '''''.
         GreetingModel compile: 'name loadEffects := loadEffects + 1. ^ name'
@@ -124,11 +124,11 @@ struct MVCTests {
         #expect(snapshot.error == nil)
         let stillNoEffects = await restored.evaluate("loadEffects")
         #expect(stillNoEffects.value == "0")
-        let changed = await restored.evaluate("greetingModel name: 'Nach Neustart'")
+        let changed = await restored.evaluate("greetingModel name: 'After Restart'")
         #expect(changed.error == nil)
-        #expect(elements(changed.windows.last?.content).contains { $0.kind == .label && $0.text == "Hallo, Nach Neustart!" })
+        #expect(elements(changed.windows.last?.content).contains { $0.kind == .label && $0.text == "Hello, After Restart!" })
         let window = try #require(changed.windows.first { $0.kind == .custom })
-        let clear = try #require(elements(window.content).first { $0.kind == .button && $0.text == "Leeren" })
+        let clear = try #require(elements(window.content).first { $0.kind == .button && $0.text == "Clear" })
         let clicked = await restored.uiAction(.click(windowID: window.id, elementID: clear.id))
         #expect(clicked.error == nil)
         #expect(elements(clicked.windows.last?.content).contains { $0.kind == .textField && $0.text.isEmpty })
@@ -163,15 +163,15 @@ struct MVCTests {
         observer subject: subject.
         subject addDependent: observer; changed
         """)
-        #expect(cycle.error?.contains("Aufruftiefe") == true)
+        #expect(cycle.error?.contains("call depth") == true)
         let repaired = await session.evaluate("subject removeDependent: observer; changed")
         #expect(repaired.error == nil)
         let opened = await session.evaluate(SmalltalkExamples.userInterface)
         #expect(opened.error == nil)
         let invalid = await session.evaluate("GreetingModel compile: 'greeting ^ 42'. greetingModel changed")
         #expect(invalid.error != nil)
-        let recovered = await session.evaluate("GreetingModel compile: 'greeting ^ ''Repariert'''. greetingModel changed")
+        let recovered = await session.evaluate("GreetingModel compile: 'greeting ^ ''Repaired'''. greetingModel changed")
         #expect(recovered.error == nil)
-        #expect(elements(recovered.windows.last?.content).contains { $0.kind == .label && $0.text == "Repariert" })
+        #expect(elements(recovered.windows.last?.content).contains { $0.kind == .label && $0.text == "Repaired" })
     }
 }

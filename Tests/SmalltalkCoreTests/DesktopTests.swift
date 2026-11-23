@@ -153,7 +153,7 @@ struct DesktopTests {
                 _ = try await current.loadImage(data)
                 Issue.record("An invalid saved window unexpectedly replaced the session.")
             } catch {
-                #expect(error.localizedDescription.contains("Fenster"))
+                #expect(error.localizedDescription.contains("window"))
             }
             let after = await current.evaluate("kept")
             #expect(after.error == nil)

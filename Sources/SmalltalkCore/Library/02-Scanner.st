@@ -1,4 +1,4 @@
-"Unicode-Scanner mit Quellposition und einem Token pro Aufruf."
+"Unicode scanner that tracks source positions and returns one token per call."
 
 Object subclass: #STScanner instanceVariableNames: 'characters offset line column nesting tokenLine tokenColumn'.
 
@@ -30,7 +30,7 @@ STScanner compile: 'token: kind value: payload
     | token |
     (#(leftParen leftBracket arrayStart) includes: kind) ifTrue: [
         nesting := nesting + 1.
-        nesting > 32 ifTrue: [ self fail: ''Quelltext ist zu tief verschachtelt (maximal 32 Ebenen).'' ] ].
+        nesting > 32 ifTrue: [ self fail: ''Source code exceeds the nesting limit of 32 levels.'' ] ].
     (#(rightParen rightBracket) includes: kind) ifTrue: [ nesting := nesting - 1 ].
     token := Array new: 4.
     token at: 1 put: kind; at: 2 put: tokenLine; at: 3 put: tokenColumn; at: 4 put: payload.
@@ -56,7 +56,7 @@ STScanner compile: 'skipTrivia
             tokenLine := line. tokenColumn := column.
             self advance.
             [ self peek notNil and: [ self peek ~= ''"'' ] ] whileTrue: [ self advance ].
-            self peek isNil ifTrue: [ self fail: ''Kommentar ist nicht geschlossen.'' ].
+            self peek isNil ifTrue: [ self fail: ''Unterminated comment.'' ].
             self advance
         ] ifFalse: [ self advance ] ]'.
 
@@ -82,7 +82,7 @@ STScanner compile: 'readString
             self advance.
             start := offset
         ] ifFalse: [ self advance ] ].
-    self fail: ''String ist nicht geschlossen.'''.
+    self fail: ''Unterminated string.'''.
 
 STScanner compile: 'readNumber
     | start digits number |
@@ -91,7 +91,7 @@ STScanner compile: 'readNumber
     digits := characters joinedStringFrom: start to: offset - 1.
     digits = ''9223372036854775808'' ifTrue: [ ^ self token: #minimumMagnitude value: nil ].
     number := digits asIntegerOrNil.
-    number isNil ifTrue: [ self fail: ''Ganzzahl ist zu groß (64-Bit-Grenze).'' ].
+    number isNil ifTrue: [ self fail: ''Integer exceeds the 64-bit range.'' ].
     ^ self token: #integer value: number'.
 
 STScanner compile: 'readWord
@@ -119,7 +119,7 @@ STScanner compile: 'readSymbol
     (self isBinary: self peek) ifTrue: [
         [ self isBinary: self peek ] whileTrue: [ self advance ].
         ^ self token: #symbol value: (characters joinedStringFrom: start to: offset - 1) ].
-    self fail: ''Nach # wird ein Symbol oder ( erwartet.'''.
+    self fail: ''Expected a symbol or ( after #.'''.
 
 STScanner compile: 'nextToken
     | character start |
@@ -147,4 +147,4 @@ STScanner compile: 'nextToken
     (self isBinary: character) ifTrue: [
         [ self isBinary: self peek ] whileTrue: [ self advance ].
         ^ self token: #binary value: (characters joinedStringFrom: start to: offset - 1) ].
-    self fail: ''Unbekanntes Zeichen: '' , character'.
+    self fail: ''Unknown character: '' , character'.

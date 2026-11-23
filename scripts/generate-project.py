@@ -160,7 +160,7 @@ add("Project", "PBXProject", attributes={
     "BuildIndependentTargetsInParallel": "YES",
     "LastUpgradeCheck": "2730",
     "TargetAttributes": {uid(f"Target.{name}"): {"CreatedOnToolsVersion": "27.3", **({"TestTargetID": uid("Target.Smalltalk80")} if name == "Smalltalk80UITests" else {})} for name in products},
-}, buildConfigurationList=project_configs, compatibilityVersion="Xcode 14.0", developmentRegion="de", hasScannedForEncodings=0, knownRegions=["de", "en", "Base"], mainGroup=main_group, productRefGroup=products_group, projectDirPath="", projectRoot="", targets=targets)
+}, buildConfigurationList=project_configs, compatibilityVersion="Xcode 14.0", developmentRegion="en", hasScannedForEncodings=0, knownRegions=["en", "Base"], mainGroup=main_group, productRefGroup=products_group, projectDirPath="", projectRoot="", targets=targets)
 
 PROJECT.mkdir(exist_ok=True)
 (PROJECT / "project.pbxproj").write_text("// !$*UTF8*$!\n" + encode({"archiveVersion": 1, "classes": {}, "objectVersion": 56, "objects": objects, "rootObject": uid("Project")}) + "\n")

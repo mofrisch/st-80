@@ -128,7 +128,7 @@ UIElement subclass: #UISpacer instanceVariableNames: ''.
 
 SystemWindow subclass: #UIWindow instanceVariableNames: 'content'.
 
-UIWindow compile: 'initialize super initialize. self kind: #custom. title := ''Fenster''. width := 480. height := 320. content := nil'.
+UIWindow compile: 'initialize super initialize. self kind: #custom. title := ''Window''. width := 480. height := 320. content := nil'.
 
 UIWindow compile: 'content ^ content'.
 

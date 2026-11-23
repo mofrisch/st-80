@@ -7,12 +7,12 @@ struct ChangesView: View {
         VStack(spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(controller.changeClassFilter.map { "Versionen: \($0)\(controller.changeMethodFilter.map { " » \($0)" } ?? "")" } ?? "Codeänderungen").font(.headline)
-                    Text("Akzeptierter Code wird sofort protokolliert. Das Image speichert die Objektwelt.").font(.caption).foregroundStyle(.secondary)
+                    Text(controller.changeClassFilter.map { "Versions: \($0)\(controller.changeMethodFilter.map { " » \($0)" } ?? "")" } ?? "Code Changes").font(.headline)
+                    Text("Accepted code is logged immediately. The image stores the object graph.").font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("Alle Änderungen") { controller.changeClassFilter = nil; controller.changeMethodFilter = nil }
-                Button("Version übernehmen") { Task { await controller.restoreSelectedChange() } }
+                Button("All Changes") { controller.changeClassFilter = nil; controller.changeMethodFilter = nil }
+                Button("Restore Version") { Task { await controller.restoreSelectedChange() } }
                     .disabled(controller.selectedChange == nil || controller.isRunning).accessibilityIdentifier("restoreChangeButton")
             }.padding(12)
             Divider()
@@ -20,17 +20,17 @@ struct ChangesView: View {
                 List(selection: $controller.selectedChange) {
                     ForEach(controller.filteredChanges) { change in
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(change.className + (change.selector.map { " » \($0)" } ?? " · Klassendefinition"))
+                            Text(change.className + (change.selector.map { " » \($0)" } ?? " · Class Definition"))
                             HStack {
-                                if change.sequence == 0 { Text("Ausgelieferte Basis") }
+                                if change.sequence == 0 { Text("Shipped Baseline") }
                                 else { Text(change.timestamp, format: .dateTime.year().month().day().hour().minute().second()) }
-                                if change.sequence > controller.savedChangeSequence { Text("Nach Image-Stand").foregroundStyle(.orange) }
+                                if change.sequence > controller.savedChangeSequence { Text("After Image Checkpoint").foregroundStyle(.orange) }
                             }.font(.caption)
                         }.tag(change.id)
                     }
                 }.frame(minWidth: 250, idealWidth: 320).accessibilityIdentifier("changesList")
                 ScrollView {
-                    Text(controller.filteredChanges.first { $0.id == controller.selectedChange }?.source ?? "Wähle eine Änderung. Spätere Einträge lassen sich auch nach einem Neustart einzeln übernehmen.")
+                    Text(controller.filteredChanges.first { $0.id == controller.selectedChange }?.source ?? "Select a change. You can restore later entries individually after restarting.")
                         .font(.system(size: 13, design: .monospaced)).textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading).padding(14)
                 }.accessibilityIdentifier("changeSource")
@@ -50,7 +50,7 @@ struct EvaluationView: View {
             Image(systemName: error == nil ? "arrow.turn.down.right" : "exclamationmark.circle.fill")
                 .foregroundStyle(error == nil ? Color.accentColor : Color.red)
             VStack(alignment: .leading, spacing: 5) {
-                Text(error == nil ? "ERGEBNIS" : "FEHLER").font(.caption).foregroundStyle(.secondary)
+                Text(error == nil ? "RESULT" : "ERROR").font(.caption).foregroundStyle(.secondary)
                 ScrollView {
                     Text(error ?? value).font(.system(size: 13, design: .monospaced))
                         .foregroundStyle(error == nil ? Color.primary : Color.red)

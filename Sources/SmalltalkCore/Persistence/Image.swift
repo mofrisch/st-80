@@ -96,14 +96,14 @@ enum ImageCodec {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let data = try encoder.encode(archive)
-        guard data.count <= maxBytes else { throw SmalltalkError("Image ist zu groß (maximal 32 MiB).") }
+        guard data.count <= maxBytes else { throw SmalltalkError("Image exceeds the 32 MiB limit.") }
         return data
     }
 
     static func capture(_ runtime: SmalltalkRuntime, workspace: String, transcript: String, includesCode: Bool) throws -> ImageArchive {
-        guard runtime.activeHomes.isEmpty else { throw SmalltalkError("Images können nur zwischen Ausführungen gespeichert werden.") }
+        guard runtime.activeHomes.isEmpty else { throw SmalltalkError("Images can only be saved between evaluations.") }
         if let error = runtime.projectWindows().error {
-            throw SmalltalkError("Image kann nicht gespeichert werden: \(error)")
+            throw SmalltalkError("Could not save the image: \(error)")
         }
         var ids: [ObjectIdentifier: Int] = [:]
         var pending: [Pending] = []
@@ -111,7 +111,7 @@ enum ImageCodec {
         func register(_ object: AnyObject, _ node: Pending) throws -> Int {
             let identity = ObjectIdentifier(object)
             if let id = ids[identity] { return id }
-            guard pending.count < maxNodes else { throw SmalltalkError("Zu viele erreichbare Objekte für ein Image (maximal 40.000).") }
+            guard pending.count < maxNodes else { throw SmalltalkError("An image can contain at most 40,000 reachable objects.") }
             let id = pending.count
             ids[identity] = id
             pending.append(node)
@@ -167,19 +167,19 @@ enum ImageCodec {
     }
 
     static func decode(_ data: Data) throws -> (SmalltalkRuntime, LoadedImage) {
-        guard data.count <= maxBytes else { throw SmalltalkError("Image ist zu groß (maximal 32 MiB).") }
+        guard data.count <= maxBytes else { throw SmalltalkError("Image exceeds the 32 MiB limit.") }
         struct Header: Decodable { let format: String; let version: Int }
         let decoder = JSONDecoder()
         let header: Header
         do { header = try decoder.decode(Header.self, from: data) }
-        catch { throw SmalltalkError("Die Datei ist kein gültiges Smalltalk/80-Image.") }
-        guard header.format == "st80-image" else { throw SmalltalkError("Unbekanntes Image-Format. Erwartet wird ein Smalltalk/80-Image.") }
-        guard header.version == ImageCodec.version else { throw SmalltalkError("Image-Version \(header.version) wird nicht unterstützt (erwartet: \(ImageCodec.version)).") }
+        catch { throw SmalltalkError("The file is not a valid Smalltalk/80 image.") }
+        guard header.format == "st80-image" else { throw SmalltalkError("Unknown image format. Expected a Smalltalk/80 image.") }
+        guard header.version == ImageCodec.version else { throw SmalltalkError("Image version \(header.version) is unsupported. Expected version \(ImageCodec.version).") }
         let archive: ImageArchive
         do { archive = try decoder.decode(ImageArchive.self, from: data) }
-        catch { throw SmalltalkError("Das Image ist beschädigt oder unvollständig: \(error.localizedDescription)") }
+        catch { throw SmalltalkError("The image is corrupt or incomplete: \(error.localizedDescription)") }
         do { return try restore(archive) }
-        catch { throw SmalltalkError("Das Image konnte nicht geladen werden: \(error.localizedDescription)") }
+        catch { throw SmalltalkError("Could not load the image: \(error.localizedDescription)") }
     }
 
     private enum Shell {
@@ -188,18 +188,18 @@ enum ImageCodec {
 
     static func restore(_ image: ImageArchive) throws -> (SmalltalkRuntime, LoadedImage) {
         guard image.format == "st80-image", image.version == ImageCodec.version, let executableMethods = image.executableMethods else {
-            throw invalid("Der ausführbare Methodenspeicher fehlt oder ist inkompatibel.")
+            throw invalid("The executable method store is missing or incompatible.")
         }
-        guard image.classes.count <= 128, image.globals.count <= 1_152, image.nodes.count <= maxNodes else { throw invalid("Größenlimits überschritten.") }
+        guard image.classes.count <= 128, image.globals.count <= 1_152, image.nodes.count <= maxNodes else { throw invalid("Size limits exceeded.") }
         // No bootstrap, user code, initialize messages or block execution on load.
         let runtime = SmalltalkRuntime(bootstrap: false)
         var records: [String: ImageClass] = [:]
         for record in image.classes {
-            guard records.updateValue(record, forKey: record.name) == nil else { throw invalid("Doppelte Klasse \(record.name).") }
+            guard records.updateValue(record, forKey: record.name) == nil else { throw invalid("Duplicate class \(record.name).") }
         }
         for builtin in runtime.classes.values {
             guard let record = records[builtin.name], record.superclass == builtin.superclass?.name, record.fields == builtin.ownFields else {
-                throw invalid("Basisklasse \(builtin.name) fehlt oder hat ein ungültiges Layout.")
+                throw invalid("Built-in class \(builtin.name) is missing or has an invalid layout.")
             }
         }
         var remaining = image.classes.filter { !SmalltalkRuntime.builtinNames.contains($0.name) }
@@ -207,24 +207,24 @@ enum ImageCodec {
             let previous = remaining.count
             var unresolved: [ImageClass] = []
             for record in remaining {
-                guard let parentName = record.superclass else { throw invalid("Oberklasse fehlt.") }
+                guard let parentName = record.superclass else { throw invalid("Superclass is missing.") }
                 if let parent = runtime.classes[parentName] {
                     _ = try runtime.subclass(of: parent, name: record.name, fields: record.fields.joined(separator: " "))
-                    guard runtime.classes[record.name]?.ownFields == record.fields else { throw invalid("Ungültige Instanzvariablen.") }
+                    guard runtime.classes[record.name]?.ownFields == record.fields else { throw invalid("Invalid instance variables.") }
                 } else { unresolved.append(record) }
             }
             remaining = unresolved
-            guard remaining.count < previous else { throw invalid("Klassenhierarchie enthält einen Zyklus oder eine unbekannte Oberklasse.") }
+            guard remaining.count < previous else { throw invalid("The class hierarchy contains a cycle or an unknown superclass.") }
         }
         guard Set(executableMethods.keys) == Set(image.classes.filter { !$0.methods.isEmpty }.map(\.name)) else {
-            throw invalid("Die ausführbaren Methoden passen nicht zur Klassentabelle.")
+            throw invalid("The executable methods do not match the class table.")
         }
         for record in image.classes {
             let code = executableMethods[record.name] ?? [:]
             guard record.methods.count <= 512, let stClass = runtime.classes[record.name],
-                  Set(code.keys) == Set(record.methods.keys) else { throw invalid("Ungültige Methodentabelle.") }
+                  Set(code.keys) == Set(record.methods.keys) else { throw invalid("Invalid method table.") }
             for (selector, source) in record.methods {
-                guard let executable = code[selector] else { throw invalid("Ausführbare Methode fehlt.") }
+                guard let executable = code[selector] else { throw invalid("Executable method is missing.") }
                 stClass.methods[selector] = try executable.validatedMethod(selector: selector, source: source, fields: stClass.fields)
             }
         }
@@ -235,7 +235,7 @@ enum ImageCodec {
         for node in image.nodes {
             switch node {
             case .object(let record):
-                guard let stClass = runtime.classes[record.className], stClass.name == "Object" || !SmalltalkRuntime.builtinNames.contains(stClass.name), Set(record.fields.keys) == Set(stClass.fields) else { throw invalid("Ungültiges Objektlayout.") }
+                guard let stClass = runtime.classes[record.className], stClass.name == "Object" || !SmalltalkRuntime.builtinNames.contains(stClass.name), Set(record.fields.keys) == Set(stClass.fields) else { throw invalid("Invalid object layout.") }
                 try runtime.checkAllocation()
                 let object = STObject(stClass)
                 runtime.objects.append(object)
@@ -246,7 +246,7 @@ enum ImageCodec {
                 shells.append(.environment(try runtime.environment()))
             case .block(let record):
                 try validateNames(record.parameters)
-                guard Set(record.parameters).isDisjoint(with: record.body.temporaries) else { throw invalid("Doppelte Blockvariable.") }
+                guard Set(record.parameters).isDisjoint(with: record.body.temporaries) else { throw invalid("Duplicate block variable.") }
                 try CodeValidator.check(record.body)
                 let context = Context(environment: Environment(), receiver: .nilValue, homeClass: nil, homeID: 0, isWorkspace: false)
                 shells.append(.value(.block(STBlock(parameters: record.parameters, body: record.body, context: context))))
@@ -254,11 +254,11 @@ enum ImageCodec {
         }
 
         func shell(_ id: Int) throws -> Shell {
-            guard shells.indices.contains(id) else { throw invalid("Ungültige Objektreferenz \(id).") }
+            guard shells.indices.contains(id) else { throw invalid("Invalid object reference \(id).") }
             return shells[id]
         }
         func environment(_ id: Int) throws -> Environment {
-            guard case .environment(let environment) = try shell(id) else { throw invalid("Referenz auf einen lexikalischen Kontext erwartet.") }
+            guard case .environment(let environment) = try shell(id) else { throw invalid("Expected a reference to a lexical context.") }
             return environment
         }
         func value(_ record: ImageValue) throws -> Value {
@@ -270,10 +270,10 @@ enum ImageCodec {
             case .nilValue: return .nilValue
             case .transcript: return .transcript
             case .classObject(let name):
-                guard let stClass = runtime.classes[name] else { throw invalid("Unbekannte Klassenreferenz \(name).") }
+                guard let stClass = runtime.classes[name] else { throw invalid("Unknown class reference \(name).") }
                 return .classObject(stClass)
             case .reference(let id):
-                guard case .value(let value) = try shell(id) else { throw invalid("Lexikalischer Kontext ist kein Sprachwert.") }
+                guard case .value(let value) = try shell(id) else { throw invalid("A lexical context cannot be used as a Smalltalk value.") }
                 return value
             }
         }
@@ -285,7 +285,7 @@ enum ImageCodec {
             var path: Set<Int> = []
             var current: Int? = id
             while let id = current, !checked.contains(id) {
-                guard path.insert(id).inserted, image.nodes.indices.contains(id), case .environment(let record) = image.nodes[id] else { throw invalid("Ungültige oder zyklische Kontextverkettung.") }
+                guard path.insert(id).inserted, image.nodes.indices.contains(id), case .environment(let record) = image.nodes[id] else { throw invalid("Invalid or cyclic context chain.") }
                 current = record.parent
             }
             checked.formUnion(path)
@@ -301,26 +301,26 @@ enum ImageCodec {
                 scope.values = try record.values.mapValues(value)
             case (.block(let record), .value(.block(let block))):
                 let homeClass = try record.homeClass.map { name in
-                    guard let stClass = runtime.classes[name] else { throw invalid("Unbekannte Heimklasse.") }
+                    guard let stClass = runtime.classes[name] else { throw invalid("Unknown home class.") }
                     return stClass
                 }
                 block.context = Context(environment: try environment(record.environment), receiver: try value(record.receiver), homeClass: homeClass, homeID: 0, isWorkspace: record.isWorkspace)
-            default: throw invalid("Objekttabelle ist inkonsistent.")
+            default: throw invalid("The object table is inconsistent.")
             }
         }
         let globals = try image.globals.mapValues(value)
         for name in runtime.classes.keys {
             if name == "Transcript" {
-                guard case .transcript? = globals[name] else { throw invalid("Transcript fehlt.") }
+                guard case .transcript? = globals[name] else { throw invalid("Transcript is missing.") }
             } else {
-                guard case .classObject(let stClass)? = globals[name], stClass === runtime.classes[name] else { throw invalid("Klassenbindung \(name) fehlt.") }
+                guard case .classObject(let stClass)? = globals[name], stClass === runtime.classes[name] else { throw invalid("Class binding \(name) is missing.") }
             }
         }
-        guard Set(globals.keys).isDisjoint(with: ["nil", "true", "false", "self", "super", "thisContext"]) else { throw invalid("Reservierte globale Variable.") }
+        guard Set(globals.keys).isDisjoint(with: ["nil", "true", "false", "self", "super", "thisContext"]) else { throw invalid("Reserved global variable.") }
         runtime.globals = globals
         guard case .object(let desktop)? = globals["Desktop"], runtime.isUIClass(desktop.stClass, named: "DesktopManager"),
               case .object(let model)? = desktop.fields["model"], runtime.isUIClass(model.stClass, named: "DesktopModel") else {
-            throw invalid("Das Image enthält keine gültige Fensterverwaltung.")
+            throw invalid("The image has no valid window manager.")
         }
         try runtime.validateMVCState()
         if let error = runtime.projectWindows().error {
@@ -333,7 +333,7 @@ enum ImageCodec {
     }
 
     private static func validateNames(_ names: [String]) throws {
-        guard CodeValidator.validNames(names) else { throw invalid("Ungültige Variablennamen.") }
+        guard CodeValidator.validNames(names) else { throw invalid("Invalid variable names.") }
     }
 
     private static func invalid(_ message: String) -> SmalltalkError { SmalltalkError(message) }

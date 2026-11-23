@@ -25,7 +25,7 @@ UIContainer subclass: #UIScroll instanceVariableNames: ''.
 
 UIContainer subclass: #UIMenu instanceVariableNames: 'title'.
 
-UIMenu compile: 'initialize super initialize. title := ''Menü'''.
+UIMenu compile: 'initialize super initialize. title := ''Menu'''.
 
 UIMenu compile: 'title: aString title := aString'.
 

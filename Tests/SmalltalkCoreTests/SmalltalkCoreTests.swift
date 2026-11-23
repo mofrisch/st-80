@@ -14,7 +14,7 @@ struct SmalltalkCoreTests {
         let result = runtime.run(SmalltalkExamples.workspace)
         #expect(result.error == nil)
         #expect(result.value == "5")
-        #expect(result.transcript == "Hallo, Smalltalk!\nDer Zähler steht bei 5\n")
+        #expect(result.transcript == "Hello, Smalltalk!\nThe counter is at 5\n")
         #expect(result.bindings.contains { $0.name == "counter" && $0.className == "Counter" })
     }
 
@@ -30,14 +30,14 @@ struct SmalltalkCoreTests {
         #expect(value("a := b := 21", in: runtime) == "21")
         #expect(value("a + b", in: runtime) == "42")
         #expect(value("| local | local := 9. local", in: runtime) == "9")
-        #expect(runtime.run("local").error?.contains("Unbekannte Variable") == true)
+        #expect(runtime.run("local").error?.contains("Unknown variable") == true)
     }
 
     @Test func stringsCommentsSymbolsAndUnicode() {
-        #expect(value("\"ignorieren\" 'Grüße 👋' size") == "7")
+        #expect(value("\"ignore\" 'Cafés 👋' size") == "7")
         #expect(value("'it''s ', 'alive'") == "'it''s alive'")
         #expect(value("#hello asString") == "'hello'")
-        #expect(value("'Grüße' at: 3") == "'ü'")
+        #expect(value("'Cafés' at: 4") == "'é'")
         #expect(value("#(one #two 'three' (4 5))") == "#(#one #two 'three' #(4 5))")
     }
 
@@ -73,7 +73,7 @@ struct SmalltalkCoreTests {
     @Test func escapedNonLocalReturnReportsAnError() {
         let runtime = SmalltalkRuntime()
         _ = value("escaped := [ ^ 7 ]. 1", in: runtime)
-        #expect(runtime.run("escaped value").error?.contains("Heimkontext") == true)
+        #expect(runtime.run("escaped value").error?.contains("home context") == true)
     }
 
     @Test func methodsDefaultToReceiverAndCanBeReplacedLive() {
@@ -114,8 +114,8 @@ struct SmalltalkCoreTests {
 
     @Test func examplesExecute() {
         #expect(value(SmalltalkExamples.collections) == "55")
-        #expect(value(SmalltalkExamples.classes) == "'Hallo, Moritz'")
-        #expect(value(SmalltalkExamples.precedence) == "'Smalltalk läuft.'")
+        #expect(value(SmalltalkExamples.classes) == "'Hello, Moritz'")
+        #expect(value(SmalltalkExamples.precedence) == "'Smalltalk is running.'")
     }
 
     @Test func introspectionAndDynamicSend() {
@@ -124,36 +124,36 @@ struct SmalltalkCoreTests {
         #expect(value("Counter new respondsTo: #increment") == "true")
         #expect(value("3 respondsTo: #+") == "true")
         #expect(value("3 perform: #+ with: 4") == "7")
-        #expect(SmalltalkRuntime().run("3 perform: #+").error?.contains("Argumentzahl") == true)
+        #expect(SmalltalkRuntime().run("3 perform: #+").error?.contains("number of arguments") == true)
     }
 
     @Test func arithmeticErrorsDoNotCrashTheSession() {
         let runtime = SmalltalkRuntime()
-        #expect(runtime.run("1 / 0").error?.contains("Division durch null") == true)
-        #expect(runtime.run("9223372036854775807 + 1").error?.contains("überlauf") == true)
-        #expect(runtime.run("2 / 3").error?.contains("Brüche") == true)
+        #expect(runtime.run("1 / 0").error?.contains("Division by zero") == true)
+        #expect(runtime.run("9223372036854775807 + 1").error?.contains("overflow") == true)
+        #expect(runtime.run("2 / 3").error?.contains("Fractions") == true)
         #expect(value("-7 // 3", in: runtime) == "-3")
         #expect(value("-7 \\\\ 3", in: runtime) == "2")
         #expect(value("6 * 7", in: runtime) == "42")
         #expect(value("-9223372036854775808", in: runtime) == "-9223372036854775808")
-        #expect(runtime.run("-9223372036854775808 / -1").error?.contains("überlauf") == true)
+        #expect(runtime.run("-9223372036854775808 / -1").error?.contains("overflow") == true)
     }
 
     @Test func badSyntaxIncludesSourcePosition() {
         let runtime = SmalltalkRuntime()
-        #expect(runtime.run("1.\n(").error?.contains("Zeile 2") == true)
-        #expect(runtime.run("'unterminated").error?.contains("String ist nicht geschlossen") == true)
+        #expect(runtime.run("1.\n(").error?.contains("Line 2") == true)
+        #expect(runtime.run("'unterminated").error?.contains("Unterminated string") == true)
         #expect(runtime.run("[ 1").error != nil)
         #expect(runtime.run("| a a | a").error != nil)
         #expect(runtime.run("| self | self").error != nil)
-        #expect(runtime.run("Object := 3").error?.contains("überschrieben") == true)
+        #expect(runtime.run("Object := 3").error?.contains("reassigned") == true)
     }
 
     @Test func executionAndNestingLimitsLeaveSessionUsable() {
         let runtime = SmalltalkRuntime()
         #expect(runtime.run("[ true ] whileTrue: [ ]").error != nil)
-        #expect(runtime.run("Counter compile: 'loop ^ self loop'. Counter new loop").error?.contains("Aufruftiefe") == true)
-        #expect(runtime.run(String(repeating: "(", count: 200) + "1" + String(repeating: ")", count: 200)).error?.contains("verschachtelt") == true)
+        #expect(runtime.run("Counter compile: 'loop ^ self loop'. Counter new loop").error?.contains("call depth") == true)
+        #expect(runtime.run(String(repeating: "(", count: 200) + "1" + String(repeating: ")", count: 200)).error?.contains("nesting") == true)
         #expect(runtime.run("1" + String(repeating: " squared", count: 500)).error != nil)
         #expect(value("6 * 7", in: runtime) == "42")
     }
@@ -189,7 +189,7 @@ struct SmalltalkCoreTests {
         let nested = await session.evaluate(String(repeating: "(", count: 32) + "42" + String(repeating: ")", count: 32))
         #expect(nested.value == "42")
         let stopped = await session.evaluate("[ true ] whileTrue: [ ]")
-        #expect(stopped.error?.contains("100.000") == true)
+        #expect(stopped.error?.contains("100,000") == true)
         let recovered = await session.evaluate("6 * 7")
         #expect(recovered.value == "42")
     }

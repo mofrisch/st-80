@@ -3,49 +3,49 @@ import Foundation
 extension SmalltalkRuntime {
     static let primitiveDescriptions: [String: [String: String]] = [
         "Object": [
-            "class": "Klasse des Empfängers.", "yourself": "Gibt den Empfänger zurück.",
-            "printString": "Lesbare Darstellung.", "=": "Vergleicht Werte.", "==": "Vergleicht Identität; Strings sind hier Werte.",
-            "~=": "Ungleichheit.", "isNil": "Prüft auf nil.", "notNil": "Prüft auf einen Wert.",
-            "ifNil:": "Wertet bei nil einen Block aus.", "ifNotNil:": "Wertet bei einem Wert einen Block aus.",
-            "respondsTo:": "Prüft, ob eine Nachricht verstanden wird.", "perform:": "Sendet einen Selektor.",
-            "perform:with:": "Sendet einen Selektor mit einem Argument.",
-            "error:line:column:": "Meldet einen Fehler mit Quellposition.",
+            "class": "Returns the receiver's class.", "yourself": "Returns the receiver.",
+            "printString": "Returns a readable representation.", "=": "Compares values.", "==": "Compares identity. Strings are treated as values.",
+            "~=": "Tests whether values differ.", "isNil": "Tests whether the receiver is nil.", "notNil": "Tests whether the receiver is non-nil.",
+            "ifNil:": "Evaluates a block if the receiver is nil.", "ifNotNil:": "Evaluates a block if the receiver is non-nil.",
+            "respondsTo:": "Tests whether the receiver understands a message.", "perform:": "Sends a message by selector.",
+            "perform:with:": "Sends a message by selector with one argument.",
+            "error:line:column:": "Reports an error at a source position.",
         ],
         "Class": [
-            "new": "Erzeugt ein Objekt und sendet initialize.", "new:": "Erzeugt ein Array mit angegebener Größe.",
-            "name": "Klassenname.", "superclass": "Oberklasse.", "subclasses": "Direkte Unterklassen.",
-            "subclass:instanceVariableNames:": "Legt eine Unterklasse an.",
-            "subclass:instanceVariableNames:classVariableNames:poolDictionaries:category:": "Legt eine Unterklasse an; Klassenvariablen und Pools müssen leer sein.",
-            "compile:": "Kompiliert oder ersetzt eine Instanzmethode.",
-            "methodNames": "Liefert die Selektoren der eigenen Methoden.",
-            "methodSourceAt:": "Liefert den gespeicherten Methodenquelltext.",
-            "isPrimitiveAt:": "Prüft, ob der Selektor eine VM-Primitive bezeichnet.",
-            "instanceVariableNamesText": "Liefert die Namen der Instanzvariablen."
+            "new": "Creates an object and sends initialize.", "new:": "Creates an array of the specified size.",
+            "name": "Returns the class name.", "superclass": "Returns the superclass.", "subclasses": "Returns the immediate subclasses.",
+            "subclass:instanceVariableNames:": "Creates a subclass.",
+            "subclass:instanceVariableNames:classVariableNames:poolDictionaries:category:": "Creates a subclass. Class variables and pools must be empty.",
+            "compile:": "Compiles or replaces an instance method.",
+            "methodNames": "Returns selectors of methods defined on the class.",
+            "methodSourceAt:": "Returns the stored source code for a method.",
+            "isPrimitiveAt:": "Tests whether the selector names a VM primitive.",
+            "instanceVariableNamesText": "Returns the instance variable names."
         ],
         "Integer": [
-            "+": "Addition.", "-": "Subtraktion.", "*": "Multiplikation.",
-            "/": "Exakte Ganzzahldivision; Brüche sind noch nicht implementiert.", "//": "Abrundende Division.",
-            "\\\\": "Rest zur abrundenden Division.", "<": "Kleiner als.", ">": "Größer als.",
-            "<=": "Kleiner oder gleich.", ">=": "Größer oder gleich.",
-            "negated": "Negierter Wert.", "abs": "Betrag.", "squared": "Quadrat.",
-            "timesRepeat:": "Wiederholt einen Block.", "to:do:": "Iteriert einschließlich Endwert.",
-            "to:by:do:": "Iteriert mit angegebener Schrittweite.",
+            "+": "Addition.", "-": "Subtraction.", "*": "Multiplication.",
+            "/": "Exact integer division. Fractions are not implemented.", "//": "Division rounded down.",
+            "\\\\": "Remainder from division rounded down.", "<": "Less than.", ">": "Greater than.",
+            "<=": "Less than or equal to.", ">=": "Greater than or equal to.",
+            "negated": "Returns the negated value.", "abs": "Returns the absolute value.", "squared": "Returns the square.",
+            "timesRepeat:": "Repeats a block.", "to:do:": "Iterates through the final value, inclusive.",
+            "to:by:do:": "Iterates with the specified step size.",
         ],
         "Boolean": [
-            "not": "Negation.", "ifTrue:": "Wertet bei true einen Block aus.", "ifFalse:": "Wertet bei false einen Block aus.",
-            "ifTrue:ifFalse:": "Wählt einen von zwei Blöcken.", "ifFalse:ifTrue:": "Wählt einen von zwei Blöcken.",
-            "and:": "Kurzschließendes Und.", "or:": "Kurzschließendes Oder.",
+            "not": "Negation.", "ifTrue:": "Evaluates a block if the receiver is true.", "ifFalse:": "Evaluates a block if the receiver is false.",
+            "ifTrue:ifFalse:": "Evaluates one of two blocks.", "ifFalse:ifTrue:": "Evaluates one of two blocks.",
+            "and:": "Short-circuiting logical AND.", "or:": "Short-circuiting logical OR.",
         ],
-        "String": [",": "Verkettet zwei Strings.", "size": "Anzahl der Unicode-Zeichen.", "at:": "Zeichen an einer Position, ab 1.", "asString": "Gibt den String zurück.", "asSymbol": "Wandelt in ein Symbol um.", "characters": "Liefert die Unicode-Zeichen als Array.",
-            "includes:": "Prüft auf ein enthaltenes Zeichen oder Teilwort.", "isLetter": "Prüft auf einen Buchstaben.",
-            "isNumber": "Prüft auf ein numerisches Zeichen.", "isASCIIDigit": "Prüft auf eine ASCII-Ziffer.",
-            "isLowercase": "Prüft auf ein Kleinbuchstaben-Zeichen.", "isWhitespace": "Prüft auf Leerraum.",
-            "isLineBreak": "Prüft auf einen Zeilenumbruch.", "asIntegerOrNil": "Liest eine 64-Bit-Ganzzahl."],
-        "Symbol": ["asString": "Symbolname als String."],
-        "Array": ["size": "Anzahl der Elemente.", "at:": "Liest ein Element, ab Position 1.", "at:put:": "Schreibt ein Element.", "do:": "Besucht jedes Element.", "collect:": "Transformiert jedes Element.", "select:": "Filtert Elemente.", "isEmpty": "Prüft auf ein leeres Array.", "includes:": "Prüft auf ein enthaltenes Element.",
-            "joinedStringFrom:to:": "Verkettet die Strings eines Indexbereichs."],
-        "BlockClosure": ["value": "Wertet den Block aus.", "value:": "Wertet mit einem Argument aus.", "value:value:": "Wertet mit zwei Argumenten aus.", "whileTrue:": "Wiederholt, solange der Block true ergibt.", "whileFalse:": "Wiederholt, solange der Block false ergibt."],
-        "Transcript": ["record:": "Erfasst Transcript-Ausgabe der laufenden Auswertung."],
+        "String": [",": "Concatenates two strings.", "size": "Returns the number of Unicode characters.", "at:": "Returns the character at a one-based index.", "asString": "Returns the string.", "asSymbol": "Converts the string to a symbol.", "characters": "Returns an array of Unicode characters.",
+            "includes:": "Tests whether a character or substring is present.", "isLetter": "Tests whether the string is one letter.",
+            "isNumber": "Tests whether the string is one numeric character.", "isASCIIDigit": "Tests whether the string is one ASCII digit.",
+            "isLowercase": "Tests whether the string is one lowercase character.", "isWhitespace": "Tests whether the string is one whitespace character.",
+            "isLineBreak": "Tests whether the string is a line break.", "asIntegerOrNil": "Parses a 64-bit integer."],
+        "Symbol": ["asString": "Returns the symbol name as a string."],
+        "Array": ["size": "Returns the number of elements.", "at:": "Returns the element at a one-based index.", "at:put:": "Sets an element.", "do:": "Visits each element.", "collect:": "Transforms each element.", "select:": "Filters elements.", "isEmpty": "Tests whether the array is empty.", "includes:": "Tests whether the array contains an element.",
+            "joinedStringFrom:to:": "Joins the strings in an index range."],
+        "BlockClosure": ["value": "Evaluates the block.", "value:": "Evaluates the block with one argument.", "value:value:": "Evaluates the block with two arguments.", "whileTrue:": "Repeats while the block evaluates to true.", "whileFalse:": "Repeats while the block evaluates to false."],
+        "Transcript": ["record:": "Records transcript output for the current evaluation."],
     ]
 
     func primitive(_ receiver: Value, _ selector: String, _ args: [Value]) throws -> Value? {
@@ -88,7 +88,7 @@ extension SmalltalkRuntime {
             case ",":
                 let result = string + (try self.string(args[0]))
                 guard result.utf8.count <= (compilationMode ? 262_144 : 65_536) else {
-                    throw SmalltalkError(compilationMode ? "String ist zu lang (maximal 256 KiB)." : "String ist zu lang (maximal 64 KiB).")
+                    throw SmalltalkError(compilationMode ? "String exceeds the 256 KiB limit." : "String exceeds the 64 KiB limit.")
                 }
                 return .string(result)
             case "size": return .integer(Int64(string.count))
@@ -134,7 +134,7 @@ extension SmalltalkRuntime {
             case "joinedStringFrom:to:":
                 let first = try integer(args[0]), last = try integer(args[1])
                 guard first >= 1, first <= array.elements.count + 1, last >= first - 1, last <= array.elements.count else {
-                    throw SmalltalkError("Ungültiger Arraybereich.")
+                    throw SmalltalkError("Invalid array range.")
                 }
                 let limit = compilationMode ? 262_144 : 65_536
                 var remaining = limit
@@ -142,7 +142,7 @@ extension SmalltalkRuntime {
                 for item in array.elements[Int(first - 1)..<Int(last)] {
                     let text = try string(item)
                     remaining -= text.utf8.count
-                    guard remaining >= 0 else { throw SmalltalkError("Verketteter String ist zu lang.") }
+                    guard remaining >= 0 else { throw SmalltalkError("The concatenated string is too long.") }
                     result += text
                 }
                 return .string(result)
@@ -196,23 +196,23 @@ extension SmalltalkRuntime {
         case "isPrimitiveAt:":
             let name = try string(args[0])
             return .boolean(stClass.methods[name] == nil && Self.primitiveDescriptions[stClass.name]?[name] != nil)
-        case "instanceVariableNamesText": return .string(stClass.fields.isEmpty ? "Keine" : stClass.fields.joined(separator: " · "))
+        case "instanceVariableNamesText": return .string(stClass.fields.isEmpty ? "None" : stClass.fields.joined(separator: " · "))
         case "subclass:instanceVariableNames:", "subclass:instanceVariableNames:classVariableNames:poolDictionaries:category:":
             if args.count == 5 {
-                guard try string(args[2]).isEmpty && string(args[3]).isEmpty else { throw SmalltalkError("Klassenvariablen und Pool-Dictionaries sind noch nicht implementiert.") }
+                guard try string(args[2]).isEmpty && string(args[3]).isEmpty else { throw SmalltalkError("Class variables and pool dictionaries are not implemented.") }
                 _ = try string(args[4])
             }
             return .classObject(try subclass(of: stClass, name: symbol(args[0]), fields: string(args[1])))
         case "new:":
-            guard stClass.name == "Array" else { throw SmalltalkError("new: wird hier nur von Array unterstützt.") }
+            guard stClass.name == "Array" else { throw SmalltalkError("Only Array supports new:.") }
             let count = try integer(args[0])
-            guard (0...Int64(arrayLimit)).contains(count) else { throw SmalltalkError("Arraygröße muss zwischen 0 und \(arrayLimit) liegen.") }
+            guard (0...Int64(arrayLimit)).contains(count) else { throw SmalltalkError("Array size must be between 0 and \(arrayLimit).") }
             return try array(Array(repeating: .nilValue, count: Int(count)))
         case "new":
             if stClass.name == "Array" { return try array([]) }
             if stClass.name == "String" { return .string("") }
             guard stClass.name == "Object" || Self.primitiveDescriptions[stClass.name] == nil && !["True", "False", "SmallInteger", "Number", "UndefinedObject"].contains(stClass.name) else {
-                throw SmalltalkError("\(stClass.name) kann nicht mit new erzeugt werden.")
+                throw SmalltalkError("\(stClass.name) cannot be instantiated with new.")
             }
             try checkAllocation()
             let object = STObject(stClass)
@@ -223,15 +223,15 @@ extension SmalltalkRuntime {
     }
 
     func subclass(of superclass: STClass, name: String, fields source: String) throws -> STClass {
-        guard superclass.name == "Object" || !Self.builtinNames.contains(superclass.name) else { throw SmalltalkError("Unterklassen primitiver Klassen sind noch nicht implementiert.") }
+        guard superclass.name == "Object" || !Self.builtinNames.contains(superclass.name) else { throw SmalltalkError("Subclassing primitive classes is not implemented.") }
         guard name.first?.isUppercase == true && name.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" }) else {
-            throw SmalltalkError("Klassenname muss mit einem Großbuchstaben beginnen.")
+            throw SmalltalkError("Class names must begin with an uppercase letter.")
         }
-        guard globals[name] == nil else { throw SmalltalkError("\(name) existiert bereits.") }
-        guard classes.count < 128 else { throw SmalltalkError("Maximal 128 Klassen pro Sitzung.") }
+        guard globals[name] == nil else { throw SmalltalkError("\(name) already exists.") }
+        guard classes.count < 128 else { throw SmalltalkError("A session can contain at most 128 classes.") }
         let fields = source.split(whereSeparator: \.isWhitespace).map(String.init)
         guard CodeValidator.validNames(fields), Set(fields).isDisjoint(with: superclass.fields), fields.count + superclass.fields.count <= 64 else {
-            throw SmalltalkError("Instanzvariablen sind ungültig, doppelt oder zu zahlreich (maximal 64).")
+            throw SmalltalkError("Instance variable names must be valid and unique, with at most 64 variables.")
         }
         if recordingChanges {
             let escaped = source.replacingOccurrences(of: "'", with: "''")
@@ -253,12 +253,12 @@ extension SmalltalkRuntime {
         case "*": return .integer(try checked(n.multipliedReportingOverflow(by: integer(args[0]))))
         case "/", "//", "\\\\":
             let divisor = try integer(args[0])
-            guard divisor != 0 else { throw SmalltalkError("Division durch null.") }
-            guard !(n == .min && divisor == -1) else { throw SmalltalkError("Ganzzahlüberlauf (64 Bit).") }
+            guard divisor != 0 else { throw SmalltalkError("Division by zero.") }
+            guard !(n == .min && divisor == -1) else { throw SmalltalkError("64-bit integer overflow.") }
             let quotient = n / divisor
             let remainder = n % divisor
             if selector == "/" {
-                guard remainder == 0 else { throw SmalltalkError("Brüche sind noch nicht implementiert; verwende // für Ganzzahldivision.") }
+                guard remainder == 0 else { throw SmalltalkError("Fractions are not implemented. Use // for integer division.") }
                 return .integer(quotient)
             }
             let roundDown = remainder != 0 && (n < 0) != (divisor < 0)
@@ -278,7 +278,7 @@ extension SmalltalkRuntime {
             let end = try integer(args[0])
             let step: Int64 = selector == "to:do:" ? 1 : try integer(args[1])
             let block = args[selector == "to:do:" ? 1 : 2]
-            guard step != 0 else { throw SmalltalkError("Schrittweite darf nicht null sein.") }
+            guard step != 0 else { throw SmalltalkError("The step size must be nonzero.") }
             var current = n
             while step > 0 ? current <= end : current >= end {
                 _ = try invokeBlock(block, [.integer(current)])
@@ -292,33 +292,33 @@ extension SmalltalkRuntime {
     }
 
     func integer(_ value: Value) throws -> Int64 {
-        guard case .integer(let n) = value else { throw SmalltalkError("Ganzzahl erwartet, erhalten: \(printValue(value)).") }
+        guard case .integer(let n) = value else { throw SmalltalkError("Expected an integer, got \(printValue(value)).") }
         return n
     }
 
     func boolean(_ value: Value) throws -> Bool {
-        guard case .boolean(let b) = value else { throw SmalltalkError("true oder false erwartet, erhalten: \(printValue(value)).") }
+        guard case .boolean(let b) = value else { throw SmalltalkError("Expected true or false, got \(printValue(value)).") }
         return b
     }
 
     func string(_ value: Value) throws -> String {
-        guard case .string(let s) = value else { throw SmalltalkError("String erwartet.") }
+        guard case .string(let s) = value else { throw SmalltalkError("Expected a string.") }
         return s
     }
 
     func symbol(_ value: Value) throws -> String {
-        guard case .symbol(let s) = value else { throw SmalltalkError("Symbol erwartet, zum Beispiel #Counter.") }
+        guard case .symbol(let s) = value else { throw SmalltalkError("Expected a symbol such as #Counter.") }
         return s
     }
 
     func index(_ value: Value, count: Int) throws -> Int {
         let number = try integer(value)
-        guard number >= 1 && number <= count else { throw SmalltalkError("Index \(number) liegt außerhalb von 1…\(count).") }
+        guard number >= 1 && number <= count else { throw SmalltalkError("Index \(number) is outside the range 1…\(count).") }
         return Int(number - 1)
     }
 
     func checked(_ result: (partialValue: Int64, overflow: Bool)) throws -> Int64 {
-        guard !result.overflow else { throw SmalltalkError("Ganzzahlüberlauf (64 Bit).") }
+        guard !result.overflow else { throw SmalltalkError("64-bit integer overflow.") }
         return result.partialValue
     }
 
@@ -347,7 +347,7 @@ extension SmalltalkRuntime {
     }
 
     func appendTranscript(_ text: String) throws {
-        guard transcript.utf8.count + text.utf8.count <= 65_536 else { throw SmalltalkError("Transcript-Ausgabe ist auf 64 KiB pro Ausführung begrenzt.") }
+        guard transcript.utf8.count + text.utf8.count <= 65_536 else { throw SmalltalkError("Transcript output is limited to 64 KiB per evaluation.") }
         transcript += text
     }
 }

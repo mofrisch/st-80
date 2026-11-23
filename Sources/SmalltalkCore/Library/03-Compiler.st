@@ -1,4 +1,4 @@
-"Kompiliert Methoden und Workspace-Ausdrücke in Syntaxbäume für die VM."
+"Compiles methods and workspace expressions into syntax trees for the VM."
 
 Object subclass: #STCompiler instanceVariableNames: 'scanner current lookahead expressionDepth'.
 
@@ -31,11 +31,11 @@ STCompiler compile: 'method: input
             selector := selector , self tokenValue.
             self advance.
             parameters add: self identifier ] ].
-    selector isNil ifTrue: [ self fail: ''Methodenkopf erwartet, zum Beispiel increment oder add: amount.'' ].
+    selector isNil ifTrue: [ self fail: ''Expected a method header such as increment or add: amount.'' ].
     parameters := parameters elements.
     self validateNames: parameters.
     body := self workspaceBody.
-    self validate: parameters separateFrom: (body at: 1) error: ''Argument und lokale Variable haben denselben Namen.''.
+    self validate: parameters separateFrom: (body at: 1) error: ''An argument and a local variable have the same name.''.
     ^ self triple: selector with: parameters with: body'.
 
 STCompiler compile: 'workspaceBody
@@ -58,11 +58,11 @@ STCompiler compile: 'fail: message
     self error: message line: (current at: 2) column: (current at: 3)'.
 
 STCompiler compile: 'expect: kind
-    self kind = kind ifFalse: [ self fail: (self tokenLabel: kind) , '' erwartet, gefunden: '' , (self tokenLabel: self kind) , ''.'' ].
+    self kind = kind ifFalse: [ self fail: (self tokenLabel: kind) , '' expected, found: '' , (self tokenLabel: self kind) , ''.'' ].
     self advance'.
 
 STCompiler compile: 'tokenLabel: kind
-    kind = #end ifTrue: [ ^ ''Ende des Quelltexts'' ].
+    kind = #end ifTrue: [ ^ ''end of source'' ].
     kind = #rightBracket ifTrue: [ ^ '']'' ].
     kind = #rightParen ifTrue: [ ^ '')'' ].
     kind = #bar ifTrue: [ ^ ''|'' ].
@@ -71,7 +71,7 @@ STCompiler compile: 'tokenLabel: kind
 
 STCompiler compile: 'identifier
     | name |
-    self kind = #identifier ifFalse: [ self fail: ''Variablenname erwartet.'' ].
+    self kind = #identifier ifFalse: [ self fail: ''Expected a variable name.'' ].
     name := self tokenValue.
     self advance.
     ^ name'.
@@ -80,11 +80,11 @@ STCompiler compile: 'validateNames: names
     names do: [ :name |
         ((name at: 1) isLowercase and: [
             (#(''self'' ''super'' ''true'' ''false'' ''nil'' ''thisContext'') includes: name) not ]) ifFalse: [
-                self fail: ''Variablennamen müssen klein beginnen und dürfen keine Pseudovariablen sein.'' ] ].
+                self fail: ''Variable names must begin with a lowercase letter and cannot be pseudo-variables.'' ] ].
     1 to: names size do: [ :index |
         1 to: index - 1 do: [ :earlier |
             (names at: index) = (names at: earlier) ifTrue: [
-                self fail: ''Variablenname ist doppelt deklariert.'' ] ] ]'.
+                self fail: ''Duplicate variable declaration.'' ] ] ]'.
 
 STCompiler compile: 'validate: names separateFrom: locals error: message
     names do: [ :name | (locals includes: name) ifTrue: [ self fail: message ] ]'.
@@ -102,13 +102,13 @@ STCompiler compile: 'bodyUntil: terminator
     [ self kind ~= terminator and: [ self kind ~= #end ] ] whileTrue: [
         expressions add: self expression.
         self kind = #period ifTrue: [ self advance ] ifFalse: [
-            self kind = terminator ifFalse: [ self fail: ''Zwischen Ausdrücken wird ein Punkt erwartet.'' ] ] ].
+            self kind = terminator ifFalse: [ self fail: ''Expected a period between expressions.'' ] ] ].
     ^ self pair: temporaries with: expressions elements'.
 
 STCompiler compile: 'expression
     | result |
     expressionDepth := expressionDepth + 1.
-    expressionDepth > 128 ifTrue: [ self fail: ''Ausdruck ist zu tief verschachtelt.'' ].
+    expressionDepth > 128 ifTrue: [ self fail: ''Expression is nested too deeply.'' ].
     result := self expressionNode.
     expressionDepth := expressionDepth - 1.
     ^ result'.
@@ -125,7 +125,7 @@ STCompiler compile: 'expressionNode
         ^ self node: #assignment at: position with: name with: self expression ].
     first := self keywordExpression.
     self kind = #semicolon ifFalse: [ ^ first ].
-    (first at: 1) = #send ifFalse: [ self fail: ''Vor einer Kaskade muss eine Nachricht stehen.'' ].
+    (first at: 1) = #send ifFalse: [ self fail: ''A cascade must follow a message.'' ].
     messages := STCompilerList new.
     messages add: (first at: 5).
     [ self kind = #semicolon ] whileTrue: [
@@ -176,7 +176,7 @@ STCompiler compile: 'cascadeMessage
     self kind = #identifier ifTrue: [ ^ self unaryMessage ].
     self kind = #binary ifTrue: [ ^ self binaryMessage ].
     self kind = #keyword ifTrue: [ ^ self keywordMessage ].
-    self fail: ''Nach ; wird eine Nachricht erwartet.'''.
+    self fail: ''Expected a message after ;.'''.
 
 STCompiler compile: 'primary
     | position kind payload node |
@@ -190,7 +190,7 @@ STCompiler compile: 'primary
         ^ self node: #literal at: position with: payload with: nil ].
     (kind = #binary and: [ self tokenValue = ''-'' ]) ifTrue: [
         ^ self node: #literal at: position with: self negativeNumber with: nil ].
-    kind = #minimumMagnitude ifTrue: [ self fail: ''Ganzzahl ist zu groß (64-Bit-Grenze).'' ].
+    kind = #minimumMagnitude ifTrue: [ self fail: ''Integer exceeds the 64-bit range.'' ].
     kind = #leftParen ifTrue: [
         self advance.
         node := self expression.
@@ -200,7 +200,7 @@ STCompiler compile: 'primary
     kind = #arrayStart ifTrue: [
         self advance.
         ^ self node: #literal at: position with: self arrayElements with: nil ].
-    self fail: ''Ausdruck erwartet.'''.
+    self fail: ''Expected an expression.'''.
 
 STCompiler compile: 'blockAt: position
     | parameters body |
@@ -213,7 +213,7 @@ STCompiler compile: 'blockAt: position
     parameters isEmpty ifFalse: [ self expect: #bar ].
     self validateNames: parameters.
     body := self bodyUntil: #rightBracket.
-    self validate: parameters separateFrom: (body at: 1) error: ''Blockargument ist auch als lokale Variable deklariert.''.
+    self validate: parameters separateFrom: (body at: 1) error: ''A block argument is also declared as a local variable.''.
     self expect: #rightBracket.
     ^ self node: #block at: position with: parameters with: body'.
 
@@ -223,7 +223,7 @@ STCompiler compile: 'negativeNumber
     self kind = #minimumMagnitude ifTrue: [
         self advance.
         ^ ''-9223372036854775808'' asIntegerOrNil ].
-    self kind = #integer ifFalse: [ self fail: ''Nach - wird eine Ganzzahl erwartet.'' ].
+    self kind = #integer ifFalse: [ self fail: ''Expected an integer after -.'' ].
     number := self tokenValue.
     self advance.
     ^ number negated'.
@@ -245,7 +245,7 @@ STCompiler compile: 'arrayElement
         ^ payload ].
     (kind = #binary and: [ self tokenValue = ''-'' ]) ifTrue: [ ^ self negativeNumber ].
     (#(leftParen arrayStart) includes: kind) ifTrue: [ self advance. ^ self arrayElements ].
-    self fail: ''Literal oder ) im Array erwartet.'''.
+    self fail: ''Expected a literal or ) in the array.'''.
 
 STCompiler compile: 'sendTo: receiver message: message
     ^ self node: #send at: receiver with: receiver with: message'.

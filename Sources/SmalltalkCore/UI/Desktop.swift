@@ -87,10 +87,10 @@ extension SmalltalkRuntime {
     func performWindowAction(_ action: WindowAction) -> EvaluationResult {
         transcript = ""; steps = 0; depth = 0
         do {
-            guard let desktop = globals["Desktop"] else { throw SmalltalkError("Desktop fehlt.") }
+            guard let desktop = globals["Desktop"] else { throw SmalltalkError("Desktop is missing.") }
             func window(_ id: Int64) throws -> Value {
                 let value = try send(desktop, "windowAt:", [.integer(id)])
-                guard case .object = value else { throw SmalltalkError("Fenster \(id) existiert nicht.") }
+                guard case .object = value else { throw SmalltalkError("Window \(id) does not exist.") }
                 return value
             }
             switch action {
@@ -118,9 +118,9 @@ extension SmalltalkRuntime {
             do {
                 guard let desktop = globals["Desktop"] else { continue }
                 if case .screens(let screens) = event.kind {
-                    guard screens.count <= 32 else { throw SmalltalkError("Zu viele Bildschirme.") }
+                    guard screens.count <= 32 else { throw SmalltalkError("Too many displays.") }
                     let facts = try screens.map { screen -> Value in
-                        guard Self.validFrame(screen.frame, screen: true), let stClass = classes["DisplayScreen"] else { throw SmalltalkError("Ungültige Bildschirmgeometrie.") }
+                        guard Self.validFrame(screen.frame, screen: true), let stClass = classes["DisplayScreen"] else { throw SmalltalkError("Invalid display geometry.") }
                         try checkAllocation()
                         let object = STObject(stClass); objects.append(object)
                         object.fields = ["id": .string(screen.id), "x": .integer(screen.frame.x), "y": .integer(screen.frame.y), "width": .integer(screen.frame.width), "height": .integer(screen.frame.height)]
@@ -142,7 +142,7 @@ extension SmalltalkRuntime {
                 case .activated: _ = try send(desktop, "observeActivation:", [window])
                 case .minimized(_, let flag): _ = try send(desktop, "observeMinimized:value:", [window, .boolean(flag)])
                 case .frame(_, let rect), .frameApplied(_, _, let rect):
-                    guard Self.validFrame(rect) else { throw SmalltalkError("Ungültige native Fenstergeometrie.") }
+                    guard Self.validFrame(rect) else { throw SmalltalkError("Invalid native window geometry.") }
                     let coordinates: [Value] = [.integer(rect.x), .integer(rect.y), .integer(rect.width), .integer(rect.height)]
                     if case .frameApplied(_, let revision, _) = event.kind { _ = try send(window, "frameApplied:x:y:width:height:", [.integer(revision)] + coordinates) }
                     else { _ = try send(window, "observeX:y:width:height:", coordinates) }
@@ -183,9 +183,9 @@ extension SmalltalkRuntime {
     func projectWindows() -> (windows: [ToolWindowInfo], activeID: Int64?, error: String?) {
         if let bootstrapError { return ([], nil, bootstrapError) }
         guard globals["Desktop"] != nil else { return ([], nil, nil) }
-        guard let model = desktopModel, let list = desktopWindows else { return ([], nil, "Desktop enthält keine gültige Fensterliste.") }
+        guard let model = desktopModel, let list = desktopWindows else { return ([], nil, "Desktop has no valid window list.") }
         var windows: [ToolWindowInfo] = [], ids: Set<Int64> = []
-        var warning: String? = list.elements.count > 128 ? "Desktop enthält mehr als 128 Fenster." : nil
+        var warning: String? = list.elements.count > 128 ? "Desktop has more than 128 windows." : nil
         var activeID: Int64?
         for value in list.elements.prefix(128) {
             guard case .object(let object) = value,
@@ -201,7 +201,7 @@ extension SmalltalkRuntime {
                   case .integer(let stateRevision)? = object.fields["stateRevision"], stateRevision > 0,
                   Self.validFrame(WindowRect(x: x, y: y, width: width, height: height)),
                   (1...8192).contains(minW), (1...8192).contains(minH), (minW...8192).contains(maxW), (minH...8192).contains(maxH) else {
-                warning = "Desktop enthält ein ungültiges Fenster; prüfe dessen Instanzvariablen."; continue
+                warning = "Desktop contains an invalid window. Check its instance variables."; continue
             }
             var content: UIElementInfo?
             if object.fields["content"] != nil || kind == .custom {

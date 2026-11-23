@@ -14,7 +14,7 @@ struct UserInterfaceTests {
         let opened = await session.evaluate(SmalltalkExamples.legacyUserInterface)
         #expect(opened.error == nil)
         let window = try #require(opened.windows.first { $0.kind == .custom })
-        #expect(window.title == "Meine Smalltalk-Oberfläche")
+        #expect(window.title == "My Smalltalk Interface")
         let column = try #require(window.content)
         #expect(column.kind == .column)
         #expect(column.padding == 20)
@@ -22,19 +22,19 @@ struct UserInterfaceTests {
         #expect(column.children.map(\.kind) == [.textField, .row, .label])
         let field = try #require(elements(column).first { $0.kind == .textField })
         #expect(field.label == "Name")
-        #expect(field.placeholder == "Dein Name")
-        let greet = try #require(elements(column).first { $0.kind == .button && $0.text == "Begrüßen" })
-        let clear = try #require(elements(column).first { $0.kind == .button && $0.text == "Leeren" })
+        #expect(field.placeholder == "Your name")
+        let greet = try #require(elements(column).first { $0.kind == .button && $0.text == "Greet" })
+        let clear = try #require(elements(column).first { $0.kind == .button && $0.text == "Clear" })
         let edited = await session.uiAction(.text(windowID: window.id, elementID: field.id, value: "Moritz 👋"))
         #expect(edited.error == nil)
         #expect(elements(edited.windows.last?.content).contains { $0.id == field.id && $0.text == "Moritz 👋" })
         let clicked = await session.uiAction(.click(windowID: window.id, elementID: greet.id))
         #expect(clicked.error == nil)
-        #expect(elements(clicked.windows.last?.content).contains { $0.kind == .label && $0.text == "Hallo, Moritz 👋!" })
+        #expect(elements(clicked.windows.last?.content).contains { $0.kind == .label && $0.text == "Hello, Moritz 👋!" })
         let cleared = await session.uiAction(.click(windowID: window.id, elementID: clear.id))
         #expect(cleared.error == nil)
         #expect(elements(cleared.windows.last?.content).contains { $0.id == field.id && $0.text.isEmpty })
-        #expect(elements(cleared.windows.last?.content).contains { $0.kind == .label && $0.text == "Noch keine Begrüßung." })
+        #expect(elements(cleared.windows.last?.content).contains { $0.kind == .label && $0.text == "No greeting yet." })
     }
 
     @Test func windowSubclassesKeepIndependentControlsAndLiveMethodsAcrossImageLoad() async throws {
@@ -49,11 +49,11 @@ struct UserInterfaceTests {
             nameField := UITextField new.
             greeting := UILabel new.
             button := UIButton new.
-            button title: ''Begrüßen''; action: [ self greet ].
+            button title: ''Greet''; action: [ self greet ].
             column := UIColumn new.
             column add: nameField; add: button; add: greeting.
             self content: column'.
-        GreetingWindow compile: 'greet greeting text: ''Hallo, '', nameField text'.
+        GreetingWindow compile: 'greet greeting text: ''Hello, '', nameField text'.
         first := GreetingWindow new open.
         second := GreetingWindow new open.
         first open
@@ -66,7 +66,7 @@ struct UserInterfaceTests {
         let field = try #require(elements(first.content).first { $0.kind == .textField })
         let button = try #require(elements(first.content).first { $0.kind == .button })
         _ = await session.uiAction(.text(windowID: first.id, elementID: field.id, value: "Moritz"))
-        let compilation = await session.compile("greet greeting text: 'Neu: ', nameField text", in: "GreetingWindow")
+        let compilation = await session.compile("greet greeting text: 'New: ', nameField text", in: "GreetingWindow")
         #expect(compilation.error == nil)
         let data = try await session.imageData()
         let restored = SmalltalkSession()
@@ -82,7 +82,7 @@ struct UserInterfaceTests {
         #expect(elements(stale.windows.first { $0.id == first.id }?.content).contains { $0.kind == .label && $0.text.isEmpty })
         let clicked = await restored.uiAction(.click(windowID: first.id, elementID: restoredButton.id))
         #expect(clicked.error == nil)
-        #expect(elements(clicked.windows.first { $0.id == first.id }?.content).contains { $0.kind == .label && $0.text == "Neu: Moritz" })
+        #expect(elements(clicked.windows.first { $0.id == first.id }?.content).contains { $0.kind == .label && $0.text == "New: Moritz" })
         #expect(elements(clicked.windows.first { $0.kind == .custom && $0.id != first.id }?.content).contains { $0.kind == .textField && $0.text.isEmpty })
     }
 
@@ -91,15 +91,15 @@ struct UserInterfaceTests {
         let opened = await session.evaluate(SmalltalkExamples.legacyUserInterface)
         let window = try #require(opened.windows.first { $0.kind == .custom })
         let field = try #require(elements(window.content).first { $0.kind == .textField })
-        _ = await session.uiAction(.text(windowID: window.id, elementID: field.id, value: "Gespeichert"))
+        _ = await session.uiAction(.text(windowID: window.id, elementID: field.id, value: "Saved"))
         let data = try await session.imageData()
         let restored = SmalltalkSession()
         let loaded = try await restored.loadImage(data)
         let restoredWindow = try #require(loaded.evaluation.windows.first { $0.id == window.id })
-        let button = try #require(elements(restoredWindow.content).first { $0.kind == .button && $0.text == "Begrüßen" })
+        let button = try #require(elements(restoredWindow.content).first { $0.kind == .button && $0.text == "Greet" })
         let clicked = await restored.uiAction(.click(windowID: window.id, elementID: button.id))
         #expect(clicked.error == nil)
-        #expect(elements(clicked.windows.first { $0.id == window.id }?.content).contains { $0.kind == .label && $0.text == "Hallo, Gespeichert!" })
+        #expect(elements(clicked.windows.first { $0.id == window.id }?.content).contains { $0.kind == .label && $0.text == "Hello, Saved!" })
     }
 
     @Test func removedDisabledAndClosedControlsCannotDispatchStaleActions() async throws {
@@ -157,9 +157,9 @@ struct UserInterfaceTests {
         let window = try #require(opened.windows.first { $0.kind == .custom })
         #expect(elements(window.content).contains { $0.kind == .label && $0.text == "Original" })
         let field = try #require(elements(window.content).first { $0.kind == .textField })
-        let edited = await session.uiAction(.text(windowID: window.id, elementID: field.id, value: "Neu"))
+        let edited = await session.uiAction(.text(windowID: window.id, elementID: field.id, value: "New"))
         #expect(edited.error == nil)
-        #expect(elements(edited.windows.last?.content).contains { $0.id == field.id && $0.text == "Neu!" })
+        #expect(elements(edited.windows.last?.content).contains { $0.id == field.id && $0.text == "New!" })
         let reads = await session.evaluate("reads")
         #expect(reads.value == "0")
     }
@@ -174,7 +174,7 @@ struct UserInterfaceTests {
         #expect(opened.error == nil)
         let valid = try await session.imageData()
         let invalid = await session.evaluate("column add: column")
-        #expect(invalid.error?.contains("Oberfläche") == true)
+        #expect(invalid.error?.contains("interface") == true)
         #expect(invalid.executionError == nil)
         let flushed = await session.windowAction(.text(1, "column removeAll"))
         #expect(flushed.executionError == nil)
@@ -200,7 +200,7 @@ struct UserInterfaceTests {
         let window = try #require(repaired.windows.first { $0.kind == .custom })
         let button = try #require(elements(window.content).first { $0.kind == .button })
         let failed = await session.uiAction(.click(windowID: window.id, elementID: button.id))
-        #expect(failed.error?.contains("Division durch null") == true)
+        #expect(failed.error?.contains("Division by zero") == true)
         let recovered = await session.evaluate("button action: [ 6 * 7 ]")
         #expect(recovered.error == nil)
         let clicked = await session.uiAction(.click(windowID: window.id, elementID: button.id))

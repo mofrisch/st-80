@@ -13,7 +13,7 @@ struct MethodCode: Codable, Sendable {
     }
     func validatedMethod(selector expected: String, source: String, fields: [String]) throws -> Method {
         guard expected == selector, source.utf8.count <= 262_144, SystemLibrary.digest(Data(source.utf8)) == sourceHash else {
-            throw SmalltalkError("Methodenquelle und ausführbarer Code passen nicht zusammen.")
+            throw SmalltalkError("The method source and executable code do not match.")
         }
         let method = Method(selector: selector, parameters: parameters, body: body, source: source)
         try CodeValidator.check(method, fields: fields)
@@ -41,9 +41,9 @@ struct ImageFileArchive: Codable {
 
 enum ImageFiles {
     static func save(_ runtime: SmalltalkRuntime, to url: URL, workspace: String, transcript: String) throws {
-        guard url.isFileURL else { throw SmalltalkError("Ein Image muss lokal gespeichert werden.") }
+        guard url.isFileURL else { throw SmalltalkError("An image must be saved to a local file.") }
         // Validate and size-check before modifying any companion file.
-        guard workspace.utf8.count + transcript.utf8.count <= ImageCodec.maxBytes else { throw SmalltalkError("Image ist zu groß.") }
+        guard workspace.utf8.count + transcript.utf8.count <= ImageCodec.maxBytes else { throw SmalltalkError("Image is too large.") }
         var memory = try ImageCodec.capture(runtime, workspace: workspace, transcript: transcript, includesCode: false)
         let library = try SystemLibrary.shared.get()
         let journal = runtime.journal
@@ -78,10 +78,10 @@ enum ImageFiles {
         let archive = ImageFileArchive(memory: memory, methods: methods, sourcesFile: sourcesName, sourcesID: library.identifier, changesFile: changesURL.lastPathComponent, changesID: candidate.id, checkpoint: candidate.sequence)
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
         let bytes = try encoder.encode(archive)
-        guard bytes.count <= ImageCodec.maxBytes else { throw SmalltalkError("Image ist zu groß (maximal 32 MiB).") }
+        guard bytes.count <= ImageCodec.maxBytes else { throw SmalltalkError("Image exceeds the 32 MiB limit.") }
         let sourcesURL = url.deletingLastPathComponent().appendingPathComponent(sourcesName)
         if FileManager.default.fileExists(atPath: sourcesURL.path) {
-            guard try SourceJournal.readBounded(sourcesURL, maximum: 262_144) == library.data else { throw SmalltalkError("Das Quellenarchiv \(sourcesName) enthält andere Daten.") }
+            guard try SourceJournal.readBounded(sourcesURL, maximum: 262_144) == library.data else { throw SmalltalkError("Sources archive \(sourcesName) contains different data.") }
         } else { try SourceJournal.createFile(library.data, at: sourcesURL) }
         if candidate !== journal { try candidate.attach(to: changesURL) }
         else if candidate.url == nil { try candidate.attach(to: changesURL) }
@@ -97,36 +97,36 @@ enum ImageFiles {
         struct Header: Decodable { let format: String; let version: Int }
         let header: Header
         do { header = try JSONDecoder().decode(Header.self, from: bytes) }
-        catch { throw SmalltalkError("Die Datei ist kein gültiges Smalltalk/80-Image.") }
-        guard header.format == "st80-image" else { throw SmalltalkError("Unbekanntes Image-Format.") }
-        guard header.version == ImageCodec.version else { throw SmalltalkError("Image-Version \(header.version) wird nicht unterstützt (erwartet: \(ImageCodec.version)).") }
+        catch { throw SmalltalkError("The file is not a valid Smalltalk/80 image.") }
+        guard header.format == "st80-image" else { throw SmalltalkError("Unknown image format.") }
+        guard header.version == ImageCodec.version else { throw SmalltalkError("Image version \(header.version) is unsupported. Expected version \(ImageCodec.version).") }
         let archive = try JSONDecoder().decode(ImageFileArchive.self, from: bytes)
         guard archive.methods.count <= 65_536, archive.checkpoint >= 0,
               archive.sourcesFile == URL(fileURLWithPath: archive.sourcesFile).lastPathComponent,
-              archive.changesFile == url.deletingPathExtension().appendingPathExtension("changes").lastPathComponent else { throw SmalltalkError("Ungültige Quellenverweise im Image; Image und Changes müssen zusammenbleiben.") }
+              archive.changesFile == url.deletingPathExtension().appendingPathExtension("changes").lastPathComponent else { throw SmalltalkError("Invalid source references in the image. Keep the image and changes file together.") }
         let directory = url.deletingLastPathComponent()
         let sources = try SourceJournal.readBounded(directory.appendingPathComponent(archive.sourcesFile), maximum: 262_144)
-        guard SystemLibrary.digest(sources) == archive.sourcesID else { throw SmalltalkError("Das Quellenarchiv passt nicht zu diesem Image.") }
+        guard SystemLibrary.digest(sources) == archive.sourcesID else { throw SmalltalkError("The sources archive does not match this image.") }
         let baseMethods = try LibrarySources.decode(sources).methods
         let journal = try SourceJournal.read(directory.appendingPathComponent(archive.changesFile))
-        guard journal.id == archive.changesID, journal.sequence >= archive.checkpoint else { throw SmalltalkError("Das Changes-Protokoll passt nicht zum gespeicherten Image-Stand.") }
+        guard journal.id == archive.changesID, journal.sequence >= archive.checkpoint else { throw SmalltalkError("The changes log does not match the saved image.") }
         let changes = Dictionary(uniqueKeysWithValues: journal.records.map { ($0.id, $0) })
         var memory = archive.memory
-        guard memory.format == "st80-image", memory.version == ImageCodec.version, memory.executableMethods == nil else { throw SmalltalkError("Ungültiger Objektspeicher im Image.") }
+        guard memory.format == "st80-image", memory.version == ImageCodec.version, memory.executableMethods == nil else { throw SmalltalkError("The image contains invalid object memory.") }
         var code: [String: [String: MethodCode]] = [:]
         let records = Dictionary(memory.classes.enumerated().map { ($0.element.name, $0.offset) }, uniquingKeysWith: { first, _ in first })
-        guard records.count == memory.classes.count, memory.classes.allSatisfy({ $0.methods.isEmpty }) else { throw SmalltalkError("Doppelte Klassen oder eingebettete Quellen im Datei-Image.") }
+        guard records.count == memory.classes.count, memory.classes.allSatisfy({ $0.methods.isEmpty }) else { throw SmalltalkError("The image file contains duplicate classes or embedded sources.") }
         for record in archive.methods {
-            guard let index = records[record.className], code[record.className]?[record.code.selector] == nil else { throw SmalltalkError("Ungültiger oder doppelter Methodenverweis im Image.") }
+            guard let index = records[record.className], code[record.className]?[record.code.selector] == nil else { throw SmalltalkError("The image contains an invalid or duplicate method reference.") }
             let source: String
             if let changeID = record.changeID {
-                guard let change = changes[changeID], change.kind == .method, change.sequence <= archive.checkpoint, change.className == record.className, change.selector == record.code.selector else { throw SmalltalkError("Methodenquelle fehlt im Changes-Protokoll.") }
+                guard let change = changes[changeID], change.kind == .method, change.sequence <= archive.checkpoint, change.className == record.className, change.selector == record.code.selector else { throw SmalltalkError("The method source is missing from the changes log.") }
                 source = change.source
             } else {
-                guard let text = baseMethods[record.className]?[record.code.selector] else { throw SmalltalkError("Methodenquelle fehlt im Quellenarchiv.") }
+                guard let text = baseMethods[record.className]?[record.code.selector] else { throw SmalltalkError("The method source is missing from the sources archive.") }
                 source = text
             }
-            guard SystemLibrary.digest(Data(source.utf8)) == record.code.sourceHash else { throw SmalltalkError("Methodenquelle und Image passen nicht zusammen.") }
+            guard SystemLibrary.digest(Data(source.utf8)) == record.code.sourceHash else { throw SmalltalkError("The method source and image do not match.") }
             memory.classes[index].methods[record.code.selector] = source
             code[record.className, default: [:]][record.code.selector] = record.code
         }

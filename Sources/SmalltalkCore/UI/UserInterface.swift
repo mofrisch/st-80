@@ -75,11 +75,11 @@ extension SmalltalkRuntime {
                   let kind = kinds.first(where: { isUIClass(object.stClass, named: $0.0) })?.1,
                   case .boolean(let ownEnabled)? = object.fields["enabled"],
                   case .boolean(let visible)? = object.fields["visible"] else {
-                throw SmalltalkError("Ungültige Oberfläche: erwartet wird ein Baum aus UI-Elementen (maximal 512 Elemente, Tiefe 16, keine Zyklen oder mehrfach verwendeten Elemente).")
+                throw SmalltalkError("Invalid interface. Expected a tree of UI elements with at most 512 elements, a depth of 16, and no cycles or reused elements.")
             }
             func string(_ name: String) throws -> String {
                 guard case .string(let text)? = object.fields[name], text.utf8.count <= 65_536 else {
-                    throw SmalltalkError("Ungültige Oberfläche: \(object.stClass.name)>>\(name) muss ein String mit maximal 64 KiB sein.")
+                    throw SmalltalkError("Invalid interface. \(object.stClass.name)>>\(name) must be a string of at most 64 KiB.")
                 }
                 return text
             }
@@ -111,12 +111,12 @@ extension SmalltalkRuntime {
                 switch object.fields["action"] {
                 case .nilValue?: break
                 case .block(let block)? where block.parameters.isEmpty: break
-                default: throw SmalltalkError("Ungültige Oberfläche: Button-Aktionen müssen Blöcke ohne Argumente oder nil sein.")
+                default: throw SmalltalkError("Invalid interface. Button actions must be blocks with no arguments or nil.")
                 }
                 if case .block(let action)? = object.fields["selectionAction"] {
                     guard action.parameters.count == 1, case .object(let editor)? = object.fields["selectionSource"],
                           isUIClass(editor.stClass, named: "UICodeEditor") else {
-                        throw SmalltalkError("Eine Auswahlaktion benötigt einen Code-Editor und einen Block mit einem Argument.")
+                        throw SmalltalkError("A selection action requires a code editor and a block with one argument.")
                     }
                     selectionSource = editor.nativeID
                 }
@@ -128,23 +128,23 @@ extension SmalltalkRuntime {
                 case .object?:
                     guard case .symbol(let selector)? = object.fields["mvcInputSelector"],
                           selector.filter({ $0 == ":" }).count == 1, selector.hasSuffix(":") else {
-                        throw SmalltalkError("Ungültiger Controller für ein Eingabefeld.")
+                        throw SmalltalkError("Invalid text input controller.")
                     }
                     liveInput = true
-                default: throw SmalltalkError("Ungültiger Controller für ein Eingabefeld.")
+                default: throw SmalltalkError("Invalid text input controller.")
                 }
             case .list:
                 guard case .array(let values)? = object.fields["items"], values.elements.count <= 1024 else {
-                    throw SmalltalkError("Eine Liste benötigt ein Array mit maximal 1.024 Einträgen.")
+                    throw SmalltalkError("A list requires an array of at most 1,024 items.")
                 }
                 items = try values.elements.map {
                     guard case .string(let title) = $0, title.utf8.count <= 4096 else {
-                        throw SmalltalkError("Listeneinträge müssen Strings sein.")
+                        throw SmalltalkError("List items must be strings.")
                     }
                     return title
                 }
                 guard Set(items).count == items.count else {
-                    throw SmalltalkError("Listeneinträge müssen eindeutig sein.")
+                    throw SmalltalkError("List items must be unique.")
                 }
                 if let selected = field("selection"), items.contains(selected) { selection = selected }
             case .column, .row, .split, .scroll, .menu:
@@ -152,7 +152,7 @@ extension SmalltalkRuntime {
                 guard case .array(let array)? = object.fields["children"], array.elements.count <= 512,
                       case .integer(let gap)? = object.fields["spacing"], (0...128).contains(gap),
                       case .integer(let inset)? = object.fields["padding"], (0...256).contains(inset) else {
-                    throw SmalltalkError("Ungültiges Layout: children muss ein Array sein, spacing zwischen 0 und 128 und padding zwischen 0 und 256 liegen.")
+                    throw SmalltalkError("Invalid layout. children must be an array, spacing must be between 0 and 128, and padding must be between 0 and 256.")
                 }
                 spacing = gap; padding = inset
                 children = try array.elements.map { try project($0, depth: depth + 1, parentEnabled: enabled) }
@@ -173,7 +173,7 @@ extension SmalltalkRuntime {
 
     func projectWindowContent(_ object: STObject) throws -> UIElementInfo? {
         guard isUIClass(object.stClass, named: "UIWindow"), let content = object.fields["content"] else {
-            throw SmalltalkError("Ein eigenes Fenster muss eine Instanz von UIWindow oder einer Unterklasse sein.")
+            throw SmalltalkError("A custom window must be an instance of UIWindow or one of its subclasses.")
         }
         return try projectInterface(content).root
     }
@@ -195,15 +195,15 @@ extension SmalltalkRuntime {
             let result: Value
             switch action {
             case .click(_, _, let selection):
-                guard control.kind == .button else { throw SmalltalkError("Das Element ist kein Button.") }
-                guard selection.utf8.count <= 65_536 else { throw SmalltalkError("Die Auswahl ist zu groß.") }
+                guard control.kind == .button else { throw SmalltalkError("The element is not a button.") }
+                guard selection.utf8.count <= 65_536 else { throw SmalltalkError("The selection is too large.") }
                 result = try send(.object(control.object), "clickWithSelection:", [.string(selection)])
             case .select(_, _, let value):
-                guard control.kind == .list else { throw SmalltalkError("Das Element ist keine Liste.") }
+                guard control.kind == .list else { throw SmalltalkError("The element is not a list.") }
                 result = try send(.object(control.object), "select:", [value.map(Value.string) ?? .nilValue])
             case .text(_, _, let text):
                 guard control.kind == .textField || control.kind == .codeEditor,
-                      text.utf8.count <= 65_536 else { throw SmalltalkError("Ungültige Texteingabe (maximal 64 KiB).") }
+                      text.utf8.count <= 65_536 else { throw SmalltalkError("Invalid text input. The limit is 64 KiB.") }
                 if case .boolean(true)? = control.object.fields["readOnly"] { return snapshot() }
                 result = try send(.object(control.object), "editText:", [.string(text)])
             }

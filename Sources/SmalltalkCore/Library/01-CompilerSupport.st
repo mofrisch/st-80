@@ -1,4 +1,4 @@
-"Veränderlicher Puffer für Tokeninhalte und Syntaxknoten."
+"Mutable buffer for token contents and syntax nodes."
 
 Object subclass: #STCompilerList instanceVariableNames: 'storage count'.
 

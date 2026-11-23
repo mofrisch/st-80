@@ -10,7 +10,7 @@ public struct SmalltalkError: Error, LocalizedError, Sendable {
     public var position: SourcePosition?
 
     public var errorDescription: String? {
-        if let position { return "Zeile \(position.line), Spalte \(position.column): \(message)" }
+        if let position { return "Line \(position.line), column \(position.column): \(message)" }
         return message
     }
 
@@ -46,7 +46,7 @@ struct Expression: Codable, Sendable {
         case .cascade(let receiver, let messages): height = max(receiver.height, messages.flatMap(\.arguments).map(\.height).max() ?? 0) + 1
         case .block(_, let body): height = (body.expressions.map(\.height).max() ?? 0) + 1
         }
-        guard height <= 128 else { throw SmalltalkError("Ausdruck ist zu tief verschachtelt.", at: position) }
+        guard height <= 128 else { throw SmalltalkError("Expression is nested too deeply.", at: position) }
     }
 }
 

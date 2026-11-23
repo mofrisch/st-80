@@ -8,7 +8,7 @@ import UniformTypeIdentifiers
 final class AppController {
     private var windowPresentation = WindowPresentation()
     private var controlEdits = ControlEdits()
-    var result = "Bereit."
+    var result = "Ready."
     var error: String?
     var isRunning = false {
         didSet {
@@ -66,7 +66,7 @@ final class AppController {
         defer { isRunning = false }
         if let path = preferences.string(forKey: Self.lastImageKey) {
             do { try await restoreImage(from: URL(fileURLWithPath: path)); return }
-            catch { self.error = "Das letzte Image konnte nicht geladen werden: \(error.localizedDescription)" }
+            catch { self.error = "Could not load the last image: \(error.localizedDescription)" }
         }
         do { try await startUnsavedChangeLog() } catch { self.error = error.localizedDescription }
         let failure = error
@@ -342,13 +342,13 @@ final class AppController {
         isRunning = true
         defer { isRunning = false }
         let panel = NSOpenPanel()
-        panel.title = "Smalltalk-Image öffnen"
+        panel.title = "Open Smalltalk Image"
         panel.allowedContentTypes = [Self.imageType]
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do { try await restoreImage(from: url) }
-        catch { self.error = "Image konnte nicht geladen werden: \(error.localizedDescription)" }
+        catch { self.error = "Could not load the image: \(error.localizedDescription)" }
     }
 
     func saveImage(asNewFile: Bool = false) async {
@@ -359,7 +359,7 @@ final class AppController {
         if let imageURL, !asNewFile { url = imageURL }
         else {
             let panel = NSSavePanel()
-            panel.title = "Smalltalk-Image speichern"
+            panel.title = "Save Smalltalk Image"
             panel.allowedContentTypes = [Self.imageType]
             panel.nameFieldStringValue = imageURL?.lastPathComponent ?? "Smalltalk.stimage"
             panel.directoryURL = imageURL?.deletingLastPathComponent()
@@ -372,8 +372,8 @@ final class AppController {
             apply(await session.snapshot())
             imageURL = url; preferences.set(url.path, forKey: Self.lastImageKey)
             imageHasChanges = controlEdits.hasPendingEdits || !pendingWindowEvents.isEmpty
-            result = "Image gespeichert: \(url.lastPathComponent)"; error = nil
-        } catch { self.error = "Image konnte nicht gespeichert werden: \(error.localizedDescription)" }
+            result = "Saved image: \(url.lastPathComponent)"; error = nil
+        } catch { self.error = "Could not save the image: \(error.localizedDescription)" }
     }
 
     private func clearPending() {
@@ -414,7 +414,7 @@ final class AppController {
     func openChanges() async {
         guard !isRunning else { return }
         let panel = NSOpenPanel()
-        panel.title = "Changes-Protokoll zur Wiederherstellung öffnen"
+        panel.title = "Open Changes Log for Recovery"
         panel.allowedContentTypes = [UTType(filenameExtension: "changes") ?? .plainText]
         panel.directoryURL = changesPath.map { URL(fileURLWithPath: $0).deletingLastPathComponent() }
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -439,6 +439,6 @@ final class AppController {
         apply(image.evaluation, replacingWindows: true)
         imageURL = url; imageHasChanges = false
         preferences.set(url.path, forKey: Self.lastImageKey)
-        result = "Image geladen: \(url.lastPathComponent)"; error = nil
+        result = "Loaded image: \(url.lastPathComponent)"; error = nil
     }
 }

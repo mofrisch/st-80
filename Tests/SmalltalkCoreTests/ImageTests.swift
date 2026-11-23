@@ -11,7 +11,7 @@ struct ImageTests {
         let restored = SmalltalkSession()
         _ = try await restored.loadImage(original.imageData())
         let invoked = await restored.evaluate("deferred value")
-        #expect(invoked.error?.contains("4.096") == true)
+        #expect(invoked.error?.contains("4,096") == true)
     }
 
     private func value(_ source: String, in session: SmalltalkSession) async -> String? {
@@ -23,7 +23,7 @@ struct ImageTests {
     @Test func roundTripPreservesClassesMethodsObjectsAndEditorState() async throws {
         let original = SmalltalkSession()
         let workspace = "\"Ein gespeicherter Workspace 👋\"\nsaved value"
-        let transcript = "Grüße aus der alten Sitzung.\n"
+        let transcript = "Greetings from the old session.\n"
         _ = await value("""
         Counter compile: 'value ^ count + 100'.
         Object compile: 'imageMarker ^ 42'.
@@ -36,7 +36,7 @@ struct ImageTests {
             super initialize'.
         saved := SpecialCounter new.
         saved add: 7.
-        saved label: 'Grüße 👋'.
+        saved label: 'Cafés 👋'.
         classReference := SpecialCounter
         """, in: original)
 
@@ -48,7 +48,7 @@ struct ImageTests {
         #expect(loaded.transcript == transcript)
         #expect(loaded.evaluation.classes.contains { $0.name == "SpecialCounter" && $0.superclass == "Counter" && $0.fields == ["count", "label"] })
         #expect(await value("saved value", in: restarted) == "107")
-        #expect(await value("saved label", in: restarted) == "'Grüße 👋'")
+        #expect(await value("saved label", in: restarted) == "'Cafés 👋'")
         #expect(await value("saved imageMarker", in: restarted) == "42")
         #expect(await value("saved class == classReference", in: restarted) == "true")
         // Restoring fields must not run initialize or any other Smalltalk code.
@@ -132,7 +132,7 @@ struct ImageTests {
         // Try the return immediately: restored home IDs must not collide with a
         // newly started workspace activation and accidentally become active.
         let invalidReturn = await restarted.evaluate("escaped value")
-        #expect(invalidReturn.error?.contains("Heimkontext") == true)
+        #expect(invalidReturn.error?.contains("home context") == true)
         #expect(await value("reader value", in: restarted) == "6")
         #expect(await value("6 * 7", in: restarted) == "42")
     }
@@ -142,7 +142,7 @@ struct ImageTests {
         _ = await value("""
         minimum := -9223372036854775808.
         maximum := 9223372036854775807.
-        text := 'Grüße 👋 it''s alive'.
+        text := 'Cafés 👋 it''s alive'.
         symbol := #'at:put:'.
         yes := true.
         no := false.
@@ -154,7 +154,7 @@ struct ImageTests {
         _ = try await restarted.loadImage(original.imageData())
         #expect(await value("minimum", in: restarted) == "-9223372036854775808")
         #expect(await value("maximum", in: restarted) == "9223372036854775807")
-        #expect(await value("text", in: restarted) == "'Grüße 👋 it''s alive'")
+        #expect(await value("text", in: restarted) == "'Cafés 👋 it''s alive'")
         #expect(await value("symbol asString", in: restarted) == "'at:put:'")
         #expect(await value("yes and: [ no not ]", in: restarted) == "true")
         #expect(await value("nothing isNil", in: restarted) == "true")

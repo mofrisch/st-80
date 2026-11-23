@@ -31,11 +31,11 @@ struct ToolWindowTests {
         let kernel = await select(categories, "Kernel")
         #expect(element("classList", in: kernel)?.items.contains("Object") == true)
         #expect(element("classList", in: kernel)?.selection == nil)
-        let examples = await select(categories, "Beispiele")
+        let examples = await select(categories, "Examples")
         #expect(element("classList", in: examples)?.items == ["Counter"])
         let counter = await select(classes, "Counter")
-        #expect(element("protocolList", in: counter)?.items == ["Alle", "Initialisierung", "Unär", "Schlüsselwort"])
-        let unary = await select(protocols, "Unär")
+        #expect(element("protocolList", in: counter)?.items == ["All", "Initialization", "Unary", "Keyword"])
+        let unary = await select(protocols, "Unary")
         #expect(element("methodList", in: unary)?.items == ["increment", "value"])
         let value = await select(methods, "value")
         #expect(element("methodEditor", in: value)?.text == "value ^ count")
@@ -44,7 +44,7 @@ struct ToolWindowTests {
         let accepted = await session.uiAction(.click(windowID: browser.id, elementID: accept.id))
         #expect(accepted.error == nil)
         let content = accepted.windows.first(where: { $0.id == browser.id })?.content
-        #expect(element("protocolList", in: content)?.selection == "Alle")
+        #expect(element("protocolList", in: content)?.selection == "All")
         #expect(element("methodList", in: content)?.selection == "adjusted:")
     }
 

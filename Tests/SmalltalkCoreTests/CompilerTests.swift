@@ -29,7 +29,7 @@ struct CompilerTests {
         #expect(await session.compile("answer ^ 42", in: "Counter").executionError == nil)
         #expect(await session.compile("method: source ^ #(wrong)", in: "STCompiler").executionError == nil)
         let attempted = await session.compile("answer ^ 99", in: "Counter")
-        #expect(attempted.executionError?.contains("Syntaxbaum") == true)
+        #expect(attempted.executionError?.contains("syntax tree") == true)
         #expect(await session.evaluate("Counter new answer").value == "42")
     }
 

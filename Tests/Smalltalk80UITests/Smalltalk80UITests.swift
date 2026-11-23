@@ -10,19 +10,19 @@ final class Smalltalk80UITests: XCTestCase {
         workspace.buttons["executeButton"].click()
         XCTAssertTrue(workspace.staticTexts["5"].waitForExistence(timeout: 5))
         let transcript = app.windows["toolWindow-3"]
-        XCTAssertTrue(transcript.staticTexts.containing(NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@", "Der Zähler steht bei 5", "Der Zähler steht bei 5")).firstMatch.exists)
+        XCTAssertTrue(transcript.staticTexts.containing(NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@", "The counter is at 5", "The counter is at 5")).firstMatch.exists)
 
         workspace.textViews["workspaceEditor"].typeKey("2", modifierFlags: .command)
         let browser = app.windows["toolWindow-2"]
         XCTAssertTrue(browser.waitForExistence(timeout: 5))
-        let panes = ["Klassenkategorien", "Klassen", "Protokolle", "Methoden"].map { browser.staticTexts[$0] }
+        let panes = ["Class Categories", "Classes", "Protocols", "Methods"].map { browser.staticTexts[$0] }
         for pane in panes { XCTAssertTrue(pane.waitForExistence(timeout: 5)) }
         for (left, right) in zip(panes, panes.dropFirst()) {
             XCTAssertLessThan(left.frame.minX, right.frame.minX)
         }
-        browser.staticTexts["Beispiele"].firstMatch.click()
+        browser.staticTexts["Examples"].firstMatch.click()
         browser.staticTexts["Counter"].firstMatch.click()
-        browser.staticTexts["Unär"].firstMatch.click()
+        browser.staticTexts["Unary"].firstMatch.click()
         browser.staticTexts["value"].firstMatch.click()
         let method = browser.textViews["methodEditor"]
         XCTAssertTrue(method.waitForExistence(timeout: 5))
@@ -44,7 +44,7 @@ final class Smalltalk80UITests: XCTestCase {
         editor.typeKey(.leftArrow, modifierFlags: [.command, .shift])
         editor.typeKey("d", modifierFlags: .command)
         XCTAssertTrue(workspace.staticTexts["42"].waitForExistence(timeout: 5))
-        XCTAssertFalse(workspace.staticTexts["FEHLER"].exists)
+        XCTAssertFalse(workspace.staticTexts["ERROR"].exists)
     }
 
     func testNativeWorkspacesKeepIndependentBuffersShareObjectsAndCloseSeparately() {
@@ -162,7 +162,7 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertTrue(transcript.staticTexts.matching(NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@", "Image survives restart", "Image survives restart")).firstMatch.exists)
         reopenedSecondWindow.buttons["executeButton"].click()
         XCTAssertTrue(reopenedSecondWindow.staticTexts["107"].waitForExistence(timeout: 5))
-        XCTAssertFalse(reopenedSecondWindow.staticTexts["FEHLER"].exists)
+        XCTAssertFalse(reopenedSecondWindow.staticTexts["ERROR"].exists)
     }
 
     func testSmalltalkFormFlushesInputsBeforeClickAndSurvivesImageRelaunch() throws {
@@ -184,42 +184,42 @@ final class Smalltalk80UITests: XCTestCase {
         FormWindow compile: 'initialize
             | column row button |
             super initialize.
-            self title: ''Smalltalk-Formular''.
+            self title: ''Smalltalk Form''.
             firstName := UITextField new.
-            firstName label: ''Vorname''; placeholder: ''Dein Vorname''.
+            firstName label: ''First Name''; placeholder: ''Your first name''.
             surname := UITextField new.
-            surname label: ''Nachname''; placeholder: ''Dein Nachname''.
+            surname label: ''Last Name''; placeholder: ''Your last name''.
             greeting := UILabel new.
-            greeting text: ''Bereit.''.
+            greeting text: ''Ready.''.
             button := UIButton new.
-            button title: ''Begrüßen''; action: [ self greet ].
+            button title: ''Greet''; action: [ self greet ].
             row := UIRow new.
             row spacing: 12; add: firstName; add: surname.
             column := UIColumn new.
             column padding: 20; spacing: 12.
             column add: row; add: button; add: greeting.
             self content: column'.
-        FormWindow compile: 'greet greeting text: ''Hallo, '', firstName text, '' '', surname text, ''!'''.
+        FormWindow compile: 'greet greeting text: ''Hello, '', firstName text, '' '', surname text, ''!'''.
         form := FormWindow new open
         """)
         app.windows["toolWindow-1"].buttons["executeButton"].click()
         let window = app.windows["toolWindow-4"]
         XCTAssertTrue(window.waitForExistence(timeout: 10))
-        XCTAssertEqual(window.title, "Smalltalk-Formular")
-        let first = window.textFields["Vorname"]
-        let last = window.textFields["Nachname"]
+        XCTAssertEqual(window.title, "Smalltalk Form")
+        let first = window.textFields["First Name"]
+        let last = window.textFields["Last Name"]
         XCTAssertTrue(first.waitForExistence(timeout: 5))
         XCTAssertTrue(last.exists)
         XCTAssertTrue(first.identifier.hasPrefix("ui-"))
         XCTAssertNotEqual(first.identifier, last.identifier)
-        XCTAssertNotEqual(first.identifier, window.buttons["Begrüßen"].identifier)
+        XCTAssertNotEqual(first.identifier, window.buttons["Greet"].identifier)
         XCTAssertLessThan(first.frame.minX, last.frame.minX)
         first.click()
         first.typeText("Moritz")
         last.click()
         last.typeText("Frisch")
-        window.buttons["Begrüßen"].click()
-        XCTAssertTrue(window.staticTexts["Hallo, Moritz Frisch!"].waitForExistence(timeout: 5))
+        window.buttons["Greet"].click()
+        XCTAssertTrue(window.staticTexts["Hello, Moritz Frisch!"].waitForExistence(timeout: 5))
 
         first.click()
         first.typeKey("a", modifierFlags: .command)
@@ -240,10 +240,10 @@ final class Smalltalk80UITests: XCTestCase {
         app.launch()
         let restored = app.windows["toolWindow-4"]
         XCTAssertTrue(restored.waitForExistence(timeout: 10))
-        XCTAssertEqual(restored.textFields["Vorname"].value as? String, "Ada")
-        XCTAssertEqual(restored.textFields["Nachname"].value as? String, "Lovelace")
-        restored.buttons["Begrüßen"].click()
-        XCTAssertTrue(restored.staticTexts["Hallo, Ada Lovelace!"].waitForExistence(timeout: 5))
+        XCTAssertEqual(restored.textFields["First Name"].value as? String, "Ada")
+        XCTAssertEqual(restored.textFields["Last Name"].value as? String, "Lovelace")
+        restored.buttons["Greet"].click()
+        XCTAssertTrue(restored.staticTexts["Hello, Ada Lovelace!"].waitForExistence(timeout: 5))
         let attachment = XCTAttachment(screenshot: restored.screenshot())
         attachment.name = "Smalltalk form after image relaunch"
         attachment.lifetime = .keepAlways
@@ -253,14 +253,14 @@ final class Smalltalk80UITests: XCTestCase {
         // and evaluating a repair of a malformed UI tree.
         let workspace = app.windows["toolWindow-1"]
         let workspaceEditor = workspace.textViews["workspaceEditor"]
-        restored.textFields["Vorname"].typeKey("1", modifierFlags: .command)
+        restored.textFields["First Name"].typeKey("1", modifierFlags: .command)
         replaceText(in: workspaceEditor, with: "broken := UIColumn new. form content: broken. broken add: broken")
         workspace.buttons["executeButton"].click()
-        let error = workspace.staticTexts.containing(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Ungültige Oberfläche", "Ungültige Oberfläche")).firstMatch
+        let error = workspace.staticTexts.containing(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Invalid interface", "Invalid interface")).firstMatch
         XCTAssertTrue(error.waitForExistence(timeout: 5))
-        replaceText(in: workspaceEditor, with: "form content: UILabel new. form content text: 'Layout repariert.'")
+        replaceText(in: workspaceEditor, with: "form content: UILabel new. form content text: 'Layout repaired.'")
         workspace.buttons["executeButton"].click()
-        XCTAssertTrue(restored.staticTexts["Layout repariert."].waitForExistence(timeout: 5))
+        XCTAssertTrue(restored.staticTexts["Layout repaired."].waitForExistence(timeout: 5))
     }
 
     func testMVCModelsRefreshMultipleViewsWhileTypingFromWorkspaceAndAfterImageRelaunch() throws {
@@ -296,39 +296,39 @@ final class Smalltalk80UITests: XCTestCase {
         field.typeText("Moritz")
         // No Return, focus change or click: the controller updates the model as
         // we type, and both dependent views must react to that model change.
-        XCTAssertTrue(second.staticTexts["Hallo, Moritz!"].waitForExistence(timeout: 5))
+        XCTAssertTrue(second.staticTexts["Hello, Moritz!"].waitForExistence(timeout: 5))
         XCTAssertEqual(second.textFields["Name"].value as? String, "Moritz")
         XCTAssertEqual(field.value as? String, "Moritz")
         field.typeKey(.leftArrow, modifierFlags: .command)
         field.typeText("Dr. ")
-        XCTAssertTrue(second.staticTexts["Hallo, Dr. Moritz!"].waitForExistence(timeout: 5))
+        XCTAssertTrue(second.staticTexts["Hello, Dr. Moritz!"].waitForExistence(timeout: 5))
         XCTAssertEqual(field.value as? String, "Dr. Moritz")
 
         field.typeKey("1", modifierFlags: .command)
         replaceText(in: editor, with: "greetingModel name: 'Ada'")
         workspace.buttons["executeButton"].click()
-        XCTAssertTrue(first.staticTexts["Hallo, Ada!"].waitForExistence(timeout: 5))
-        XCTAssertTrue(second.staticTexts["Hallo, Ada!"].exists)
+        XCTAssertTrue(first.staticTexts["Hello, Ada!"].waitForExistence(timeout: 5))
+        XCTAssertTrue(second.staticTexts["Hello, Ada!"].exists)
         XCTAssertEqual(field.value as? String, "Ada")
-        second.buttons["Leeren"].click()
-        XCTAssertTrue(first.staticTexts["Noch keine Begrüßung."].waitForExistence(timeout: 5))
+        second.buttons["Clear"].click()
+        XCTAssertTrue(first.staticTexts["No greeting yet."].waitForExistence(timeout: 5))
         XCTAssertEqual(field.value as? String, "")
 
         second.textFields["Name"].typeKey("1", modifierFlags: .command)
         replaceText(in: editor, with: "GreetingController compile: 'nameChanged: aString ^ 1 / 0'")
         workspace.buttons["executeButton"].click()
         field.click()
-        field.typeText("Reparierbar")
-        let inputError = first.staticTexts.containing(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Division durch null", "Division durch null")).firstMatch
+        field.typeText("Recoverable")
+        let inputError = first.staticTexts.containing(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Division by zero", "Division by zero")).firstMatch
         XCTAssertTrue(inputError.waitForExistence(timeout: 5))
         field.typeKey("1", modifierFlags: .command)
         replaceText(in: editor, with: "GreetingController compile: 'nameChanged: aString model name: aString'")
         workspace.buttons["executeButton"].click()
-        XCTAssertTrue(second.staticTexts["Hallo, Reparierbar!"].waitForExistence(timeout: 5))
+        XCTAssertTrue(second.staticTexts["Hello, Recoverable!"].waitForExistence(timeout: 5))
 
         field.click()
         field.typeKey("a", modifierFlags: .command)
-        field.typeText("Gespeichert")
+        field.typeText("Saved")
         field.typeKey("s", modifierFlags: [.command, .shift])
         XCTAssertTrue(app.buttons["OKButton"].waitForExistence(timeout: 5))
         navigateFilePanel(in: app, to: directory.path)
@@ -341,10 +341,10 @@ final class Smalltalk80UITests: XCTestCase {
         let restoredFirst = app.windows["toolWindow-4"]
         let restoredSecond = app.windows["toolWindow-5"]
         XCTAssertTrue(restoredFirst.waitForExistence(timeout: 10))
-        XCTAssertEqual(restoredFirst.textFields["Name"].value as? String, "Gespeichert")
-        XCTAssertTrue(restoredSecond.staticTexts["Hallo, Gespeichert!"].exists)
-        restoredSecond.buttons["Beispielname"].click()
-        XCTAssertTrue(restoredFirst.staticTexts["Hallo, Moritz!"].waitForExistence(timeout: 5))
+        XCTAssertEqual(restoredFirst.textFields["Name"].value as? String, "Saved")
+        XCTAssertTrue(restoredSecond.staticTexts["Hello, Saved!"].exists)
+        restoredSecond.buttons["Use Example Name"].click()
+        XCTAssertTrue(restoredFirst.staticTexts["Hello, Moritz!"].waitForExistence(timeout: 5))
         XCTAssertEqual(restoredFirst.textFields["Name"].value as? String, "Moritz")
         let attachment = XCTAttachment(screenshot: restoredFirst.screenshot())
         attachment.name = "MVC view after model change and image relaunch"
@@ -378,7 +378,7 @@ final class Smalltalk80UITests: XCTestCase {
         let closed = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: window)
         wait(for: [closed], timeout: 5)
         XCTAssertTrue(first.exists)
-        XCTAssertFalse(first.staticTexts["FEHLER"].exists)
+        XCTAssertFalse(first.staticTexts["ERROR"].exists)
     }
 
     func testChangesAfterImageSnapshotSurviveRelaunchAndCanBeRestoredFromTheUI() throws {
@@ -421,9 +421,9 @@ final class Smalltalk80UITests: XCTestCase {
         let record = history.staticTexts["Counter » recovered"].firstMatch
         XCTAssertTrue(record.waitForExistence(timeout: 5))
         record.click()
-        XCTAssertTrue(history.staticTexts["Nach Image-Stand"].firstMatch.exists)
+        XCTAssertTrue(history.staticTexts["After Image Checkpoint"].firstMatch.exists)
         history.buttons["restoreChangeButton"].click()
-        XCTAssertTrue(history.staticTexts["Wiederhergestellt: Counter » recovered"].waitForExistence(timeout: 5))
+        XCTAssertTrue(history.staticTexts["Restored: Counter » recovered"].waitForExistence(timeout: 5))
         let attachment = XCTAttachment(screenshot: history.screenshot())
         attachment.name = "Recovered method from the durable changes journal"
         attachment.lifetime = .keepAlways; add(attachment)
@@ -431,7 +431,7 @@ final class Smalltalk80UITests: XCTestCase {
         replaceText(in: restoredEditor, with: "Counter new recovered")
         restored.buttons["executeButton"].click()
         XCTAssertTrue(restored.staticTexts["73"].waitForExistence(timeout: 5))
-        XCTAssertFalse(restored.staticTexts["FEHLER"].exists)
+        XCTAssertFalse(restored.staticTexts["ERROR"].exists)
     }
 
     private func launchFreshApp() -> XCUIApplication {

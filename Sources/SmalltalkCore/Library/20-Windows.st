@@ -161,7 +161,7 @@ DesktopManager compile: 'openTranscript
 DesktopManager compile: 'openChanges
     | existing | existing := self windowOfKind: #changes.
     existing notNil ifTrue: [ ^ self activate: existing ].
-    ^ self createKind: #changes title: ''Codeänderungen'''.
+    ^ self createKind: #changes title: ''Code Changes'''.
 DesktopManager compile: 'bringToFront: aWindow
     model windows: (self windows select: [ :each | (each == aWindow) not ]).
     self append: aWindow. model activeWindow: aWindow. ^ aWindow'.

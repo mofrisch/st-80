@@ -16,7 +16,7 @@ struct LibrarySources: Codable, Sendable {
 
     static func decode(_ data: Data) throws -> Self {
         let result = try JSONDecoder().decode(Self.self, from: data)
-        guard result.version == 1 else { throw SmalltalkError("Unbekannte Version des Sources-Archivs.") }
+        guard result.version == 1 else { throw SmalltalkError("Unsupported sources archive version.") }
         return result
     }
 }
@@ -38,11 +38,11 @@ struct SystemLibrary: Sendable {
 
     static let shared: Result<SystemLibrary, SmalltalkError> = {
         do {
-            guard let resources = bundle.resourceURL else { throw SmalltalkError("Framework-Ressourcen fehlen.") }
+            guard let resources = bundle.resourceURL else { throw SmalltalkError("Framework resources are missing.") }
             let url = resources.appendingPathComponent("Library", isDirectory: true)
             return .success(try SystemLibrary(directory: url))
         } catch {
-            return .failure(SmalltalkError("Smalltalk-Startimage konnte nicht geladen werden: \(error.localizedDescription)"))
+            return .failure(SmalltalkError("Could not load the Smalltalk boot image: \(error.localizedDescription)"))
         }
     }()
 
@@ -60,7 +60,7 @@ struct SystemLibrary: Sendable {
         sources = try LibrarySources.decode(data)
         let executable = try SourceJournal.readBounded(directory.appendingPathComponent("Kernel.seed.json"), maximum: ImageCodec.maxBytes)
         seed = try JSONDecoder().decode(LibrarySeed.self, from: executable)
-        guard seed.version == 1, seed.sourcesID == identifier else { throw SmalltalkError("Startimage und Sources-Archiv passen nicht zusammen.") }
+        guard seed.version == 1, seed.sourcesID == identifier else { throw SmalltalkError("The boot image and sources archive do not match.") }
         initialWorld = try String(contentsOf: directory.appendingPathComponent("InitialWorld.st"), encoding: .utf8)
     }
 
@@ -68,16 +68,16 @@ struct SystemLibrary: Sendable {
 
     func install(in runtime: SmalltalkRuntime) throws {
         for definition in definitions {
-            guard let parent = runtime.classes[definition.superclass] else { throw SmalltalkError("System-Oberklasse \(definition.superclass) fehlt.") }
+            guard let parent = runtime.classes[definition.superclass] else { throw SmalltalkError("System superclass \(definition.superclass) is missing.") }
             _ = try runtime.subclass(of: parent, name: definition.name, fields: definition.fields.joined(separator: " "))
         }
-        guard Set(seed.methods.keys) == Set(methods.keys) else { throw SmalltalkError("Startimage enthält eine abweichende Methodentabelle.") }
+        guard Set(seed.methods.keys) == Set(methods.keys) else { throw SmalltalkError("The boot image contains a different method table.") }
         for (name, code) in seed.methods {
             guard let stClass = runtime.classes[name], let sources = methods[name], Set(code.keys) == Set(sources.keys) else {
-                throw SmalltalkError("Klasse \(name) ist im Startimage unvollständig.")
+                throw SmalltalkError("Class \(name) is incomplete in the boot image.")
             }
             for (selector, executable) in code {
-                guard let source = sources[selector] else { throw SmalltalkError("Systemmethode \(name)>>\(selector) fehlt.") }
+                guard let source = sources[selector] else { throw SmalltalkError("System method \(name)>>\(selector) is missing.") }
                 stClass.methods[selector] = try executable.validatedMethod(selector: selector, source: source, fields: stClass.fields)
             }
         }
@@ -89,11 +89,11 @@ extension SmalltalkRuntime {
     func validateCompilerClasses() throws {
         for name in Self.compilerClassNames {
             guard let stClass = classes[name], stClass.superclass === classes["Object"], !stClass.methods.isEmpty else {
-                throw SmalltalkError("Compilerklasse \(name) fehlt oder ist ungültig.")
+                throw SmalltalkError("Compiler class \(name) is missing or invalid.")
             }
         }
         guard classes["STCompiler"]?.methods["workspace:"] != nil, classes["STCompiler"]?.methods["method:"] != nil else {
-            throw SmalltalkError("Einstiegsmethoden des Smalltalk-Compilers fehlen.")
+            throw SmalltalkError("The Smalltalk compiler's entry methods are missing.")
         }
     }
 }

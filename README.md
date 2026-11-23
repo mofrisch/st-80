@@ -1,7 +1,7 @@
 # Smalltalk/80
 
 Ein kleines, natives macOS-System mit einer von Smalltalk-80 inspirierten Sprache.
-Die App und der Interpreter sind in Swift geschrieben. Keine externen Bibliotheken.
+Die native App und die VM sind in Swift geschrieben. Der Compiler und die Systembibliothek sind in Smalltalk implementiert.
 
 ## In Xcode starten
 
@@ -14,7 +14,7 @@ Das Projekt enthält vier Targets:
 | Target | Aufgabe |
 | --- | --- |
 | Smalltalk80 | Native macOS-Fenster mit SwiftUI-Inhalt und AppKit-Texteditor |
-| SmalltalkCore | Parser, Objektspeicher, Interpreter und Compiler für Methoden |
+| SmalltalkCore | Swift-VM mit Objektspeicher, Syntaxbaumausführung und Smalltalk-Compiler |
 | SmalltalkCoreTests | Sprach-, Image- und Fenstermodelltests |
 | Smalltalk80UITests | Workspaces, Methodenänderungen, native Fenster und Image-Neustart |
 
@@ -43,17 +43,53 @@ Voraussetzungen: macOS 14 oder neuer und Xcode mit Swift 6.
 
 Ein Image erhält Klassen und ihre Hierarchie, akzeptierte Methoden (auch Änderungen an Basisklassen), Workspace-Variablen, Instanzvariablen, Arrays und gespeicherte Blöcke samt lexikalischen Kontexten. Gemeinsam genutzte Referenzen und zyklische Objektgraphen bleiben erhalten. Alle Workspace-Texte, offene Fenster samt Größe, Position, Reihenfolge und Minimierungszustand sowie das Transcript werden ebenfalls gesichert. Nicht mehr erreichbare Objekte werden weggelassen.
 
-Beim Laden wird zuerst eine separate Sitzung vollständig aufgebaut und geprüft. Fehlerhafte oder inkompatible Dateien lassen die bisherige Sitzung bestehen. Gespeicherter Methodenquelltext wird geparst, aber beim Laden wird kein Smalltalk-Code ausgeführt; insbesondere werden keine `initialize`-Methoden aufgerufen. Bereits beendete Rücksprungkontexte von Blöcken bleiben beendet.
+Beim Laden wird zuerst eine separate Sitzung vollständig aufgebaut und geprüft. Fehlerhafte oder inkompatible Dateien lassen die bisherige Sitzung bestehen. Die VM prüft die Struktur der gespeicherten Methoden und ihre Quellenreferenzen. Beim Laden wird weder neu kompiliert noch Smalltalk-Code ausgeführt. Bereits beendete Rücksprungkontexte von Blöcken bleiben beendet.
 
 **Sitzung zurücksetzen** beginnt einen frischen Stand und löst die automatische Image-Zuordnung. Bereits gespeicherte Dateien bleiben bestehen. **Workspace speichern** mit **⌘S** sichert weiterhin ausschließlich den Quelltext als `.st`.
 
-Das eigene Format ist versioniertes JSON (`format: st80-image`, `version: 1`) mit einer Objekttabelle und Referenz-IDs. Es ist kein historisches Smalltalk-80-Image. Die aktuelle Grenze liegt bei 32 MiB pro Image und 40.000 erreichbaren Referenzobjekten; außerdem gelten die Laufzeitgrenzen des Prototyps.
+Das Imageformat ist versioniertes JSON (`format: st80-image`, `version: 4`) mit Objekttabelle, ausführbaren Syntaxbäumen und Quellenverweisen. Ältere Alpha-Images werden abgewiesen. Die Core-API `imageData` liefert eine portable Fassung mit eingebetteten Methodenquellen. Es gelten 32 MiB pro Image und 40.000 erreichbare Referenzobjekte.
+
+### Sources und Changes
+
+Beim Speichern entstehen drei zusammengehörende Dateien:
+
+| Datei | Inhalt |
+|---|---|
+| `MeineWelt.stimage` | Objektwelt, Klassen, ausführbare Methoden und letzter gesicherter Changes-Stand |
+| `Smalltalk80-<Quellen-ID>.sources` | Unveränderliches Quellenarchiv des Basissystems; von mehreren Images teilbar |
+| `MeineWelt.changes` | Fortlaufendes Protokoll akzeptierter Klassen- und Methodendefinitionen einschließlich früherer Versionen |
+
+Die Originalquellen liegen in `Sources/SmalltalkCore/Library/*.st`. Xcode und Swift Package Manager bündeln das daraus erzeugte `Smalltalk80.sources` zusammen mit dem ausführbaren `Kernel.seed.json`. Die VM installiert beim Kaltstart die vorkompilierten Methoden und der geladene Smalltalk-Compiler übersetzt `InitialWorld.st`.
+
+Akzeptieren schreibt und synchronisiert zuerst den Changes-Eintrag; erst danach wird die Methode im laufenden Image ersetzt. Das geschieht auch bei `SomeClass compile:` im Workspace. Ein Schreibfehler verhindert die Installation. Vor dem ersten Image-Speichern liegt das Protokoll unter `~/Library/Application Support/Smalltalk80/Changes/`; sein Pfad steht im Änderungsfenster. **Smalltalk → Changes-Datei öffnen …** liest auch ein Protokoll aus einer noch nie gespeicherten Sitzung zur Prüfung ein.
+
+**Smalltalk → Codeänderungen …** öffnet die Historie; **Versionen …** im Browser filtert nach der gewählten Methode und zeigt zusätzlich deren ausgelieferte Basisfassung aus dem Sources-Archiv. **Version übernehmen** kompiliert die gewählte Fassung und protokolliert diese Wiederherstellung als neue Änderung. Einträge nach dem gespeicherten Image-Stand werden gekennzeichnet. Beim Laden werden sie nicht automatisch ausgeführt. Neue Klassen zunächst über ihre Klassendefinition, danach über ihre Methoden wiederherstellen. Das Protokoll speichert Codeänderungen, keine beliebigen Objektmutationen oder noch nicht akzeptierten Editortext.
+
+Image und gleichnamige Changes-Datei zusammen mit dem referenzierten Sources-Archiv kopieren. Sources und Changes nicht mit einem Texteditor verändern. Fehlende, beschädigte oder nicht passende Begleitdateien lassen die aktuelle Sitzung bestehen. Eine unvollständige letzte Changes-Zeile nach einem Absturz wird ignoriert und beim nächsten Eintrag entfernt. Ein vollständiger beschädigter Eintrag wird als Fehler gemeldet. Die Changes-Grenze liegt bei 64 MiB und 100.000 Einträgen; die Oberfläche zeigt die letzten 2.000.
+
+**Image speichern unter** verzweigt die bisherige Historie in eine eigene Changes-Datei. Ein vorhandenes fremdes Protokoll wird nicht überschrieben. Das Image wird erst nach den Begleitdateien atomar ersetzt; ein fehlgeschlagenes Speichern lässt den vorherigen Image-Stand und dessen Quellenverweise nutzbar.
+
+## Smalltalk-Compiler und Startimage
+
+`02-Scanner.st` und `03-Compiler.st` enthalten Scanner und Parser. Derselbe Compiler verarbeitet **Do it**, **Methode akzeptieren** und `Class>>compile:`. Er erzeugt Syntaxbäume in einem temporären Objektspeicher. Die Swift-VM prüft diese Daten, bevor sie Code ausführt oder eine Methode installiert.
+
+Nach einer Änderung der nummerierten Systemquellen werden die beiden mitgelieferten Build-Artefakte im Projektordner so neu erzeugt:
+
+```sh
+python3 scripts/generate-sources.py
+```
+
+Der Build lädt den bisherigen Smalltalk-Compiler aus dem Startimage. Er erzeugt eine neue Compilergeneration und prüft, dass deren Selbstbau reproduzierbar ist. Mit `--check` überprüft das Skript die vorhandenen Artefakte. Der normale Xcode-Build bündelt sie. Beim Öffnen eines gespeicherten Images wird dessen eigener Compilerstand geladen.
 
 ## Native Fensterverwaltung
 
 Workspace, System Browser und Transcript sind getrennte macOS-Fenster. Sie lassen sich über die normalen Titelleisten verschieben, skalieren, minimieren und schließen. Alle Workspaces teilen dieselbe Smalltalk-Sitzung, behalten aber jeweils ihren eigenen Text, ihre Auswahl und ihr letztes Ausführungsergebnis.
 
-Die Fenster sind gewöhnliche `SystemWindow`-Objekte. Die globale Variable `Desktop` enthält einen `DesktopManager`; seine Smalltalk-Methoden verwalten die Fensterliste und das aktive Fenster. Auch die native Bedienung sendet diese Nachrichten. Die Methoden lassen sich im Browser bearbeiten.
+Die Fensterverwaltung ist in Smalltalk implementiert. Die globale Variable `Desktop` enthält den Controller `DesktopManager`; dessen `DesktopModel` verwaltet Fensterliste, Reihenfolge, aktives Fenster und Bildschirmdaten. `SystemWindow` ist eine Unterklasse von `Model` und meldet Zustandsänderungen über das gewöhnliche Beobachterprotokoll.
+
+`Library/20-Windows.st` enthält Öffnen, Schließen, Aktivieren, Minimieren, Mindest- und Höchstgrößen, Platzierung, Bildschirmwahl und Wiederherstellung. Diese Methoden lassen sich im Browser ändern. Die Bildschirmwahl bevorzugt die größte Überlappung und bei Gleichstand den nächstgelegenen Bildschirm. Bei einem entfernten Monitor passen sich Fenster an die verbleibenden sichtbaren Bildschirmbereiche an. Die logische Mindestgröße bleibt erhalten, auch wenn ein kleiner Bildschirm vorübergehend kleinere native Grenzen erfordert.
+
+`NativeWindowBackend` erstellt und bedient ausschließlich die einzelnen AppKit-Fenster, meldet verfügbare Bildschirmflächen und native Ereignisse und zeichnet die SwiftUI-Inhalte. Es enthält keine Größen- oder Platzierungsregeln. Native Schließversuche sind Anfragen an `canClose`; Verschieben, Skalieren und Fokuswechsel sind bereits eingetretene Tatsachen. Smalltalk-Anforderungen erhalten eine Revisionsnummer; das Backend meldet die tatsächlich angewendete Geometrie zurück. Sitzungskennungen, fortlaufende Ereignisnummern und Bestätigungen verhindern, dass alte Rückmeldungen neue Anforderungen oder ein neu geladenes Image überschreiben. Auch native Ereignisse werden zeitnah ohne Deaktivieren der Editoren verarbeitet.
 
 ```smalltalk
 window := Desktop openWorkspace.
@@ -63,11 +99,33 @@ window moveToX: 180 y: 240.
 window resizeWidth: 700 height: 500
 ```
 
-Weitere Befehle sind `Desktop openBrowser`, `Desktop openTranscript`, `Desktop windows`, `Desktop activeWindow`, `Desktop activate: window` und `Desktop close: window`.
+Weitere Befehle sind `Desktop openBrowser`, `Desktop openTranscript`, `Desktop openChanges`, `Desktop windows`, `Desktop activeWindow`, `Desktop activate: window` und `Desktop close: window`.
+
+```smalltalk
+window minimumWidth: 600 height: 400.
+window maximumWidth: 1200 height: 900.
+
+"Eigene Fenster können eine Schließanfrage ablehnen:"
+UIWindow subclass: #ProtectedWindow instanceVariableNames: ''.
+ProtectedWindow compile: 'canClose ^ false'.
+ProtectedWindow new open
+```
+
+Ein vollständiges Beispiel mit Schließprüfung liegt in `Examples/WindowPolicy.st`.
+
+Eine eigene `DesktopManager`-Unterklasse kann beispielsweise `screenFor:`, `constrain:`, `requestClose:` oder `createKind:title:` überschreiben. Die Basisklassen und ihr Model bleiben gewöhnliche, im Image gespeicherte Smalltalk-Objekte.
 
 Browser und Transcript werden beim erneuten Öffnen nach vorne geholt. Jeder Aufruf von `openWorkspace` erzeugt ein neues Fenster. Bis zu 128 Fenster sind vorgesehen. Die Koordinaten bezeichnen macOS-Bildschirmpunkte mit Ursprung unten links; beim Laden werden Fenster an die verfügbaren Bildschirme angepasst.
 
-Fenstertexte werden vor einer Auswertung oder dem Speichern eines Images an die Smalltalk-Objekte übertragen. Ältere Images ohne Fensterverwaltung erhalten beim Laden die drei Standardfenster; ihr gespeicherter Workspace wird übernommen. Bei dieser Ergänzung werden keine benutzerdefinierten `initialize`-Methoden aufgerufen.
+Fenstertexte werden vor einer Auswertung oder dem Speichern eines Images an die Smalltalk-Objekte übertragen. Das Transcript und die Browserauswahl gehören zum gespeicherten Objektgraphen.
+
+## Werkzeuge in Smalltalk
+
+`40-Tools.st` definiert `WorkspaceWindow`, `BrowserWindow` und `TranscriptWindow`. Du kannst diese Klassen im Browser bearbeiten und für neue Fenster ableiten. `DesktopManager>>windowClassFor:` legt fest, welche Klasse beim Öffnen eines Werkzeugs verwendet wird.
+
+Im Workspace wählen die Smalltalk-Aktionen zwischen der nativen Textauswahl und dem ganzen Puffer. Der Browser verwaltet Filter, Auswahl, Entwürfe, Klassenanlage und Methodenannahme in Smalltalk. Er liest die VM-Reflexion über `ToolVM` und `Class`. `Transcript show:`, `cr` und `clear` pflegen das beobachtbare `TranscriptBuffer`-Model mit den letzten 64 KiB Ausgabetext.
+
+Der SwiftUI-Renderer verwendet denselben Control-Baum für die Werkzeuge und eigene Fenster. Dateidialoge, Tastenkürzel, native Textbearbeitung und die Darstellung der Controls liegen an der macOS-Grenze. Die Klassen der zusätzlichen Controls stehen in `35-NativeControls.st`.
 
 ## Oberflächen mit MVC
 
@@ -118,7 +176,7 @@ button onClickSend: #clear to: greetingController
 
 `Model` bietet außerdem `addDependent:`, `removeDependent:` und `dependents`. Eigene Beobachter implementieren `update:`; dessen Argument ist der geänderte Aspekt oder `nil` für alle Aspekte. Mehrfaches Anmelden desselben Beobachters erzeugt keine doppelten Benachrichtigungen.
 
-Bindbar sind `text` bei Labels und Textfeldern, `title` bei Buttons, `enabled` bei allen UI-Elementen sowie `spacing` und `padding` bei Layouts. `unbind: #text` entfernt eine einzelne Bindung, `unbindAll` alle Bindungen einer View. Erneutes Binden derselben Eigenschaft ersetzt die alte Bindung. Am Ende einer Auswertung oder eines nativen Ereignisses werden Bindungen entfernter Bedienelemente und geschlossener Fenster abgemeldet. Beim Wiederöffnen werden sie mit den aktuellen Model-Werten verbunden.
+Bindbar sind `text` bei Labels und Textfeldern, `title` bei Buttons, `enabled` und `visible` bei allen UI-Elementen sowie `spacing` und `padding` bei Layouts. `unbind: #text` entfernt eine einzelne Bindung, `unbindAll` alle Bindungen einer View. Erneutes Binden derselben Eigenschaft ersetzt die alte Bindung. Am Ende einer Auswertung oder eines nativen Ereignisses werden Bindungen entfernter Bedienelemente und geschlossener Fenster abgemeldet. Beim Wiederöffnen werden sie mit den aktuellen Model-Werten verbunden.
 
 ### Bedienelemente und Darstellung
 
@@ -126,11 +184,15 @@ Bindbar sind `text` bei Labels und Textfeldern, `title` bei Buttons, `enabled` b
 | --- | --- |
 | `UIWindow` | `title:`, `content:`, `open`, `moveToX:y:`, `resizeWidth:height:` |
 | `UILabel` | `text:`, `text` |
-| `UIButton` | `title:`, `onClickSend:to:`; bestehende Block-Aktionen mit `action:` bleiben unterstützt |
+| `UIButton` | `title:`, `action:`, `onClickSend:to:`, `selectionFrom:action:` für Aktionen mit der Auswahl eines Code-Editors |
 | `UITextField` | `label:`, `placeholder:`, `text:`, `text`, `onChangeSend:to:` |
+| `UICodeEditor` | Wie ein Textfeld, zusätzlich `readOnly:` und native Textauswahl |
+| `UIList` | `items:` mit eindeutigen Strings, `selection:`, `onSelectSend:to:` |
+| `UISplit`, `UIScroll`, `UIMenu` | Container für geteilte Ansicht, Scrollbereich bzw. Menü. `UIMenu` hat zusätzlich `title:`. |
+| `UIDivider` | Trennlinie |
 | `UIColumn`, `UIRow` | `add:`, `remove:`, `removeAll`, `children:`, `spacing:`, `padding:` |
 | `UISpacer` | Flexibler Abstand innerhalb einer Zeile oder Spalte |
-| Alle UI-Elemente | `enabled:`, `bind:to:aspect:`, `unbind:`, `unbindAll` |
+| Alle UI-Elemente | `enabled:`, `visible:`, `identifier:`, `role:`, `widthFrom:to:`, `heightFrom:to:`, `bind:to:aspect:`, `unbind:`, `unbindAll` |
 
 Zeilen und Spalten lassen sich verschachteln. `add:` gibt das hinzugefügte Element zurück. `spacing:` akzeptiert 0 bis 128 Punkte, `padding:` 0 bis 256. Eine Oberfläche ist ein Baum mit maximal 512 Elementen und 16 Verschachtelungsebenen; ein Element darf innerhalb eines Fensters nur einmal vorkommen. Ein deaktiviertes Layout deaktiviert auch seine enthaltenen Elemente.
 
@@ -141,8 +203,6 @@ Textfelder mit einem Eingabe-Controller übertragen Änderungen nach einer kurze
 ### Images
 
 Images erhalten Fachmodelle, Controller, Views, Bindungen und Beobachterbeziehungen. Nach dem Laden funktionieren Model-Änderungen und Eingaben weiter. Beim Laden werden weder `initialize` noch gebundene Getter ausgeführt; dafür enthalten Images auch den zuletzt gültigen Darstellungszustand.
-
-Bereits gespeicherte Images erhalten die neuen MVC-Klassen, Methoden und zusätzlichen Framework-Variablen. Bestehende benutzerdefinierte Methoden und Block-Aktionen bleiben erhalten. Das bisherige `SystemWindow`-Layout bleibt unverändert.
 
 ## Erster Versuch
 

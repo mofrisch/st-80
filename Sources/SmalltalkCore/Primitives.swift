@@ -9,6 +9,7 @@ extension SmalltalkRuntime {
             "ifNil:": "Wertet bei nil einen Block aus.", "ifNotNil:": "Wertet bei einem Wert einen Block aus.",
             "respondsTo:": "Prüft, ob eine Nachricht verstanden wird.", "perform:": "Sendet einen Selektor.",
             "perform:with:": "Sendet einen Selektor mit einem Argument.",
+            "error:line:column:": "Meldet einen Fehler mit Quellposition.",
         ],
         "Class": [
             "new": "Erzeugt ein Objekt und sendet initialize.", "new:": "Erzeugt ein Array mit angegebener Größe.",
@@ -16,6 +17,10 @@ extension SmalltalkRuntime {
             "subclass:instanceVariableNames:": "Legt eine Unterklasse an.",
             "subclass:instanceVariableNames:classVariableNames:poolDictionaries:category:": "Legt eine Unterklasse an; Klassenvariablen und Pools müssen leer sein.",
             "compile:": "Kompiliert oder ersetzt eine Instanzmethode.",
+            "methodNames": "Liefert die Selektoren der eigenen Methoden.",
+            "methodSourceAt:": "Liefert den gespeicherten Methodenquelltext.",
+            "isPrimitiveAt:": "Prüft, ob der Selektor eine VM-Primitive bezeichnet.",
+            "instanceVariableNamesText": "Liefert die Namen der Instanzvariablen."
         ],
         "Integer": [
             "+": "Addition.", "-": "Subtraktion.", "*": "Multiplikation.",
@@ -31,11 +36,16 @@ extension SmalltalkRuntime {
             "ifTrue:ifFalse:": "Wählt einen von zwei Blöcken.", "ifFalse:ifTrue:": "Wählt einen von zwei Blöcken.",
             "and:": "Kurzschließendes Und.", "or:": "Kurzschließendes Oder.",
         ],
-        "String": [",": "Verkettet zwei Strings.", "size": "Anzahl der Unicode-Zeichen.", "at:": "Zeichen an einer Position, ab 1.", "asString": "Gibt den String zurück.", "asSymbol": "Wandelt in ein Symbol um."],
+        "String": [",": "Verkettet zwei Strings.", "size": "Anzahl der Unicode-Zeichen.", "at:": "Zeichen an einer Position, ab 1.", "asString": "Gibt den String zurück.", "asSymbol": "Wandelt in ein Symbol um.", "characters": "Liefert die Unicode-Zeichen als Array.",
+            "includes:": "Prüft auf ein enthaltenes Zeichen oder Teilwort.", "isLetter": "Prüft auf einen Buchstaben.",
+            "isNumber": "Prüft auf ein numerisches Zeichen.", "isASCIIDigit": "Prüft auf eine ASCII-Ziffer.",
+            "isLowercase": "Prüft auf ein Kleinbuchstaben-Zeichen.", "isWhitespace": "Prüft auf Leerraum.",
+            "isLineBreak": "Prüft auf einen Zeilenumbruch.", "asIntegerOrNil": "Liest eine 64-Bit-Ganzzahl."],
         "Symbol": ["asString": "Symbolname als String."],
-        "Array": ["size": "Anzahl der Elemente.", "at:": "Liest ein Element, ab Position 1.", "at:put:": "Schreibt ein Element.", "do:": "Besucht jedes Element.", "collect:": "Transformiert jedes Element.", "select:": "Filtert Elemente.", "isEmpty": "Prüft auf ein leeres Array."],
+        "Array": ["size": "Anzahl der Elemente.", "at:": "Liest ein Element, ab Position 1.", "at:put:": "Schreibt ein Element.", "do:": "Besucht jedes Element.", "collect:": "Transformiert jedes Element.", "select:": "Filtert Elemente.", "isEmpty": "Prüft auf ein leeres Array.", "includes:": "Prüft auf ein enthaltenes Element.",
+            "joinedStringFrom:to:": "Verkettet die Strings eines Indexbereichs."],
         "BlockClosure": ["value": "Wertet den Block aus.", "value:": "Wertet mit einem Argument aus.", "value:value:": "Wertet mit zwei Argumenten aus.", "whileTrue:": "Wiederholt, solange der Block true ergibt.", "whileFalse:": "Wiederholt, solange der Block false ergibt."],
-        "Transcript": ["show:": "Schreibt Text ins Transcript.", "cr": "Schreibt einen Zeilenumbruch."],
+        "Transcript": ["record:": "Erfasst Transcript-Ausgabe der laufenden Auswertung."],
     ]
 
     func primitive(_ receiver: Value, _ selector: String, _ args: [Value]) throws -> Value? {
@@ -54,6 +64,8 @@ extension SmalltalkRuntime {
             return .boolean(classOf(receiver).lookup(name) != nil || primitiveSelectors(classOf(receiver)).contains(name))
         case "perform:": return try send(receiver, symbol(args[0]), [])
         case "perform:with:": return try send(receiver, symbol(args[0]), [args[1]])
+        case "error:line:column:":
+            throw SmalltalkError(try string(args[0]), at: SourcePosition(line: Int(try integer(args[1])), column: Int(try integer(args[2]))))
         default: break
         }
 
@@ -75,7 +87,9 @@ extension SmalltalkRuntime {
             switch selector {
             case ",":
                 let result = string + (try self.string(args[0]))
-                guard result.utf8.count <= 65_536 else { throw SmalltalkError("String ist zu lang (maximal 64 KiB).") }
+                guard result.utf8.count <= (compilationMode ? 262_144 : 65_536) else {
+                    throw SmalltalkError(compilationMode ? "String ist zu lang (maximal 256 KiB)." : "String ist zu lang (maximal 64 KiB).")
+                }
                 return .string(result)
             case "size": return .integer(Int64(string.count))
             case "at:":
@@ -83,6 +97,32 @@ extension SmalltalkRuntime {
                 return .string(String(string[string.index(string.startIndex, offsetBy: index)]))
             case "asString": return receiver
             case "asSymbol": return .symbol(string)
+            case "utf8Size": return .integer(Int64(string.utf8.count))
+            case "suffixFittingUTF8:":
+                let budget = min(max(0, try integer(args[0])), 262_144)
+                var count = 0
+                var start = string.endIndex
+                while start != string.startIndex {
+                    let previous = string.index(before: start)
+                    let bytes = string[previous..<start].utf8.count
+                    guard count + bytes <= budget else { break }
+                    count += bytes
+                    start = previous
+                }
+                return .string(String(string[start...]))
+            case "includesIgnoringCase:": return .boolean(string.localizedCaseInsensitiveContains(try self.string(args[0])))
+            case "characters": return try array(string.map { .string(String($0)) })
+            case "includes:":
+                let substring = try self.string(args[0])
+                return .boolean(string.contains(substring))
+            case "isLetter": return .boolean(string.count == 1 && string.first?.isLetter == true)
+            case "isNumber": return .boolean(string.count == 1 && string.first?.isNumber == true)
+            case "isASCIIDigit":
+                return .boolean(string.count == 1 && string.first.map { $0.isASCII && $0.isNumber } == true)
+            case "isLowercase": return .boolean(string.count == 1 && string.first?.isLowercase == true)
+            case "isWhitespace": return .boolean(string.count == 1 && string.first?.isWhitespace == true)
+            case "isLineBreak": return .boolean(string == "\n" || string == "\r" || string == "\r\n")
+            case "asIntegerOrNil": return Int64(string).map(Value.integer) ?? .nilValue
             default: return nil
             }
         case .symbol(let name): return selector == "asString" ? .string(name) : nil
@@ -90,6 +130,22 @@ extension SmalltalkRuntime {
             switch selector {
             case "size": return .integer(Int64(array.elements.count))
             case "isEmpty": return .boolean(array.elements.isEmpty)
+            case "includes:": return .boolean(array.elements.contains { equal($0, args[0]) })
+            case "joinedStringFrom:to:":
+                let first = try integer(args[0]), last = try integer(args[1])
+                guard first >= 1, first <= array.elements.count + 1, last >= first - 1, last <= array.elements.count else {
+                    throw SmalltalkError("Ungültiger Arraybereich.")
+                }
+                let limit = compilationMode ? 262_144 : 65_536
+                var remaining = limit
+                var result = ""
+                for item in array.elements[Int(first - 1)..<Int(last)] {
+                    let text = try string(item)
+                    remaining -= text.utf8.count
+                    guard remaining >= 0 else { throw SmalltalkError("Verketteter String ist zu lang.") }
+                    result += text
+                }
+                return .string(result)
             case "at:": return array.elements[try index(args[0], count: array.elements.count)]
             case "at:put:":
                 array.elements[try index(args[0], count: array.elements.count)] = args[1]
@@ -112,16 +168,11 @@ extension SmalltalkRuntime {
             default: return nil
             }
         case .transcript:
-            switch selector {
-            case "show:":
-                let text: String
-                if case .string(let string) = args[0] { text = string }
-                else { text = try string(send(args[0], "printString", [])) }
-                try appendTranscript(text)
-                return receiver
-            case "cr": try appendTranscript("\n"); return receiver
-            default: return nil
-            }
+            guard selector == "record:" else { return nil }
+            try appendTranscript(string(args[0]))
+            return receiver
+        case .object(let object):
+            return object.stClass === classes["ToolServices"] ? try toolPrimitive(selector, args) : nil
         default: return nil
         }
     }
@@ -132,6 +183,20 @@ extension SmalltalkRuntime {
         case "superclass": return stClass.superclass.map(Value.classObject) ?? .nilValue
         case "subclasses": return try array(classes.values.filter { $0.superclass === stClass }.sorted { $0.name < $1.name }.map(Value.classObject))
         case "compile:": return .symbol(try compile(string(args[0]), in: stClass))
+        case "methodNames":
+            let names = Set(stClass.methods.keys).union(Self.primitiveDescriptions[stClass.name]?.keys.map { $0 } ?? [])
+            return try array(names.sorted().map(Value.string))
+        case "methodSourceAt:":
+            let name = try string(args[0])
+            if let method = stClass.methods[name] { return .string(method.source) }
+            if let description = Self.primitiveDescriptions[stClass.name]?[name] {
+                return .string("\(name)\n\n\"\(description)\"\n\n<primitive>")
+            }
+            return .nilValue
+        case "isPrimitiveAt:":
+            let name = try string(args[0])
+            return .boolean(stClass.methods[name] == nil && Self.primitiveDescriptions[stClass.name]?[name] != nil)
+        case "instanceVariableNamesText": return .string(stClass.fields.isEmpty ? "Keine" : stClass.fields.joined(separator: " · "))
         case "subclass:instanceVariableNames:", "subclass:instanceVariableNames:classVariableNames:poolDictionaries:category:":
             if args.count == 5 {
                 guard try string(args[2]).isEmpty && string(args[3]).isEmpty else { throw SmalltalkError("Klassenvariablen und Pool-Dictionaries sind noch nicht implementiert.") }
@@ -141,7 +206,7 @@ extension SmalltalkRuntime {
         case "new:":
             guard stClass.name == "Array" else { throw SmalltalkError("new: wird hier nur von Array unterstützt.") }
             let count = try integer(args[0])
-            guard (0...4_096).contains(count) else { throw SmalltalkError("Arraygröße muss zwischen 0 und 4.096 liegen.") }
+            guard (0...Int64(arrayLimit)).contains(count) else { throw SmalltalkError("Arraygröße muss zwischen 0 und \(arrayLimit) liegen.") }
             return try array(Array(repeating: .nilValue, count: Int(count)))
         case "new":
             if stClass.name == "Array" { return try array([]) }
@@ -165,13 +230,16 @@ extension SmalltalkRuntime {
         guard globals[name] == nil else { throw SmalltalkError("\(name) existiert bereits.") }
         guard classes.count < 128 else { throw SmalltalkError("Maximal 128 Klassen pro Sitzung.") }
         let fields = source.split(whereSeparator: \.isWhitespace).map(String.init)
-        var parser = try Parser("| \(fields.joined(separator: " ")) |")
-        let validated = try parser.workspace().temporaries
-        guard validated == fields, Set(fields).isDisjoint(with: superclass.fields), fields.count + superclass.fields.count <= 64 else {
+        guard CodeValidator.validNames(fields), Set(fields).isDisjoint(with: superclass.fields), fields.count + superclass.fields.count <= 64 else {
             throw SmalltalkError("Instanzvariablen sind ungültig, doppelt oder zu zahlreich (maximal 64).")
+        }
+        if recordingChanges {
+            let escaped = source.replacingOccurrences(of: "'", with: "''")
+            try journal.append(kind: .classDefinition, className: name, superclass: superclass.name, fields: fields, source: "\(superclass.name) subclass: #\(name) instanceVariableNames: '\(escaped)'")
         }
         let stClass = STClass(name, superclass: superclass, fields: fields)
         classes[name] = stClass
+        catalogDirty = true
         globals[name] = .classObject(stClass)
         return stClass
     }

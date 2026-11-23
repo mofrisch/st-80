@@ -1,19 +1,4 @@
 public enum SmalltalkExamples {
-    static let bootstrap = """
-    Object compile: 'initialize
-        ^ self'.
-
-    Object subclass: #Counter instanceVariableNames: 'count'.
-    Counter compile: 'initialize
-        count := 0'.
-    Counter compile: 'increment
-        count := count + 1'.
-    Counter compile: 'add: amount
-        count := count + amount'.
-    Counter compile: 'value
-        ^ count'.
-    """
-
     public static let workspace = """
     "Willkommen. Code markieren und mit ⌘D ausführen.
      Ohne Auswahl wird der gesamte Workspace ausgeführt."

@@ -1,7 +1,20 @@
 import Foundation
 
 public enum ToolKind: String, CaseIterable, Sendable {
-    case workspace, browser, transcript, custom
+    case workspace, browser, transcript, custom, changes
+}
+
+public struct WindowRect: Sendable, Equatable, Codable {
+    public let x: Int64, y: Int64, width: Int64, height: Int64
+    public init(x: Int64, y: Int64, width: Int64, height: Int64) {
+        self.x = x; self.y = y; self.width = width; self.height = height
+    }
+}
+
+public struct ScreenInfo: Sendable {
+    public let id: String
+    public let frame: WindowRect
+    public init(id: String, frame: WindowRect) { self.id = id; self.frame = frame }
 }
 
 public struct ToolWindowInfo: Identifiable, Sendable {
@@ -9,151 +22,151 @@ public struct ToolWindowInfo: Identifiable, Sendable {
     public let kind: ToolKind
     public let title: String
     public let text: String
-    public let x: Int64
-    public let y: Int64
-    public let width: Int64
-    public let height: Int64
+    public let x: Int64, y: Int64, width: Int64, height: Int64
     public let minimized: Bool
     public let content: UIElementInfo?
+    public let identity: String
+    public let minimumWidth: Int64, minimumHeight: Int64, maximumWidth: Int64, maximumHeight: Int64
+    public let frameRevision: Int64, stateRevision: Int64
+    public var frame: WindowRect { WindowRect(x: x, y: y, width: width, height: height) }
 
-    public init(id: Int64, kind: ToolKind, title: String, text: String, x: Int64, y: Int64, width: Int64, height: Int64, minimized: Bool, content: UIElementInfo? = nil) {
-        self.id = id
-        self.kind = kind
-        self.title = title
-        self.text = text
-        self.x = x
-        self.y = y
-        self.width = width
-        self.height = height
-        self.minimized = minimized
-        self.content = content
+    public init(id: Int64, kind: ToolKind, title: String, text: String, x: Int64, y: Int64, width: Int64, height: Int64, minimized: Bool, content: UIElementInfo? = nil, minimumWidth: Int64 = 1, minimumHeight: Int64 = 1, maximumWidth: Int64 = 8192, maximumHeight: Int64 = 8192, frameRevision: Int64 = 1, stateRevision: Int64 = 1, identity: String = "") {
+        self.id = id; self.kind = kind; self.title = title; self.text = text
+        self.x = x; self.y = y; self.width = width; self.height = height
+        self.minimized = minimized; self.content = content
+        self.minimumWidth = minimumWidth; self.minimumHeight = minimumHeight
+        self.maximumWidth = maximumWidth; self.maximumHeight = maximumHeight
+        self.frameRevision = frameRevision; self.stateRevision = stateRevision
+        self.identity = identity
+    }
+}
+
+/// Idempotent native commands. The backend implements these mechanics, never
+/// window policy. Revisions and event acknowledgements reject stale async work.
+public enum NativeWindowCommand: Sendable {
+    case retain([Int64])
+    case present(ToolWindowInfo)
+    case order([Int64], active: Int64?, request: Int64)
+}
+
+public struct WindowCommandBatch: Sendable {
+    public let epoch: String
+    public let revision: Int64
+    public let acknowledgedEvent: Int64
+    public let commands: [NativeWindowCommand]
+}
+
+public struct NativeWindowEvent: Sendable {
+    public enum Kind: Sendable {
+        case closeRequested(Int64), activated(Int64), frame(Int64, WindowRect), minimized(Int64, Bool)
+        case frameApplied(Int64, request: Int64, WindowRect)
+        case screens([ScreenInfo])
+    }
+    public let epoch: String
+    public let sequence: Int64
+    public let kind: Kind
+    public let windowIdentity: String?
+    public init(epoch: String, sequence: Int64, kind: Kind, windowIdentity: String? = nil) {
+        self.epoch = epoch; self.sequence = sequence; self.kind = kind; self.windowIdentity = windowIdentity
     }
 }
 
 public enum WindowAction: Sendable {
-    case open(ToolKind)
-    case close(Int64)
-    case activate(Int64)
-    case text(Int64, String)
+    case showWorkspace
+    case open(ToolKind), close(Int64), activate(Int64), text(Int64, String)
     case frame(Int64, x: Int64, y: Int64, width: Int64, height: Int64)
     case minimize(Int64, Bool)
 }
 
 extension SmalltalkSession {
-    /// Native events become normal Smalltalk messages on the interpreter thread.
-    public func windowAction(_ action: WindowAction) async -> EvaluationResult {
-        await worker.submit { $0.performWindowAction(action) }
-    }
+    public func windowAction(_ action: WindowAction) async -> EvaluationResult { await worker.submit { $0.performWindowAction(action) } }
+    public func windowEvents(_ events: [NativeWindowEvent]) async -> EvaluationResult { await worker.submit { $0.performWindowEvents(events) } }
 }
 
 extension SmalltalkRuntime {
-    static let systemWindowFields = ["id", "kind", "title", "text", "x", "y", "width", "height", "minimized"]
-    static let desktopFields = ["windows", "activeWindow", "nextID"]
-
-    /// Used for a new session and for pre-window-manager images. This deliberately
-    /// compiles and allocates without sending ANY Smalltalk messages: an image may
-    /// redefine Object>>initialize or Class methods with arbitrary side effects.
-    func installDesktopIfNeeded(workspace: String) throws {
-        let names = ["Desktop", "SystemWindow", "DesktopManager"]
-        if globals["Desktop"] != nil {
-            guard let windowClass = classes["SystemWindow"], windowClass.ownFields == Self.systemWindowFields,
-                  windowClass.superclass === classes["Object"],
-                  let managerClass = classes["DesktopManager"], managerClass.ownFields == Self.desktopFields,
-                  managerClass.superclass === classes["Object"],
-                  case .object(let manager)? = globals["Desktop"] else {
-                throw SmalltalkError("Desktop, SystemWindow oder DesktopManager kollidiert mit der Fensterverwaltung.")
-            }
-            var actualClass: STClass? = manager.stClass
-            while let candidate = actualClass {
-                if candidate === managerClass { return }
-                actualClass = candidate.superclass
-            }
-            throw SmalltalkError("Desktop ist weder ein DesktopManager noch eine Instanz einer seiner Unterklassen.")
-        }
-        guard names.allSatisfy({ globals[$0] == nil && classes[$0] == nil }) else {
-            throw SmalltalkError("SystemWindow oder DesktopManager existiert bereits; die Fensterverwaltung kann nicht installiert werden.")
-        }
-        guard classes.count <= 126, globals.count <= 1_149 else {
-            throw SmalltalkError("Für die Fensterverwaltung ist kein Platz in der Klassen- oder Globaltabelle.")
-        }
-        let windowClass = try subclass(of: classes["Object"]!, name: "SystemWindow", fields: Self.systemWindowFields.joined(separator: " "))
-        let managerClass = try subclass(of: classes["Object"]!, name: "DesktopManager", fields: Self.desktopFields.joined(separator: " "))
-        for source in Self.windowMethods { try compile(source, in: windowClass) }
-        for source in Self.desktopMethods { try compile(source, in: managerClass) }
-
-        func allocate(_ stClass: STClass, fields: [String: Value]) throws -> STObject {
-            try checkAllocation()
-            let object = STObject(stClass)
-            object.fields = fields
-            objects.append(object)
-            return object
-        }
-        func window(_ id: Int64, _ kind: ToolKind, _ title: String, _ text: String, _ x: Int64, _ y: Int64, _ width: Int64, _ height: Int64) throws -> STObject {
-            try allocate(windowClass, fields: [
-                "id": .integer(id), "kind": .symbol(kind.rawValue), "title": .string(title), "text": .string(text),
-                "x": .integer(x), "y": .integer(y), "width": .integer(width), "height": .integer(height), "minimized": .boolean(false),
-            ])
-        }
-        let workspaceWindow = try window(1, .workspace, "Workspace", workspace, 100, 200, 720, 600)
-        let browser = try window(2, .browser, "System Browser", "", 850, 200, 850, 650)
-        let transcript = try window(3, .transcript, "Transcript", "", 100, 40, 720, 200)
-        let windows = try array([.object(browser), .object(transcript), .object(workspaceWindow)])
-        let manager = try allocate(managerClass, fields: ["windows": windows, "activeWindow": .object(workspaceWindow), "nextID": .integer(4)])
-        globals["Desktop"] = .object(manager)
-    }
-
     func performWindowAction(_ action: WindowAction) -> EvaluationResult {
-        transcript = ""
-        steps = 0
-        depth = 0
+        transcript = ""; steps = 0; depth = 0
         do {
-            guard case .object(let manager)? = globals["Desktop"] else { throw SmalltalkError("Desktop ist keine Fensterverwaltung.") }
-            let desktop = Value.object(manager)
+            guard let desktop = globals["Desktop"] else { throw SmalltalkError("Desktop fehlt.") }
             func window(_ id: Int64) throws -> Value {
-                let result = try send(desktop, "windowAt:", [.integer(id)])
-                guard case .object = result else { throw SmalltalkError("Fenster \(id) existiert nicht.") }
-                return result
+                let value = try send(desktop, "windowAt:", [.integer(id)])
+                guard case .object = value else { throw SmalltalkError("Fenster \(id) existiert nicht.") }
+                return value
             }
-            let result: Value
             switch action {
+            case .showWorkspace: _ = try send(desktop, "showWorkspace", [])
             case .open(let kind):
-                let selector: String
-                switch kind {
-                case .workspace: selector = "openWorkspace"
-                case .browser: selector = "openBrowser"
-                case .transcript: selector = "openTranscript"
-                case .custom: selector = "openWindow"
-                }
-                result = try send(desktop, selector, [])
-            case .close(let id): result = try send(desktop, "close:", [window(id)])
-            case .activate(let id): result = try send(desktop, "activate:", [window(id)])
-            case .text(let id, let text): result = try send(window(id), "text:", [.string(text)])
+                let selectors: [ToolKind: String] = [.workspace: "openWorkspace", .browser: "openBrowser", .transcript: "openTranscript", .custom: "openWindow", .changes: "openChanges"]
+                _ = try send(desktop, selectors[kind]!, [])
+            case .close(let id): _ = try send(desktop, "requestClose:", [window(id)])
+            case .activate(let id): _ = try send(desktop, "activate:", [window(id)])
+            case .text(let id, let text): _ = try send(window(id), "text:", [.string(text)])
             case .frame(let id, let x, let y, let width, let height):
-                let target = try window(id)
-                _ = try send(target, "moveToX:y:", [.integer(Self.coordinate(x)), .integer(Self.coordinate(y))])
-                result = try send(target, "resizeWidth:height:", [.integer(Self.windowWidth(width)), .integer(Self.windowHeight(height))])
-            case .minimize(let id, let minimized):
-                result = try send(desktop, minimized ? "minimize:" : "activate:", [window(id)])
+                _ = try send(window(id), "observeX:y:width:height:", [.integer(x), .integer(y), .integer(width), .integer(height)])
+            case .minimize(let id, let minimized): _ = try send(desktop, minimized ? "minimize:" : "activate:", [window(id)])
             }
-            // Native focus, geometry and editing events must not replace the
-            // last Do it/compiler result displayed in a workspace.
-            _ = result
             return finishEvaluation()
         } catch { return finishEvaluation(error: error.localizedDescription) }
     }
 
-    /// This projection cannot call user methods: snapshots and image loading must
-    /// not execute getters or mutate the language graph. Bounds protect AppKit.
-    func projectWindows() -> (windows: [ToolWindowInfo], activeID: Int64?, error: String?) {
-        guard let desktop = globals["Desktop"] else { return ([], nil, nil) }
-        guard case .object(let manager) = desktop, case .array(let list)? = manager.fields["windows"] else {
-            return ([], nil, "Desktop enthält keine gültige Fensterliste.")
+    func performWindowEvents(_ events: [NativeWindowEvent]) -> EvaluationResult {
+        transcript = ""; steps = 0; depth = 0
+        var failure: String?
+        for event in events where event.epoch == windowEpoch && event.sequence > acknowledgedWindowEvent {
+            // A failed user policy must not poison subsequent native facts.
+            acknowledgedWindowEvent = event.sequence
+            do {
+                guard let desktop = globals["Desktop"] else { continue }
+                if case .screens(let screens) = event.kind {
+                    guard screens.count <= 32 else { throw SmalltalkError("Zu viele Bildschirme.") }
+                    let facts = try screens.map { screen -> Value in
+                        guard Self.validFrame(screen.frame, screen: true), let stClass = classes["DisplayScreen"] else { throw SmalltalkError("Ungültige Bildschirmgeometrie.") }
+                        try checkAllocation()
+                        let object = STObject(stClass); objects.append(object)
+                        object.fields = ["id": .string(screen.id), "x": .integer(screen.frame.x), "y": .integer(screen.frame.y), "width": .integer(screen.frame.width), "height": .integer(screen.frame.height)]
+                        return .object(object)
+                    }
+                    _ = try send(desktop, "screensChanged:", [array(facts)])
+                    continue
+                }
+                let id: Int64
+                switch event.kind {
+                case .activated(let value), .closeRequested(let value), .frame(let value, _), .minimized(let value, _), .frameApplied(let value, _, _): id = value
+                case .screens: continue
+                }
+                let window = try send(desktop, "windowAt:", [.integer(id)])
+                guard case .object(let target) = window,
+                      event.windowIdentity == nil || event.windowIdentity == target.nativeID else { continue }
+                switch event.kind {
+                case .closeRequested: _ = try send(desktop, "requestClose:", [window])
+                case .activated: _ = try send(desktop, "observeActivation:", [window])
+                case .minimized(_, let flag): _ = try send(desktop, "observeMinimized:value:", [window, .boolean(flag)])
+                case .frame(_, let rect), .frameApplied(_, _, let rect):
+                    guard Self.validFrame(rect) else { throw SmalltalkError("Ungültige native Fenstergeometrie.") }
+                    let coordinates: [Value] = [.integer(rect.x), .integer(rect.y), .integer(rect.width), .integer(rect.height)]
+                    if case .frameApplied(_, let revision, _) = event.kind { _ = try send(window, "frameApplied:x:y:width:height:", [.integer(revision)] + coordinates) }
+                    else { _ = try send(window, "observeX:y:width:height:", coordinates) }
+                case .screens: break
+                }
+            } catch { failure = failure ?? error.localizedDescription }
         }
-        var windows: [ToolWindowInfo] = []
-        var ids: Set<Int64> = []
+        return finishEvaluation(error: failure)
+    }
+
+    static func validFrame(_ frame: WindowRect, screen: Bool = false) -> Bool {
+        (-100_000...100_000).contains(frame.x) && (-100_000...100_000).contains(frame.y) &&
+        (1...(screen ? 100_000 : 8192)).contains(frame.width) && (1...(screen ? 100_000 : 8192)).contains(frame.height)
+    }
+
+    /// Field-only projection. Numerical bounds protect AppKit; policy lives in .st.
+    func projectWindows() -> (windows: [ToolWindowInfo], activeID: Int64?, error: String?) {
+        if let bootstrapError { return ([], nil, bootstrapError) }
+        guard let desktop = globals["Desktop"] else { return ([], nil, bootstrapError) }
+        guard case .object(let manager) = desktop, case .object(let model)? = manager.fields["model"],
+              case .array(let list)? = model.fields["windows"] else { return ([], nil, "Desktop enthält keine gültige Fensterliste.") }
+        var windows: [ToolWindowInfo] = [], ids: Set<Int64> = []
         var warning: String? = list.elements.count > 128 ? "Desktop enthält mehr als 128 Fenster." : nil
         var activeID: Int64?
-        let active = manager.fields["activeWindow"]
         for value in list.elements.prefix(128) {
             guard case .object(let object) = value,
                   case .integer(let id)? = object.fields["id"], id > 0, ids.insert(id).inserted,
@@ -161,117 +174,34 @@ extension SmalltalkRuntime {
                   case .string(let title)? = object.fields["title"], case .string(let text)? = object.fields["text"],
                   case .integer(let x)? = object.fields["x"], case .integer(let y)? = object.fields["y"],
                   case .integer(let width)? = object.fields["width"], case .integer(let height)? = object.fields["height"],
-                  case .boolean(let minimized)? = object.fields["minimized"] else {
-                warning = "Desktop enthält ein ungültiges Fenster; prüfe dessen Instanzvariablen."
-                continue
+                  case .boolean(let minimized)? = object.fields["minimized"],
+                  case .integer(let minW)? = object.fields["nativeMinimumWidth"], case .integer(let minH)? = object.fields["nativeMinimumHeight"],
+                  case .integer(let maxW)? = object.fields["nativeMaximumWidth"], case .integer(let maxH)? = object.fields["nativeMaximumHeight"],
+                  case .integer(let frameRevision)? = object.fields["frameRevision"], frameRevision > 0,
+                  case .integer(let stateRevision)? = object.fields["stateRevision"], stateRevision > 0,
+                  Self.validFrame(WindowRect(x: x, y: y, width: width, height: height)),
+                  (1...8192).contains(minW), (1...8192).contains(minH), (minW...8192).contains(maxW), (minH...8192).contains(maxH) else {
+                warning = "Desktop enthält ein ungültiges Fenster; prüfe dessen Instanzvariablen."; continue
             }
             var content: UIElementInfo?
-            if kind == .custom {
-                do { content = try projectWindowContent(object) }
-                catch { warning = error.localizedDescription }
+            if object.fields["content"] != nil || kind == .custom {
+                do { content = try projectWindowContent(object) } catch { warning = error.localizedDescription }
             }
-            windows.append(ToolWindowInfo(id: id, kind: kind, title: String(title.prefix(256)), text: text, x: Self.coordinate(x), y: Self.coordinate(y), width: Self.windowWidth(width), height: Self.windowHeight(height), minimized: minimized, content: content))
-            if case .object(let selected)? = active, selected === object, !minimized { activeID = id }
+            windows.append(ToolWindowInfo(id: id, kind: kind, title: String(title.prefix(256)), text: text, x: x, y: y, width: width, height: height, minimized: minimized, content: content, minimumWidth: minW, minimumHeight: minH, maximumWidth: maxW, maximumHeight: maxH, frameRevision: frameRevision, stateRevision: stateRevision, identity: object.nativeID))
+            if case .object(let selected)? = model.fields["activeWindow"], selected === object, !minimized { activeID = id }
         }
         return (windows, activeID, warning)
     }
 
-    private static func coordinate(_ value: Int64) -> Int64 { min(100_000, max(-100_000, value)) }
-    private static func windowWidth(_ value: Int64) -> Int64 { min(8_192, max(320, value)) }
-    private static func windowHeight(_ value: Int64) -> Int64 { min(8_192, max(160, value)) }
-
-    private static let windowMethods = [
-        "initialize id := 0. kind := #workspace. title := 'Workspace'. text := ''. x := 100. y := 200. width := 720. height := 600. minimized := false",
-        "id ^ id", "id: anID id := anID",
-        "kind ^ kind", "kind: aKind kind := aKind",
-        "title ^ title", "title: aTitle title := aTitle",
-        "text ^ text", "text: aString text := aString",
-        "x ^ x", "y ^ y", "width ^ width", "height ^ height",
-        "minimized ^ minimized", "minimized: aBoolean minimized := aBoolean",
-        "moveToX: newX y: newY x := newX. y := newY",
-        "resizeWidth: newWidth height: newHeight width := newWidth. height := newHeight",
-    ]
-
-    private static let desktopMethods = [
-        "initialize windows := Array new: 0. activeWindow := nil. nextID := 1",
-        "windows ^ windows",
-        "activeWindow ^ activeWindow",
-        "nextID ^ nextID",
-        """
-        windowAt: anID
-            windows do: [ :each | each id = anID ifTrue: [ ^ each ] ].
-            ^ nil
-        """,
-        """
-        windowOfKind: aKind
-            windows do: [ :each | each kind = aKind ifTrue: [ ^ each ] ].
-            ^ nil
-        """,
-        """
-        append: aWindow
-            | replacement |
-            replacement := Array new: windows size + 1.
-            1 to: windows size do: [ :index | replacement at: index put: (windows at: index) ].
-            replacement at: replacement size put: aWindow.
-            windows := replacement.
-            ^ aWindow
-        """,
-        """
-        createKind: aKind title: aTitle
-            | window |
-            windows size >= 128 ifTrue: [ ^ nil ].
-            window := SystemWindow new.
-            window id: nextID.
-            nextID := nextID + 1.
-            window kind: aKind.
-            window title: aTitle.
-            aKind = #workspace ifTrue: [ window moveToX: 100 + (windows size * 24) y: 200 + (windows size * 24) ].
-            aKind = #browser ifTrue: [ window moveToX: 850 y: 200. window resizeWidth: 850 height: 650 ].
-            aKind = #transcript ifTrue: [ window moveToX: 100 y: 40. window resizeWidth: 720 height: 200 ].
-            self append: window.
-            activeWindow := window.
-            ^ window
-        """,
-        "openWorkspace ^ self createKind: #workspace title: 'Workspace'",
-        """
-        openBrowser
-            | existing |
-            existing := self windowOfKind: #browser.
-            existing notNil ifTrue: [ ^ self activate: existing ].
-            ^ self createKind: #browser title: 'System Browser'
-        """,
-        """
-        openTranscript
-            | existing |
-            existing := self windowOfKind: #transcript.
-            existing notNil ifTrue: [ ^ self activate: existing ].
-            ^ self createKind: #transcript title: 'Transcript'
-        """,
-        """
-        activate: aWindow
-            windows := windows select: [ :each | (each == aWindow) not ].
-            self append: aWindow.
-            aWindow minimized: false.
-            activeWindow := aWindow.
-            ^ aWindow
-        """,
-        """
-        chooseActive
-            activeWindow := nil.
-            windows do: [ :each | each minimized ifFalse: [ activeWindow := each ] ].
-            ^ activeWindow
-        """,
-        """
-        close: aWindow
-            windows := windows select: [ :each | (each == aWindow) not ].
-            activeWindow == aWindow ifTrue: [ self chooseActive ].
-            ^ aWindow
-        """,
-        """
-        minimize: aWindow
-            aWindow minimized: true.
-            activeWindow == aWindow ifTrue: [ self chooseActive ].
-            ^ aWindow
-        """,
-    ]
+    func projectWindowCommands(_ windows: [ToolWindowInfo], active: Int64?, valid: Bool) -> WindowCommandBatch {
+        windowCommandRevision += 1
+        var commands: [NativeWindowCommand] = []
+        // Invalid projections must not destroy the native editor needed to repair them.
+        if valid { commands.append(.retain(windows.map(\.id))) }
+        commands += windows.map { .present($0) }
+        if case .object(let desktop)? = globals["Desktop"], case .object(let model)? = desktop.fields["model"], case .integer(let request)? = model.fields["focusRevision"] {
+            commands.append(.order(windows.map(\.id), active: active, request: request))
+        }
+        return WindowCommandBatch(epoch: windowEpoch, revision: windowCommandRevision, acknowledgedEvent: acknowledgedWindowEvent, commands: commands)
+    }
 }

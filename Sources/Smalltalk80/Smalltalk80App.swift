@@ -36,11 +36,13 @@ struct Smalltalk80App: App {
                 Button("Neuer Workspace") { Task { await controller.openTool(.workspace) } }.keyboardShortcut("n").disabled(controller.isRunning)
                 Button("Workspace öffnen …") { Task { await controller.openWorkspace() } }.keyboardShortcut("o").disabled(controller.isRunning)
                 Button(controller.activeKind == .browser ? "Methode akzeptieren" : "Workspace speichern …") {
-                    if controller.activeKind == .browser { Task { await controller.acceptMethod() } }
-                    else { controller.saveWorkspace() }
+                    Task {
+                        if controller.activeKind == .browser { await controller.performCommand("acceptMethod") }
+                        else { await controller.saveWorkspace() }
+                    }
                 }
                 .keyboardShortcut("s")
-                .disabled(controller.isRunning || controller.activeKind == .browser && (controller.isPrimitive || controller.methodSource.isEmpty))
+                .disabled(controller.isRunning || controller.activeKind == .browser && !controller.hasCommand("acceptMethod"))
                 Divider()
                 Button("Image öffnen …") { Task { await controller.openImage() } }
                     .keyboardShortcut("o", modifiers: [.command, .shift]).disabled(controller.isRunning)
@@ -50,14 +52,16 @@ struct Smalltalk80App: App {
                     .keyboardShortcut("s", modifiers: [.command, .option, .shift]).disabled(controller.isRunning)
             }
             CommandMenu("Smalltalk") {
-                Button("Do it") { Task { await controller.run() } }.keyboardShortcut("d")
-                    .disabled(controller.isRunning || controller.activeKind != .workspace)
-                Button("Print it") { Task { await controller.run(printResult: true) } }.keyboardShortcut("p")
-                    .disabled(controller.isRunning || controller.activeKind != .workspace)
+                Button("Do it") { Task { await controller.performCommand("doIt") } }.keyboardShortcut("d")
+                    .disabled(controller.isRunning || !controller.hasCommand("doIt"))
+                Button("Print it") { Task { await controller.performCommand("printIt") } }.keyboardShortcut("p")
+                    .disabled(controller.isRunning || !controller.hasCommand("printIt"))
                 Divider()
                 Button("Workspace anzeigen") { Task { await controller.showWorkspace() } }.keyboardShortcut("1")
                 Button("Browser öffnen") { Task { await controller.openTool(.browser) } }.keyboardShortcut("2")
                 Button("Transcript öffnen") { Task { await controller.openTool(.transcript) } }.keyboardShortcut("3")
+                Button("Codeänderungen …") { Task { await controller.showChanges() } }.disabled(controller.isRunning)
+                Button("Changes-Datei öffnen …") { Task { await controller.openChanges() } }.disabled(controller.isRunning)
                 Divider()
                 Button("Sitzung zurücksetzen") { Task { await controller.reset() } }.disabled(controller.isRunning)
             }

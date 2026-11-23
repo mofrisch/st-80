@@ -102,30 +102,6 @@ struct UserInterfaceTests {
         #expect(elements(clicked.windows.first { $0.id == window.id }?.content).contains { $0.kind == .label && $0.text == "Hallo, Gespeichert!" })
     }
 
-    @Test func legacyDesktopImagesGainUIWithoutRunningUserCodeOrReplacingMethods() async throws {
-        let legacy = SmalltalkRuntime(bootstrap: false)
-        #expect(legacy.run(SmalltalkExamples.bootstrap).error == nil)
-        try legacy.installDesktopIfNeeded(workspace: "legacy")
-        #expect(legacy.run("""
-        initializations := 0.
-        Object compile: 'initialize initializations := initializations + 1'.
-        DesktopManager compile: 'open: aWindow ^ 73'
-        """).error == nil)
-        let data = try ImageCodec.encode(legacy, workspace: "legacy", transcript: "")
-        let restored = SmalltalkSession()
-        let loaded = try await restored.loadImage(data)
-        #expect(loaded.evaluation.error == nil)
-        #expect(loaded.evaluation.windows.count == 3)
-        let count = await restored.evaluate("initializations")
-        #expect(count.value == "0")
-        let preserved = await restored.evaluate("Desktop open: nil")
-        #expect(preserved.value == "73")
-        let installed = await restored.evaluate("UIWindow new class name")
-        #expect(installed.error == nil)
-        #expect(installed.value == "#UIWindow")
-        #expect(legacy.classes["SystemWindow"]?.ownFields == SmalltalkRuntime.systemWindowFields)
-    }
-
     @Test func removedDisabledAndClosedControlsCannotDispatchStaleActions() async throws {
         let session = SmalltalkSession()
         let opened = await session.evaluate("""

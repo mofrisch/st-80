@@ -134,42 +134,6 @@ struct MVCTests {
         #expect(elements(clicked.windows.last?.content).contains { $0.kind == .textField && $0.text.isEmpty })
     }
 
-    @Test func preMVCImagesUpgradeSlotsAndPreserveExistingActionsAndMethods() async throws {
-        let original = SmalltalkSession()
-        _ = await original.evaluate(SmalltalkExamples.legacyUserInterface)
-        var archive = try await JSONDecoder().decode(ImageArchive.self, from: original.imageData())
-        let newClasses = Set(["Model", "Controller", "UIBinding"])
-        archive.classes.removeAll { newClasses.contains($0.name) }
-        for name in newClasses { archive.globals.removeValue(forKey: name) }
-        for index in archive.classes.indices {
-            if archive.classes[index].name == "UIElement" {
-                archive.classes[index].fields = ["enabled"]
-                archive.classes[index].methods["initialize"] = "initialize enabled := true"
-            }
-            if archive.classes[index].name == "UITextField" { archive.classes[index].fields = ["label", "text", "placeholder"] }
-            for selector in ["bindings", "bind:to:aspect:", "unbind:", "unbindAll", "editText:", "onChangeSend:to:", "onClickSend:to:"] {
-                archive.classes[index].methods.removeValue(forKey: selector)
-            }
-        }
-        for index in archive.nodes.indices {
-            guard case .object(var object) = archive.nodes[index] else { continue }
-            for field in ["mvcBindings", "mvcInputTarget", "mvcInputSelector"] { object.fields.removeValue(forKey: field) }
-            archive.nodes[index] = .object(object)
-        }
-        let restored = SmalltalkSession()
-        let loaded = try await restored.loadImage(JSONEncoder().encode(archive))
-        #expect(loaded.evaluation.error == nil)
-        let window = try #require(loaded.evaluation.windows.first { $0.kind == .custom })
-        let field = try #require(elements(window.content).first { $0.kind == .textField })
-        let button = try #require(elements(window.content).first { $0.kind == .button && $0.text == "Begrüßen" })
-        _ = await restored.uiAction(.text(windowID: window.id, elementID: field.id, value: "Legacy"))
-        let clicked = await restored.uiAction(.click(windowID: window.id, elementID: button.id))
-        #expect(clicked.error == nil)
-        #expect(elements(clicked.windows.last?.content).contains { $0.kind == .label && $0.text == "Hallo, Legacy!" })
-        let newMVC = await restored.evaluate(SmalltalkExamples.userInterface)
-        #expect(newMVC.error == nil)
-    }
-
     @Test func corruptDependencyGraphsAreRejectedTransactionally() async throws {
         let donor = SmalltalkSession()
         _ = await donor.evaluate(SmalltalkExamples.userInterface)

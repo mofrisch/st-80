@@ -115,27 +115,7 @@ struct DesktopTests {
         let nextID = try #require(next.activeWindowID)
         let previousMaximum = try #require(before.windows.map(\.id).max())
         #expect(nextID > previousMaximum)
-        #expect(await value("(Desktop windowAt: \(workspace.id)) class name", in: restarted) == "#SystemWindow")
-    }
-
-    @Test func legacyImagesGainNativeToolsWithoutExecutingInitialize() async throws {
-        let legacy = SmalltalkRuntime(bootstrap: false)
-        #expect(legacy.run(SmalltalkExamples.bootstrap).error == nil)
-        #expect(legacy.run("""
-        initializations := 0.
-        Object compile: 'initialize initializations := initializations + 1'.
-        saved := Object new
-        """).error == nil)
-        #expect(legacy.globals["Desktop"] == nil)
-        let workspace = "saved class name"
-        let bytes = try ImageCodec.encode(legacy, workspace: workspace, transcript: "old transcript")
-        let session = SmalltalkSession()
-        let loaded = try await session.loadImage(bytes)
-        #expect(loaded.evaluation.windows.count == 3)
-        #expect(loaded.evaluation.windows.first { $0.kind == .workspace }?.text == workspace)
-        #expect(loaded.transcript == "old transcript")
-        #expect(await value("initializations", in: session) == "1")
-        #expect(await value("saved class name", in: session) == "#Object")
+        #expect(await value("(Desktop windowAt: \(workspace.id)) class name", in: restarted) == "#WorkspaceWindow")
     }
 
     @Test func invalidSavedWindowsDoNotReplaceTheCurrentSession() async throws {
@@ -143,7 +123,7 @@ struct DesktopTests {
         let bytes = try await donor.imageData()
         let original = try JSONDecoder().decode(ImageArchive.self, from: bytes)
         let windowIndices = original.nodes.indices.filter { index in
-            if case .object(let object) = original.nodes[index] { return object.className == "SystemWindow" }
+            if case .object(let object) = original.nodes[index] { return ["WorkspaceWindow", "BrowserWindow", "TranscriptWindow"].contains(object.className) }
             return false
         }
         #expect(windowIndices.count == 3)

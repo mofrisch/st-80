@@ -119,6 +119,11 @@ public struct EvaluationResult: Sendable {
     public let bindings: [BindingInfo]
     public let windows: [ToolWindowInfo]
     public let activeWindowID: Int64?
+    public let windowCommands: WindowCommandBatch
+    public let toolRequests: [NativeToolRequest]
+    public let changes: [ChangeInfo]
+    public let savedChangeSequence: Int64
+    public let changesPath: String?
 }
 
 /// An isolated, persistent object space. Evaluations run away from the UI actor.
@@ -155,6 +160,15 @@ public actor SmalltalkSession {
 }
 
 final class SmalltalkRuntime {
+    var journal = SourceJournal()
+    var catalogDirty = false
+    var evaluatingToolSource = false
+    var toolRequests: [NativeToolRequest] = []
+    var recordingChanges = false
+    var bootstrapError: String?
+    let windowEpoch = UUID().uuidString
+    var windowCommandRevision: Int64 = 0
+    var acknowledgedWindowEvent: Int64 = 0
     var classes: [String: STClass] = [:]
     var globals: [String: Value] = [:]
     var transcript = ""
@@ -162,13 +176,15 @@ final class SmalltalkRuntime {
     var depth = 0
     var nextHome = 0
     var activeHomes: Set<Int> = []
-    let stepLimit = 100_000
-    let allocationLimit = 20_000
+    let compilationMode: Bool
+    var arrayLimit: Int { compilationMode ? 524_288 : 4_096 }
+    private var allocationLimit: Int { compilationMode ? 524_288 : 20_000 }
     var environments: [WeakEnvironment] = []
     var objects: [STObject] = []
     var arrays: [STArray] = []
 
-    init(bootstrap: Bool = true) {
+    init(bootstrap: Bool = true, compilationMode: Bool = false) {
+        self.compilationMode = compilationMode
         func add(_ name: String, _ superclass: String? = "Object") {
             let stClass = STClass(name, superclass: superclass.flatMap { classes[$0] })
             classes[name] = stClass
@@ -189,12 +205,15 @@ final class SmalltalkRuntime {
         add("BlockClosure")
         add("Transcript")
         globals["Transcript"] = .transcript
-        // Bootstrap examples use exactly the same parser and compiler as the workspace.
         if bootstrap {
-            _ = run(SmalltalkExamples.bootstrap)
-            try? installDesktopIfNeeded(workspace: SmalltalkExamples.workspace)
-            try? installUserInterfaceIfNeeded()
+            do {
+                let library = try SystemLibrary.shared.get()
+                try library.install(in: self)
+                _ = try evaluate(library.initialWorld)
+            } catch { bootstrapError = error.localizedDescription }
         }
+        catalogDirty = false
+        recordingChanges = bootstrap
         transcript = ""
     }
 
@@ -213,12 +232,14 @@ final class SmalltalkRuntime {
 
     func tick() throws {
         steps += 1
-        guard steps <= stepLimit else { throw SmalltalkError("Ausführung nach 100.000 Schritten angehalten. Prüfe Schleifen und Rekursion.") }
+        guard steps <= (compilationMode ? 24_000_000 : 100_000) else {
+            throw SmalltalkError(compilationMode ? "Aufwandsgrenze des Smalltalk-Compilers erreicht." : "Ausführung nach 100.000 Schritten angehalten. Prüfe Schleifen und Rekursion.")
+        }
     }
 
     func enter() throws {
         try tick()
-        guard depth < 128 else { throw SmalltalkError("Maximale Aufruftiefe erreicht.") }
+        guard depth < (compilationMode ? 1400 : 128) else { throw SmalltalkError("Maximale Aufruftiefe erreicht.") }
         depth += 1
     }
 
@@ -239,7 +260,7 @@ final class SmalltalkRuntime {
     }
 
     func array(_ values: [Value]) throws -> Value {
-        guard values.count <= 4_096 else { throw SmalltalkError("Arrays sind im Prototyp auf 4.096 Elemente begrenzt.") }
+        guard values.count <= arrayLimit else { throw SmalltalkError("Arrays sind auf \(arrayLimit.formatted(.number.locale(Locale(identifier: "de_DE")))) Elemente begrenzt.") }
         try checkAllocation()
         let array = STArray(values)
         arrays.append(array)
@@ -250,13 +271,13 @@ final class SmalltalkRuntime {
         transcript = ""
         steps = 0
         depth = 0
+        catalogDirty = true
         do { return finishEvaluation(value: printValue(try evaluate(source))) }
         catch { return finishEvaluation(error: error.localizedDescription) }
     }
 
     func evaluate(_ source: String) throws -> Value {
-        var parser = try Parser(source)
-        let body = try parser.workspace()
+        let body = try compileWorkspace(source)
         nextHome += 1
         let homeID = nextHome
         activeHomes.insert(homeID)
@@ -374,9 +395,7 @@ final class SmalltalkRuntime {
     func send(_ receiver: Value, _ selector: String, _ arguments: [Value], startingAt startClass: STClass? = nil) throws -> Value {
         try enter()
         defer { depth -= 1 }
-        let keywords = selector.filter { $0 == ":" }.count
-        let arity = keywords > 0 ? keywords : (selector.first.map { "+-*/\\~<>=@%,&?!|".contains($0) } == true ? 1 : 0)
-        guard arguments.count == arity else { throw SmalltalkError("Falsche Argumentzahl für \(selector).") }
+        guard arguments.count == CodeValidator.arity(of: selector) else { throw SmalltalkError("Falsche Argumentzahl für \(selector).") }
         if let (method, owner) = (startClass ?? classOf(receiver)).lookup(selector) {
             return try invoke(method, owner: owner, receiver: receiver, arguments: arguments)
         }
@@ -412,12 +431,14 @@ final class SmalltalkRuntime {
 
     @discardableResult
     func compile(_ source: String, in stClass: STClass) throws -> String {
-        var parser = try Parser(source)
-        let method = try parser.method(source: source)
-        let locals = Set(method.parameters + method.body.temporaries)
-        guard locals.isDisjoint(with: stClass.fields) else { throw SmalltalkError("Lokale Variable verdeckt eine Instanzvariable.") }
+        guard !compilationMode else { throw SmalltalkError("Eine laufende Übersetzung kann keine weitere Übersetzung starten.") }
+        let method = try compileMethod(source, fields: stClass.fields)
         guard stClass.methods.count < 512 || stClass.methods[method.selector] != nil else { throw SmalltalkError("Zu viele Methoden in \(stClass.name).") }
+        if recordingChanges {
+            try journal.append(kind: .method, className: stClass.name, selector: method.selector, source: source)
+        }
         stClass.methods[method.selector] = method
+        catalogDirty = true
         return method.selector
     }
 
@@ -441,7 +462,7 @@ final class SmalltalkRuntime {
         }
     }
 
-    func snapshot(value: String? = nil, error: String? = nil) -> EvaluationResult {
+    func snapshot(value: String? = nil, error: String? = nil, requests: [NativeToolRequest] = []) -> EvaluationResult {
         let infos = classes.values.sorted { $0.name < $1.name }.map { stClass in
             var methods = stClass.methods.map { MethodInfo(selector: $0.key, source: $0.value.source, isPrimitive: false) }
             for (selector, description) in Self.primitiveDescriptions[stClass.name] ?? [:] where stClass.methods[selector] == nil {
@@ -449,13 +470,16 @@ final class SmalltalkRuntime {
             }
             return ClassInfo(name: stClass.name, superclass: stClass.superclass?.name, fields: stClass.fields, methods: methods.sorted { $0.selector < $1.selector })
         }
-        let bindings = globals.compactMap { name, value -> BindingInfo? in
-            if name == "Desktop" { return nil }
+        let bindings = bindingInfos()
+        let desktop = projectWindows()
+        return EvaluationResult(value: value, error: error ?? desktop.error, executionError: error, transcript: transcript, classes: infos, bindings: bindings, windows: desktop.windows, activeWindowID: desktop.activeID, windowCommands: projectWindowCommands(desktop.windows, active: desktop.activeID, valid: desktop.error == nil), toolRequests: requests, changes: Array(journal.records.suffix(2000)), savedChangeSequence: journal.savedSequence, changesPath: journal.url?.path)
+    }
+    func bindingInfos() -> [BindingInfo] {
+        return globals.compactMap { name, value -> BindingInfo? in
+            if ["Desktop", "ToolVM", "TranscriptBuffer"].contains(name) { return nil }
             if case .classObject = value { return nil }
             if case .transcript = value { return nil }
             return BindingInfo(name: name, value: printValue(value), className: classOf(value).name)
         }.sorted { $0.name < $1.name }
-        let desktop = projectWindows()
-        return EvaluationResult(value: value, error: error ?? desktop.error, executionError: error, transcript: transcript, classes: infos, bindings: bindings, windows: desktop.windows, activeWindowID: desktop.activeID)
     }
 }

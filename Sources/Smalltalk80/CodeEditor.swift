@@ -6,6 +6,7 @@ struct CodeEditor: NSViewRepresentable {
     @Binding var selection: NSRange
     var isEditable = true
     var identifier: String
+    var label: String
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -47,7 +48,7 @@ struct CodeEditor: NSViewRepresentable {
         textView.string = text
         textView.delegate = context.coordinator
         textView.setAccessibilityIdentifier(identifier)
-        textView.setAccessibilityLabel(identifier == "workspaceEditor" ? "Smalltalk Workspace" : "Methodenquelltext")
+        textView.setAccessibilityLabel(label)
         scrollView.documentView = textView
         return scrollView
     }

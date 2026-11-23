@@ -344,6 +344,88 @@ final class Smalltalk80UITests: XCTestCase {
         add(attachment)
     }
 
+    func testSmalltalkLimitsAndCloseVetoReachNativeWindows() {
+        let app = launchFreshApp()
+        let first = app.windows["toolWindow-1"]
+        let editor = first.textViews["workspaceEditor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        replaceText(in: editor, with: """
+        SystemWindow compile: 'canClose ^ self title ~= ''Protected'''.
+        protected := Desktop openWorkspace.
+        protected title: 'Protected'; minimumWidth: 650 height: 420; resizeWidth: 20 height: 20
+        """)
+        first.buttons["executeButton"].click()
+        let window = app.windows["toolWindow-4"]
+        XCTAssertTrue(window.waitForExistence(timeout: 5))
+        XCTAssertEqual(window.frame.width, 650, accuracy: 2)
+        XCTAssertEqual(window.frame.height, 420, accuracy: 2)
+        window.buttons[XCUIIdentifierCloseWindow].click()
+        let secondEditor = window.textViews["workspaceEditor"]
+        replaceText(in: secondEditor, with: "Desktop windows size")
+        window.buttons["executeButton"].click()
+        XCTAssertTrue(window.staticTexts["4"].waitForExistence(timeout: 5))
+        replaceText(in: secondEditor, with: "protected title: 'Closable'")
+        window.buttons["executeButton"].click()
+        window.buttons[XCUIIdentifierCloseWindow].click()
+        let closed = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: window)
+        wait(for: [closed], timeout: 5)
+        XCTAssertTrue(first.exists)
+        XCTAssertFalse(first.staticTexts["FEHLER"].exists)
+    }
+
+    func testChangesAfterImageSnapshotSurviveRelaunchAndCanBeRestoredFromTheUI() throws {
+        continueAfterFailure = false
+        let suite = "dev.moritz.Smalltalk80UITests.\(UUID().uuidString)"
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("st80-recovery-ui-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let app = XCUIApplication()
+        defer {
+            app.terminate()
+            try? FileManager.default.removeItem(at: directory)
+            UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite)
+        }
+        app.launchEnvironment["ST80_PREFERENCES_SUITE"] = suite
+        app.launch()
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        editor.typeKey("s", modifierFlags: [.command, .shift])
+        XCTAssertTrue(app.buttons["OKButton"].waitForExistence(timeout: 5))
+        navigateFilePanel(in: app, to: directory.path)
+        app.buttons["OKButton"].click()
+        let image = directory.appendingPathComponent("Smalltalk.stimage")
+        let saved = expectation(for: NSPredicate { _, _ in FileManager.default.fileExists(atPath: image.path) }, evaluatedWith: nil)
+        wait(for: [saved], timeout: 10)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.appendingPathComponent("Smalltalk.changes").path))
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).contains { $0.pathExtension == "sources" })
+        replaceText(in: editor, with: "Counter compile: 'recovered ^ 73'")
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(workspace.staticTexts["#recovered"].waitForExistence(timeout: 5))
+        app.terminate()
+        app.launch()
+        let restored = app.windows["toolWindow-1"]
+        let restoredEditor = restored.textViews["workspaceEditor"]
+        XCTAssertTrue(restoredEditor.waitForExistence(timeout: 10))
+        replaceText(in: restoredEditor, with: "Desktop openChanges")
+        restored.buttons["executeButton"].click()
+        let history = app.windows["toolWindow-4"]
+        XCTAssertTrue(history.waitForExistence(timeout: 5))
+        let record = history.staticTexts["Counter » recovered"].firstMatch
+        XCTAssertTrue(record.waitForExistence(timeout: 5))
+        record.click()
+        XCTAssertTrue(history.staticTexts["Nach Image-Stand"].firstMatch.exists)
+        history.buttons["restoreChangeButton"].click()
+        XCTAssertTrue(history.staticTexts["Wiederhergestellt: Counter » recovered"].waitForExistence(timeout: 5))
+        let attachment = XCTAttachment(screenshot: history.screenshot())
+        attachment.name = "Recovered method from the durable changes journal"
+        attachment.lifetime = .keepAlways; add(attachment)
+        record.typeKey("1", modifierFlags: .command)
+        replaceText(in: restoredEditor, with: "Counter new recovered")
+        restored.buttons["executeButton"].click()
+        XCTAssertTrue(restored.staticTexts["73"].waitForExistence(timeout: 5))
+        XCTAssertFalse(restored.staticTexts["FEHLER"].exists)
+    }
+
     private func launchFreshApp() -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()

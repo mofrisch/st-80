@@ -67,6 +67,10 @@ for name in products:
         refs.append(ref)
         builds.append(add(f"Build.{name}.{source.name}", "PBXBuildFile", fileRef=ref))
     resource_builds[name] = []
+    if name == "SmalltalkCore":
+        library = add("File.Library", "PBXFileReference", lastKnownFileType="folder", path="Library", sourceTree="<group>")
+        refs.append(library)
+        resource_builds[name].append(add("Build.Library", "PBXBuildFile", fileRef=library))
     if name == "Smalltalk80":
         catalog = add(f"File.{directory}/Assets.xcassets", "PBXFileReference", lastKnownFileType="folder.assetcatalog", path="Assets.xcassets", sourceTree="<group>")
         refs.append(catalog)
@@ -126,7 +130,7 @@ for name, (_, _, product_type) in products.items():
             "ENABLE_HARDENED_RUNTIME": "YES",
         })
     elif name == "SmalltalkCore":
-        settings.update({"DEFINES_MODULE": "YES", "SKIP_INSTALL": "YES", "DYLIB_COMPATIBILITY_VERSION": "1", "DYLIB_CURRENT_VERSION": "1", "INSTALL_PATH": "$(LOCAL_LIBRARY_DIR)/Frameworks"})
+        settings.update({"DEFINES_MODULE": "YES", "SKIP_INSTALL": "YES", "DYLIB_COMPATIBILITY_VERSION": "1", "DYLIB_CURRENT_VERSION": "1", "INSTALL_PATH": "$(LOCAL_LIBRARY_DIR)/Frameworks", "LD_DYLIB_INSTALL_NAME": "@rpath/$(EXECUTABLE_PATH)"})
     elif name == "Smalltalk80UITests":
         settings["TEST_TARGET_NAME"] = "Smalltalk80"
     target_configs = configurations(name, settings)

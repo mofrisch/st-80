@@ -151,6 +151,8 @@ Opening the browser or Transcript again brings its current window to the front. 
 
 The app sends window text to the Smalltalk objects before an evaluation or image save. The saved object graph includes the Transcript and the browser selection.
 
+If the live window model or a control tree becomes invalid, the app keeps the last valid native tools and their editor drafts visible. A retained Workspace can still run **Do it**, **Print it**, and **Inspect it** to repair the image; **Save Workspace …** exports its current draft. Normal controls resume after a valid projection is restored.
+
 ## Tools in Smalltalk
 
 `40-Tools.st` defines `WorkspaceWindow`, `BrowserWindow`, and `TranscriptWindow`. You can edit those classes in the browser and subclass them to create new windows. `DesktopManager>>windowClassFor:` chooses the class to instantiate when opening a tool.
@@ -291,6 +293,7 @@ The prototype has these limits.
 - `new` sends `initialize`. With no explicit `^`, a method returns `self` and a block returns its last expression.
 - Assigning an undeclared name in a workspace creates a persistent workspace variable. `| temp |` declares a local that lasts for the evaluation.
 - Strings are Unicode values. `at:` returns a one-character string and `==` compares strings by value. `Character`, `Fraction`, `Float`, and `LargeInteger` are not implemented.
+- Value previews and `printString` produce at most 64 KiB and visit at most 4,096 values, ending with `…` when truncated. Binding previews share a 64 KiB budget per snapshot and use at most 4 KiB per binding.
 - Object memory uses the collector described above. The system does not yet include Smalltalk processes or BitBlt.
 - An evaluation can take up to 100,000 execution steps, including bytecode instructions and call entry, with 128 call levels and 32 syntactic nesting levels. The normal heap permits up to 100,000 registered nodes after collection, and arrays can hold 4,096 elements. Changes already performed survive an evaluation error.
 

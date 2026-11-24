@@ -55,13 +55,15 @@ final class NativeWindowBackend {
         }
     }
 
-    func execute(_ batch: WindowCommandBatch) {
+    func execute(_ batch: WindowCommandBatch, preservingWindows: Bool = false,
+                 recoveryWorkspace: ToolWindowInfo? = nil) {
         if batch.epoch != epoch { startEpoch(batch.epoch) }
         guard batch.revision > revision else { return }
         revision = batch.revision
         applying = true
         var acknowledgements = Acknowledgements()
         for command in batch.commands {
+            if preservingWindows { continue }
             switch command {
             case .retain(let ids): retainWindows(ids)
             case .present(let info):
@@ -70,9 +72,19 @@ final class NativeWindowBackend {
                 orderWindows(ids, active: active, request: request, after: batch.acknowledgedEvent)
             }
         }
+        if preservingWindows, let recoveryWorkspace, entries[recoveryWorkspace.id] == nil {
+            present(recoveryWorkspace, after: batch.acknowledgedEvent, acknowledging: &acknowledgements)
+            entries[recoveryWorkspace.id]?.window.makeKeyAndOrderFront(nil)
+        }
         applying = false
         for event in acknowledgements.frames { emit(event) }
         for event in acknowledgements.states { emit(event) }
+    }
+
+    func activateWindowForRecovery(_ id: Int64, identity: String) {
+        guard let entry = entries[id], entry.identity == identity else { return }
+        if entry.window.isMiniaturized { entry.window.deminiaturize(nil) }
+        entry.window.makeKeyAndOrderFront(nil)
     }
 
     func showTransientWindow(_ id: UUID, info: TransientWindowInfo, content: AnyView,

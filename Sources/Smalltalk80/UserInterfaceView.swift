@@ -26,6 +26,13 @@ struct ToolContentView: View {
                         UIElementView(controller: controller, windowID: windowID, element: content)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     }
+                    if let result = window.recoveryResult {
+                        Divider()
+                        Text(result).font(.system(size: 13, design: .monospaced))
+                            .textSelection(.enabled).padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .accessibilityIdentifier("workspaceRecoveryResult")
+                    }
                     if let error = window.inputError ?? (controller.activeWindowID == windowID ? controller.error : nil),
                        window.info.content?.firstVisible(where: { $0.accessibilityID == "evaluationResult" })?.text != error {
                         Divider()

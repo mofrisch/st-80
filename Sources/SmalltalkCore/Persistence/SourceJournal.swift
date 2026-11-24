@@ -51,6 +51,40 @@ final class SourceJournal {
         try Self.createFile(bytes, at: url)
         self.url = url; physicalSize = UInt64(bytes.count); validSize = physicalSize
     }
+
+    /// Keep cooperating writers out between validating the companion and
+    /// committing an image that relies on its current records.
+    func withValidatedFile<T>(_ operation: () throws -> T) throws -> T {
+        guard let url else { throw SmalltalkError("The changes log is not attached to a file.") }
+        let file = try FileHandle(forUpdating: url)
+        defer { try? file.close() }
+        guard flock(file.fileDescriptor, LOCK_EX | LOCK_NB) == 0 else {
+            throw SmalltalkError("Another session is writing to the changes log.")
+        }
+        defer { flock(file.fileDescriptor, LOCK_UN) }
+        var opened = stat(), current = stat()
+        guard fstat(file.fileDescriptor, &opened) == 0, stat(url.path, &current) == 0,
+              opened.st_dev == current.st_dev, opened.st_ino == current.st_ino,
+              try file.seekToEnd() == physicalSize else { throw Self.modifiedFile() }
+        try file.seek(toOffset: 0)
+        let stored = try Self.decode(Self.readBounded(file, maximum: Self.maxBytes), at: url)
+        guard stored.id == id, stored.validSize == validSize,
+              try stored.data() == data() else { throw Self.modifiedFile() }
+        // An editor may replace a pathname without honoring flock. Detect a
+        // replacement or content change that happened while reading the log.
+        guard stat(url.path, &current) == 0,
+              opened.st_dev == current.st_dev, opened.st_ino == current.st_ino,
+              opened.st_size == current.st_size,
+              opened.st_mtimespec.tv_sec == current.st_mtimespec.tv_sec,
+              opened.st_mtimespec.tv_nsec == current.st_mtimespec.tv_nsec,
+              opened.st_ctimespec.tv_sec == current.st_ctimespec.tv_sec,
+              opened.st_ctimespec.tv_nsec == current.st_ctimespec.tv_nsec else { throw Self.modifiedFile() }
+        return try operation()
+    }
+
+    private static func modifiedFile() -> SmalltalkError {
+        SmalltalkError("The changes log was modified outside this session. Reload the image.")
+    }
     @discardableResult
     func append(kind: ChangeInfo.Kind, className: String, selector: String? = nil, superclass: String? = nil, fields: [String]? = nil, side: MethodSide = .instance, source: String) throws -> ChangeInfo {
         guard records.count < 100_000 else { throw SmalltalkError("The changes log contains too many entries.") }
@@ -79,6 +113,10 @@ final class SourceJournal {
     }
     static func read(_ url: URL) throws -> SourceJournal {
         let bytes = try readBounded(url, maximum: maxBytes)
+        return try decode(bytes, at: url)
+    }
+
+    private static func decode(_ bytes: Data, at url: URL) throws -> SourceJournal {
         guard let newline = bytes.firstIndex(of: 10) else { throw SmalltalkError("The changes log header is missing or incomplete.") }
         let decoder = JSONDecoder()
         let header = try decoder.decode(Header.self, from: bytes[..<newline])
@@ -98,6 +136,10 @@ final class SourceJournal {
     static func readBounded(_ url: URL, maximum: Int) throws -> Data {
         guard url.isFileURL else { throw SmalltalkError("Expected a local file.") }
         let file = try FileHandle(forReadingFrom: url); defer { try? file.close() }
+        return try readBounded(file, maximum: maximum)
+    }
+
+    private static func readBounded(_ file: FileHandle, maximum: Int) throws -> Data {
         var data = Data()
         while data.count <= maximum {
             let chunk = try file.read(upToCount: min(65_536, maximum + 1 - data.count)) ?? Data()

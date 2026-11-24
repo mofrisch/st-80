@@ -9,11 +9,14 @@ final class AppController {
     private var windowPresentation = WindowPresentation()
     private var controlEdits = ControlEdits()
     private var operationError: String?
+    private var projectionError: String?
     private var persistenceError: String?
     var error: String? {
         get {
-            if let operationError, let persistenceError { return operationError + "\n" + persistenceError }
-            return operationError ?? persistenceError
+            var seen: Set<String> = []
+            let messages = [projectionError, operationError, persistenceError].compactMap { $0 }
+                .filter { seen.insert($0).inserted }
+            return messages.isEmpty ? nil : messages.joined(separator: "\n")
         }
         set { operationError = newValue }
     }
@@ -168,10 +171,12 @@ final class AppController {
             for id in Array(inspectors.keys) { closeInspector(id) }
         }
         changesPath = evaluation.changesPath
-        error = evaluation.error
+        projectionError = evaluation.windowProjectionError
+        error = evaluation.executionError ?? (projectionError == nil ? evaluation.error : nil)
         windowPresentation.update(from: evaluation, replacingWindows: replacingWindows)
-        controlEdits.reconcile(with: evaluation.windows)
-        nativeWindows?.execute(evaluation.windowCommands)
+        controlEdits.reconcile(with: windowPresentation.windows.map(\.info))
+        nativeWindows?.execute(evaluation.windowCommands, preservingWindows: windowPresentation.isRecovering,
+                               recoveryWorkspace: windowPresentation.isRecovering ? windowPresentation.workspace?.info : nil)
         for request in evaluation.toolRequests {
             switch request {
             case .saveImage:
@@ -192,7 +197,7 @@ final class AppController {
 
     private func scheduleInputSynchronization() {
         inputDebounce?.cancel()
-        guard hasLoaded, !isRunning, controlEdits.hasLiveEdits else { return }
+        guard hasLoaded, !isRunning, !windowPresentation.isRecovering, controlEdits.hasLiveEdits else { return }
         inputDebounce = Task { [weak self] in
             do { try await Task.sleep(for: .milliseconds(80)) } catch { return }
             guard let self, !self.isRunning else { return }
@@ -204,6 +209,9 @@ final class AppController {
     /// toggles isRunning, so changing the model does not disable the focused field.
     private func synchronizeInputs() async -> Bool {
         while true {
+            // Retained editor drafts are evaluated directly during recovery;
+            // their old Smalltalk window may no longer be reachable.
+            if windowPresentation.isRecovering { return true }
             if let running = inputFlush {
                 let success = await running.task.value
                 if inputFlush?.id == running.id { inputFlush = nil }
@@ -242,7 +250,9 @@ final class AppController {
         // Publish the acknowledged text before releasing the native draft.
         // An editor can redraw from an older projected element in the meantime.
         if let latestInput { apply(latestInput) }
-        for edit in acknowledged { controlEdits.acknowledge(edit) }
+        if !windowPresentation.isRecovering {
+            for edit in acknowledged { controlEdits.acknowledge(edit) }
+        }
         for id in editedWindows { windowPresentation.setInputError(failures[id], for: id) }
         return failures.isEmpty
     }
@@ -284,6 +294,18 @@ final class AppController {
 
     func canPerform(_ element: UIElementInfo, in windowID: Int64) -> Bool {
         guard element.enabled else { return false }
+        if windowPresentation.isRecovering {
+            switch element.kind {
+            case .button:
+                return presentedWindow(windowID)?.info.kind == .workspace &&
+                    element.command.flatMap(WorkspaceRecoveryAction.init(command:)) != nil
+            case .codeEditor:
+                guard let window = presentedWindow(windowID)?.info else { return false }
+                return workspaceEditor(in: window)?.id == element.id
+            case .textField, .list, .historyList, .valueTable: return false
+            default: return true
+            }
+        }
         // Class definitions and new methods already get their enabled state from Smalltalk.
         guard element.command == "acceptMethod", let window = presentedWindow(windowID)?.info,
               let compiled = window.browserMethodSource,
@@ -311,6 +333,13 @@ final class AppController {
     func editorContextItems(windowID: Int64, editor: UIElementInfo) -> [EditorContextItem] {
         let window = presentedWindow(windowID)?.info
         let isWorkspaceEditor = window.flatMap { workspaceEditor(in: $0) }?.id == editor.id
+        if windowPresentation.isRecovering {
+            guard isWorkspaceEditor, let window else { return [] }
+            return ["doIt", "printIt", "inspectIt"].compactMap { command in
+                window.content?.firstVisible(where: { $0.command == command && $0.selectionSource == editor.id })
+                    .flatMap(EditorContextItem.init(projected:))
+            }
+        }
         var items: [EditorContextItem]
         if let projected = editor.contextMenuItems {
             items = projected.compactMap(EditorContextItem.init(projected:))
@@ -344,7 +373,8 @@ final class AppController {
     }
 
     var canDebugWorkspace: Bool {
-        guard !isRunning, keyInspectorID == nil, let window = windowPresentation.activeWindow?.info else {
+        guard !isRunning, !windowPresentation.isRecovering, keyInspectorID == nil,
+              let window = windowPresentation.activeWindow?.info else {
             return false
         }
         return workspaceEditor(in: window) != nil
@@ -494,9 +524,31 @@ final class AppController {
               let root = window.content, let button = root.firstVisible(where: { $0.id == elementID }),
               canPerform(button, in: windowID) else { return }
         let selection = capturedSelection ?? selectedText(for: button, in: windowID, root: root)
+        if windowPresentation.isRecovering, window.kind == .workspace,
+           let command = button.command, let action = WorkspaceRecoveryAction(command: command),
+           let editor = workspaceEditor(in: window) {
+            await recoverWorkspace(window, editor: editor, action: action, selection: selection)
+            return
+        }
         let acceptsRejectedInput = window.kind == .workspace || window.kind == .browser
         await sendControl(.click(windowID: windowID, elementID: elementID, selection: selection),
                           windowID: windowID, allowInputFailure: acceptsRejectedInput)
+    }
+
+    private func recoverWorkspace(_ window: ToolWindowInfo, editor: UIElementInfo,
+                                  action: WorkspaceRecoveryAction, selection: String) async {
+        guard !isRunning, let currentEpoch else { return }
+        let source = selection.isEmpty ? inputText(windowID: window.id, element: editor) : selection
+        isRunning = true
+        defer { isRunning = false }
+        let evaluation = await session.recoverWorkspace(source: source, action: action, windowID: window.id,
+                                                        identity: window.identity, epoch: currentEpoch)
+        apply(evaluation)
+        windowPresentation.setInputError(evaluation.executionError, for: window.id)
+        if windowPresentation.isRecovering {
+            windowPresentation.setRecoveryResult(evaluation.value, for: window.id)
+        }
+        imageHasChanges = true
     }
 
     private func selectedText(for button: UIElementInfo, in windowID: Int64, root: UIElementInfo) -> String {
@@ -529,7 +581,14 @@ final class AppController {
 
     func openTool(_ kind: ToolKind) async { await sendWindowAction(.open(kind)) }
 
-    func showWorkspace() async { await sendWindowAction(.showWorkspace) }
+    func showWorkspace() async {
+        if windowPresentation.isRecovering, let workspace = windowPresentation.workspace {
+            windowPresentation.activeID = workspace.info.id
+            nativeWindows?.activateWindowForRecovery(workspace.info.id, identity: workspace.info.identity)
+            return
+        }
+        await sendWindowAction(.showWorkspace)
+    }
 
     var canClearTranscript: Bool { transcriptClearControl != nil }
 
@@ -606,14 +665,16 @@ final class AppController {
         guard !isRunning, let workspace = windowPresentation.workspace else { return }
         isRunning = true
         defer { isRunning = false }
-        guard await flushWindowState(),
+        guard await flushWindowState(allowInputFailure: windowPresentation.isRecovering),
               let current = presentedWindow(workspace.info.id), current.info.identity == workspace.info.identity else { return }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [UTType(filenameExtension: "st") ?? .plainText]
         panel.nameFieldStringValue = current.documentURL?.lastPathComponent ?? "Workspace.st"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
-            try current.info.text.write(to: url, atomically: true, encoding: .utf8)
+            let source = workspaceEditor(in: current.info).map { inputText(windowID: current.info.id, element: $0) }
+                ?? current.info.text
+            try source.write(to: url, atomically: true, encoding: .utf8)
             windowPresentation.setDocumentURL(url, for: current.info.id)
             error = nil
         } catch { self.error = error.localizedDescription }

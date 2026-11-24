@@ -3,6 +3,108 @@ import XCTest
 
 @MainActor
 final class Smalltalk80UITests: XCTestCase {
+    func testShowWorkspaceCreatesARepairEditorWhenAllWorkspacesWereClosed() {
+        let app = launchFreshApp()
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        replaceText(in: editor, with: """
+        heldBrowserContent := (Desktop windowAt: 2) content.
+        UIWindow new content: (UIButton new identifier: 'breakBrowser'; title: 'Break Browser';
+            action: [ (Desktop windowAt: 2) content: 7 ]; yourself); open
+        """)
+        workspace.buttons["executeButton"].click()
+        let custom = app.windows["toolWindow-4"]
+        XCTAssertTrue(custom.buttons["breakBrowser"].waitForExistence(timeout: 5))
+        workspace.buttons[XCUIIdentifierCloseWindow].click()
+        let closed = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: workspace)
+        wait(for: [closed], timeout: 5)
+        custom.buttons["breakBrowser"].click()
+        let failure = custom.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Invalid interface.", "Invalid interface.")).firstMatch
+        XCTAssertTrue(failure.waitForExistence(timeout: 5))
+        app.menuBars.menuBarItems["Smalltalk"].click()
+        app.menuItems["Show Workspace"].click()
+        let repair = app.windows["toolWindow-5"]
+        let repairEditor = repair.textViews["workspaceEditor"]
+        XCTAssertTrue(repairEditor.waitForExistence(timeout: 5))
+        XCTAssertTrue(repairEditor.isHittable)
+        replaceText(in: repairEditor, with: "(Desktop windowAt: 2) content: heldBrowserContent. 42")
+        repair.buttons["executeButton"].click()
+        XCTAssertTrue(repair.staticTexts["42"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.windows["toolWindow-2"].textViews["methodEditor"].exists)
+    }
+
+    func testWorkspaceRepairsAnInvalidDesktopWithoutLosingItsEditorOrDraft() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let app = launchFreshApp()
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        let damage = "heldWindows := Desktop windows. Desktop model windows: nil"
+        replaceText(in: editor, with: damage)
+        workspace.buttons["executeButton"].click()
+        let message = "Desktop has no valid window list."
+        let failure = workspace.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", message, message)).firstMatch
+        XCTAssertTrue(failure.waitForExistence(timeout: 5))
+        XCTAssertTrue(editor.isHittable)
+        XCTAssertEqual(editor.value as? String, damage)
+        XCTAssertTrue(workspace.buttons["executeButton"].isEnabled)
+
+        // Evaluate while the model remains broken, then repair it using the
+        // same retained editor and its native command shortcut.
+        replaceText(in: editor, with: "1 + 2")
+        editor.typeKey("d", modifierFlags: .command)
+        let preview = workspace.staticTexts["workspaceRecoveryResult"]
+        XCTAssertTrue(preview.waitForExistence(timeout: 5))
+        XCTAssertEqual(preview.value as? String ?? preview.label, "3")
+        XCTAssertTrue(failure.exists)
+        editor.typeKey("s", modifierFlags: .command)
+        XCTAssertTrue(app.buttons["OKButton"].waitForExistence(timeout: 5))
+        navigateFilePanel(in: app, to: directory.path)
+        app.buttons["OKButton"].click()
+        let exported = directory.appendingPathComponent("Workspace.st")
+        let saved = expectation(for: NSPredicate { _, _ in FileManager.default.fileExists(atPath: exported.path) }, evaluatedWith: nil)
+        wait(for: [saved], timeout: 5)
+        XCTAssertEqual(try String(contentsOf: exported, encoding: .utf8), "1 + 2")
+        XCTAssertTrue(failure.exists)
+        app.menuBars.menuBarItems["Smalltalk"].click()
+        app.menuItems["Show Workspace"].click()
+        XCTAssertTrue(editor.isHittable)
+
+        let repair = "Desktop model windows: heldWindows. 6 * 7"
+        replaceText(in: editor, with: repair)
+        editor.typeKey("d", modifierFlags: .command)
+        XCTAssertTrue(workspace.staticTexts["42"].waitForExistence(timeout: 5))
+        XCTAssertEqual(editor.value as? String, repair)
+        XCTAssertFalse(failure.exists)
+        XCTAssertFalse(preview.exists)
+
+        replaceText(in: editor, with: "20 + 22")
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(workspace.staticTexts["42"].waitForExistence(timeout: 5))
+    }
+
+    func testWorkspaceRepairsItsInvalidContentAndResumesNormalCommands() {
+        let app = launchFreshApp()
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        let damage = "heldContent := (Desktop windowAt: 1) content. (Desktop windowAt: 1) content: 7"
+        replaceText(in: editor, with: damage)
+        workspace.buttons["executeButton"].click()
+        let message = "Invalid interface."
+        let failure = workspace.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", message, message)).firstMatch
+        XCTAssertTrue(failure.waitForExistence(timeout: 5))
+        XCTAssertTrue(editor.isHittable)
+        XCTAssertEqual(editor.value as? String, damage)
+        let repair = "(Desktop windowAt: 1) content: heldContent. 40 + 2"
+        replaceText(in: editor, with: repair)
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(workspace.staticTexts["42"].waitForExistence(timeout: 5))
+        XCTAssertEqual(editor.value as? String, repair)
+        XCTAssertFalse(failure.exists)
+        editor.typeKey("n", modifierFlags: .command)
+        XCTAssertTrue(app.windows["toolWindow-4"].textViews["workspaceEditor"].waitForExistence(timeout: 5))
+    }
+
     func testFreshImageRunsTheBundledSmalltalkSuiteInTheWorkspace() {
         let app = launchFreshApp()
         let workspace = app.windows["toolWindow-1"]
@@ -427,7 +529,7 @@ final class Smalltalk80UITests: XCTestCase {
             XCTAssertTrue(browser.staticTexts[heading].exists)
         }
         bytecode.click()
-        bytecode.typeKey("x", modifierFlags: [])
+        pasteText("x", into: bytecode)
         XCTAssertEqual(bytecode.value as? String, listing)
 
         XCTAssertEqual(toggle.label, "Bytecode")
@@ -462,7 +564,7 @@ final class Smalltalk80UITests: XCTestCase {
 
         let filter = browser.textFields["classFilter"]
         filter.click()
-        filter.typeText("Integer")
+        pasteText("Integer", into: filter)
         let integer = browser.staticTexts["Integer"].firstMatch
         XCTAssertTrue(integer.waitForExistence(timeout: 5))
         integer.click()
@@ -488,7 +590,7 @@ final class Smalltalk80UITests: XCTestCase {
         let filter = browser.textFields["classFilter"]
         XCTAssertTrue(filter.waitForExistence(timeout: 5))
         filter.click()
-        filter.typeText("ClassContextExample")
+        pasteText("ClassContextExample", into: filter)
         let classRow = browser.staticTexts["ClassContextExample"].firstMatch
         XCTAssertTrue(classRow.waitForExistence(timeout: 5))
         classRow.click()
@@ -522,7 +624,7 @@ final class Smalltalk80UITests: XCTestCase {
             let field = browser.textFields["organizationName"]
             XCTAssertTrue(field.waitForExistence(timeout: 5))
             field.click()
-            field.typeText(name)
+            pasteText(name, into: field)
             browser.buttons["applyOrganizationEdit"].click()
             XCTAssertTrue(browser.staticTexts[name].firstMatch.waitForExistence(timeout: 5))
         }
@@ -1206,18 +1308,18 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertNotEqual(first.identifier, window.buttons["Greet"].identifier)
         XCTAssertLessThan(first.frame.minX, last.frame.minX)
         first.click()
-        first.typeText("Moritz")
+        pasteText("Moritz", into: first)
         last.click()
-        last.typeText("Frisch")
+        pasteText("Frisch", into: last)
         window.buttons["Greet"].click()
         XCTAssertTrue(window.staticTexts["Hello, Moritz Frisch!"].waitForExistence(timeout: 5))
 
         first.click()
         first.typeKey("a", modifierFlags: .command)
-        first.typeText("Ada")
+        pasteText("Ada", into: first)
         last.click()
         last.typeKey("a", modifierFlags: .command)
-        last.typeText("Lovelace")
+        pasteText("Lovelace", into: last)
         // Save directly from a field, without Return or another button click.
         last.typeKey("s", modifierFlags: [.command, .shift])
         XCTAssertTrue(app.buttons["OKButton"].waitForExistence(timeout: 5))
@@ -1285,14 +1387,14 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertTrue(second.waitForExistence(timeout: 5))
         let field = first.textFields["Name"]
         field.click()
-        field.typeText("Moritz")
-        // No Return, focus change or click: the controller updates the model as
-        // we type, and both dependent views must react to that model change.
+        pasteText("Moritz", into: field)
+        // No Return, focus change or click: the controller updates the model
+        // when the input changes, and both dependent views must react.
         XCTAssertTrue(second.staticTexts["Hello, Moritz!"].waitForExistence(timeout: 5))
         XCTAssertEqual(second.textFields["Name"].value as? String, "Moritz")
         XCTAssertEqual(field.value as? String, "Moritz")
         field.typeKey(.leftArrow, modifierFlags: .command)
-        field.typeText("Dr. ")
+        pasteText("Dr. ", into: field)
         XCTAssertTrue(second.staticTexts["Hello, Dr. Moritz!"].waitForExistence(timeout: 5))
         XCTAssertEqual(field.value as? String, "Dr. Moritz")
 
@@ -1310,7 +1412,7 @@ final class Smalltalk80UITests: XCTestCase {
         replaceText(in: editor, with: "GreetingController compile: 'nameChanged: aString ^ 1 / 0'")
         workspace.buttons["executeButton"].click()
         field.click()
-        field.typeText("Recoverable")
+        pasteText("Recoverable", into: field)
         let inputError = first.staticTexts.containing(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Division by zero", "Division by zero")).firstMatch
         XCTAssertTrue(inputError.waitForExistence(timeout: 5))
         field.typeKey("1", modifierFlags: .command)
@@ -1320,7 +1422,7 @@ final class Smalltalk80UITests: XCTestCase {
 
         field.click()
         field.typeKey("a", modifierFlags: .command)
-        field.typeText("Saved")
+        pasteText("Saved", into: field)
         field.typeKey("s", modifierFlags: [.command, .shift])
         XCTAssertTrue(app.buttons["OKButton"].waitForExistence(timeout: 5))
         navigateFilePanel(in: app, to: directory.path)
@@ -1461,13 +1563,18 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertTrue(editor.waitForExistence(timeout: 10))
         editor.click()
         editor.typeKey("a", modifierFlags: .command)
-        // XCUI's key synthesis drops a dead-key caret on German keyboards.
+        pasteText(source, into: editor)
+        XCTAssertEqual(editor.value as? String, source)
+    }
+
+    /// Paste at the current selection; callers set focus and select text as needed.
+    private func pasteText(_ text: String, into target: XCUIElement) {
+        // Avoid dead-key layout differences and long per-key synthesis in XCUI.
         withPreservedPasteboard { pasteboard in
             pasteboard.clearContents()
-            pasteboard.setString(source, forType: .string)
-            editor.typeKey("v", modifierFlags: .command)
+            pasteboard.setString(text, forType: .string)
+            target.typeKey("v", modifierFlags: .command)
         }
-        XCTAssertEqual(editor.value as? String, source)
     }
 
     private func withPreservedPasteboard(_ action: (NSPasteboard) -> Void) {
@@ -1519,7 +1626,7 @@ final class Smalltalk80UITests: XCTestCase {
 
     private func navigateFilePanel(in app: XCUIApplication, to path: String) {
         app.typeKey("g", modifierFlags: [.command, .shift])
-        app.typeText(path)
+        pasteText(path, into: app)
         app.typeKey(.return, modifierFlags: [])
     }
 }

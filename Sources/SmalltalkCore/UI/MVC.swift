@@ -73,10 +73,7 @@ extension SmalltalkRuntime {
                 if isUIClass(view.stClass, named: "UIContainer"), case .array(let children)? = view.fields["children"] {
                     pending.append(contentsOf: children.elements.prefix(512))
                 }
-                if isUIClass(view.stClass, named: "UICodeEditor"), case .object(let menu)? = view.fields["contextMenu"],
-                   isUIClass(menu.stClass, named: "UIMenu") {
-                    pending.append(.object(menu))
-                }
+                if let menu = try interfaceContextMenu(of: view) { pending.append(menu) }
             }
         }
         return mounted

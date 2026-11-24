@@ -46,9 +46,15 @@ enum ImageFiles {
         guard url.isFileURL else { throw SmalltalkError("An image must be saved to a local file.") }
         // Validate and size-check before modifying any companion file.
         guard workspace.utf8.count + transcript.utf8.count <= ImageCodec.maxBytes else { throw SmalltalkError("Image is too large.") }
-        var memory = try ImageCodec.capture(runtime, workspace: workspace, transcript: transcript, includesCode: false)
         let library = try SystemLibrary.shared.get()
         let journal = runtime.journal
+        let sourcesName = "Smalltalk80-\(library.identifier.prefix(12)).sources"
+        let changesURL = url.deletingPathExtension().appendingPathExtension("changes")
+        let sourcesURL = url.deletingLastPathComponent().appendingPathComponent(sourcesName)
+        try validatePaths(image: url, changes: changesURL, sources: sourcesURL, activeJournal: journal.url)
+        let usesActiveJournal = journal.url.map { aliases($0, changesURL) } ?? false
+        if usesActiveJournal { try journal.withValidatedFile {} }
+        var memory = try ImageCodec.capture(runtime, workspace: workspace, transcript: transcript, includesCode: false)
         // A portable image may have been loaded without a changes journal.
         // Capture its class definitions before attaching the method sources.
         let definitions = Dictionary(uniqueKeysWithValues: library.definitions.map { ($0.name, $0) })
@@ -77,16 +83,13 @@ enum ImageFiles {
             memory.classes[index].methods = [:]
             memory.classes[index].classMethods = nil
         }
-        let sourcesName = "Smalltalk80-\(library.identifier.prefix(12)).sources"
-        let changesURL = url.deletingPathExtension().appendingPathExtension("changes")
         let candidate: SourceJournal
-        if journal.url?.standardizedFileURL == changesURL.standardizedFileURL { candidate = journal }
+        if usesActiveJournal { candidate = journal }
         else { candidate = SourceJournal(records: journal.records) }
         let archive = ImageFileArchive(memory: memory, methods: methods, sourcesFile: sourcesName, sourcesID: library.identifier, changesFile: changesURL.lastPathComponent, changesID: candidate.id, checkpoint: candidate.sequence)
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
         let bytes = try encoder.encode(archive)
         guard bytes.count <= ImageCodec.maxBytes else { throw SmalltalkError("Image exceeds the 32 MiB limit.") }
-        let sourcesURL = url.deletingLastPathComponent().appendingPathComponent(sourcesName)
         if FileManager.default.fileExists(atPath: sourcesURL.path) {
             guard try SourceJournal.readBounded(sourcesURL, maximum: 262_144) == library.data else { throw SmalltalkError("Sources archive \(sourcesName) contains different data.") }
         } else { try SourceJournal.createFile(library.data, at: sourcesURL) }
@@ -95,7 +98,10 @@ enum ImageFiles {
         // The log is durable first; a failed snapshot leaves the previous image
         // and its checkpoint usable. Extra log records remain recoverable.
         do {
-            try bytes.write(to: url, options: .atomic)
+            try candidate.withValidatedFile {
+                try validatePaths(image: url, changes: changesURL, sources: sourcesURL, activeJournal: journal.url)
+                try bytes.write(to: url, options: .atomic)
+            }
         } catch {
             // A first save or Save As owns this newly created branch only after
             // the image commits. Remove an unchanged branch on failure so a
@@ -111,6 +117,50 @@ enum ImageFiles {
         }
         candidate.savedSequence = candidate.sequence
         runtime.journal = candidate
+    }
+
+    private static func validatePaths(image: URL, changes: URL, sources: URL, activeJournal: URL?) throws {
+        let paths = [image, changes, sources]
+        for first in paths.indices {
+            for second in paths.indices where first < second {
+                guard !aliases(paths[first], paths[second]) else {
+                    throw SmalltalkError("The image, changes log, and sources archive must use different files.")
+                }
+            }
+        }
+        if let activeJournal, aliases(image, activeJournal) || aliases(sources, activeJournal) {
+            throw SmalltalkError("An image or sources archive cannot replace the active changes log.")
+        }
+    }
+
+    private static func aliases(_ first: URL, _ second: URL) -> Bool {
+        let left = resolvedFileURL(first)
+        let right = resolvedFileURL(second)
+        let leftPath = left.path.precomposedStringWithCanonicalMapping
+        let rightPath = right.path.precomposedStringWithCanonicalMapping
+        if leftPath == rightPath { return true }
+        let caseSensitive = try? left.deletingLastPathComponent().resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]).volumeSupportsCaseSensitiveNames
+        if caseSensitive == false, leftPath.compare(rightPath, options: .caseInsensitive) == .orderedSame { return true }
+        if let leftAttributes = try? FileManager.default.attributesOfItem(atPath: first.path),
+           let rightAttributes = try? FileManager.default.attributesOfItem(atPath: second.path),
+           let leftDevice = leftAttributes[.systemNumber] as? NSNumber,
+           let rightDevice = rightAttributes[.systemNumber] as? NSNumber,
+           let leftInode = leftAttributes[.systemFileNumber] as? NSNumber,
+           let rightInode = rightAttributes[.systemFileNumber] as? NSNumber {
+            return leftDevice == rightDevice && leftInode == rightInode
+        }
+        return false
+    }
+
+    private static func resolvedFileURL(_ url: URL, linkDepth: Int = 0) -> URL {
+        // Foundation leaves a dangling final symlink unresolved. Its target can
+        // still be the companion this save is about to create.
+        if linkDepth < 32, let destination = try? FileManager.default.destinationOfSymbolicLink(atPath: url.path) {
+            let target = destination.hasPrefix("/") ? URL(fileURLWithPath: destination)
+                : url.deletingLastPathComponent().appendingPathComponent(destination)
+            return resolvedFileURL(target, linkDepth: linkDepth + 1)
+        }
+        return url.resolvingSymlinksInPath().standardizedFileURL
     }
 
     static func load(_ url: URL) throws -> (SmalltalkRuntime, LoadedImage) {

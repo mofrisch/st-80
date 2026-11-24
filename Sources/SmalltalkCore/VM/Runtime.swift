@@ -151,6 +151,7 @@ public struct EvaluationResult: Sendable {
     public let error: String?
     /// A failed Smalltalk operation, distinct from an invalid native projection.
     public let executionError: String?
+    public let windowProjectionError: String?
     public let transcript: String
     public let classes: [ClassInfo]
     public let bindings: [BindingInfo]
@@ -569,23 +570,8 @@ final class SmalltalkRuntime {
     }
 
     func printValue(_ value: Value, depth: Int = 0) -> String {
-        guard depth < 5 else { return "…" }
-        switch value {
-        case .integer(let n): return String(n)
-        case .string(let s): return "'\(s.replacingOccurrences(of: "'", with: "''"))'"
-        case .symbol(let s): return "#\(s)"
-        case .boolean(let b): return b ? "true" : "false"
-        case .nilValue: return "nil"
-        case .classObject(let stClass): return stClass.name
-        case .object(let object):
-            let fields = object.stClass.fields.prefix(8).map { "\($0): \(printValue(object.fields[$0] ?? .nilValue, depth: depth + 1))" }.joined(separator: ", ")
-            return fields.isEmpty ? "a \(object.stClass.name)" : "a \(object.stClass.name) (\(fields))"
-        case .array(let array):
-            let values = array.elements.prefix(32).map { printValue($0, depth: depth + 1) }.joined(separator: " ")
-            return "#(\(values)\(array.elements.count > 32 ? " …" : ""))"
-        case .block(let block): return "[Block · \(block.parameters.count) arguments]"
-        case .transcript: return "Transcript"
-        }
+        var printer = ValuePrinter()
+        return printer.print(value, depth: depth)
     }
 
     func snapshot(value: String? = nil, error: String? = nil, requests: [NativeToolRequest] = []) -> EvaluationResult {
@@ -597,14 +583,34 @@ final class SmalltalkRuntime {
         }
         let bindings = bindingInfos()
         let desktop = projectWindows()
-        return EvaluationResult(value: value, error: error ?? desktop.error ?? presentationError, executionError: error, transcript: transcript, classes: infos, bindings: bindings, windows: desktop.windows, activeWindowID: desktop.activeID, windowCommands: projectWindowCommands(desktop.windows, active: desktop.activeID, valid: desktop.error == nil), toolRequests: requests, changes: Array(journal.records.suffix(2000)), savedChangeSequence: journal.savedSequence, changesPath: journal.url?.path)
+        return EvaluationResult(value: value, error: error ?? desktop.error ?? presentationError, executionError: error,
+                                windowProjectionError: desktop.error, transcript: transcript, classes: infos,
+                                bindings: bindings, windows: desktop.windows, activeWindowID: desktop.activeID,
+                                windowCommands: projectWindowCommands(desktop.windows, active: desktop.activeID, valid: desktop.error == nil),
+                                toolRequests: requests, changes: Array(journal.records.suffix(2000)),
+                                savedChangeSequence: journal.savedSequence, changesPath: journal.url?.path)
     }
     func bindingInfos() -> [BindingInfo] {
-        return globals.compactMap { name, value -> BindingInfo? in
+        let bindings: [(String, Value)] = globals.keys.sorted().compactMap { name in
+            guard let value = globals[name] else { return nil }
             if ["Desktop", "ToolVM", "TranscriptBuffer"].contains(name) { return nil }
             if case .classObject = value { return nil }
             if case .transcript = value { return nil }
-            return BindingInfo(name: name, value: printValue(value), className: classOf(value).name)
-        }.sorted { $0.name < $1.name }
+            return (name, value)
+        }
+        var bytes = ValuePrinter.allBindingsBytes
+        var values = ValuePrinter.allBindingsValues
+        return bindings.enumerated().map { index, binding in
+            let (name, value) = binding
+            // Share the remaining space among all names so early aliases do
+            // not consume the entire snapshot's preview budget.
+            let byteLimit = min(ValuePrinter.bindingBytes, bytes / (bindings.count - index))
+            let valueLimit = min(ValuePrinter.maximumValues, values / (bindings.count - index))
+            var printer = ValuePrinter(maximumBytes: byteLimit, maximumValues: valueLimit)
+            let preview = printer.print(value)
+            bytes -= preview.utf8.count
+            values -= valueLimit - printer.remainingValues
+            return BindingInfo(name: name, value: preview, className: classOf(value).name)
+        }
     }
 }

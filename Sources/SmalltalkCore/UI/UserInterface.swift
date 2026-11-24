@@ -120,6 +120,17 @@ extension SmalltalkRuntime {
         let enabled: Bool
     }
 
+    /// Projection and MVC mounting must follow the same context-menu edges.
+    func interfaceContextMenu(of view: STObject) throws -> Value? {
+        guard isUIClass(view.stClass, named: "UICodeEditor") || isUIClass(view.stClass, named: "UIScroll"),
+              let menu = view.fields["contextMenu"] else { return nil }
+        if case .nilValue = menu { return menu }
+        guard case .object(let menuObject) = menu, isUIClass(menuObject.stClass, named: "UIMenu") else {
+            throw SmalltalkError("A context menu must be a UIMenu or nil.")
+        }
+        return menu
+    }
+
     /// Validate a bounded tree using fields only, never Smalltalk message sends.
     private func projectInterface(_ value: Value) throws -> (root: UIElementInfo?, controls: [String: ProjectedControl]) {
         if case .nilValue = value { return (nil, [:]) }
@@ -294,13 +305,10 @@ extension SmalltalkRuntime {
                 children = try array.elements.map { try project($0, depth: depth + 1, parentEnabled: enabled) }
             case .spacer, .divider: break
             }
-            if (kind == .codeEditor || kind == .scroll), let menu = object.fields["contextMenu"] {
+            if let menu = try interfaceContextMenu(of: object) {
                 if case .nilValue = menu {
                     contextMenuItems = []
                 } else {
-                    guard case .object(let menuObject) = menu, isUIClass(menuObject.stClass, named: "UIMenu") else {
-                        throw SmalltalkError("A context menu must be a UIMenu or nil.")
-                    }
                     let menuInfo = try project(menu, depth: depth + 1, parentEnabled: enabled)
                     guard menuInfo.children.allSatisfy({ item in
                         (item.kind == .button || item.kind == .divider) &&

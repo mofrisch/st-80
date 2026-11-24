@@ -35,6 +35,64 @@ UIList compile: 'select: value
     selection := value.
     target notNil ifTrue: [ ^ target perform: selector with: value ]'.
 
+UIList subclass: #UIHistoryList instanceVariableNames: 'entries rowIdentifierPrefix command'.
+
+UIHistoryList compile: 'initialize
+    super initialize.
+    entries := #()'.
+
+UIHistoryList compile: 'entries: rows
+    entries := rows.
+    self items: (rows collect: [ :each | each at: 1 ])'.
+
+UIHistoryList compile: 'includes: key
+    ^ items includes: key'.
+
+UIHistoryList compile: 'rowIdentifierPrefix: aString
+    rowIdentifierPrefix := aString'.
+
+UIHistoryList compile: 'command: aSymbol
+    command := aSymbol'.
+
+UIElement subclass: #UISourceView instanceVariableNames: 'text line column'.
+
+UISourceView compile: 'initialize
+    super initialize.
+    text := ''''.
+    line := 1.
+    column := 1'.
+
+UISourceView compile: 'text: aString
+    text := aString'.
+
+UISourceView compile: 'line: aLine column: aColumn
+    line := aLine.
+    column := aColumn'.
+
+UIList subclass: #UIValueTable instanceVariableNames: 'rows headings rowIdentifierPrefix command readOnly'.
+
+UIValueTable compile: 'initialize
+    super initialize.
+    rows := #().
+    headings := #(''Name'' ''Value'' ''Class'').
+    rowIdentifierPrefix := ''row'''.
+
+UIValueTable compile: 'rows: entries
+    rows := entries.
+    self items: (entries collect: [ :each | each at: 1 ])'.
+
+UIValueTable compile: 'headings: labels
+    headings := labels'.
+
+UIValueTable compile: 'rowIdentifierPrefix: aString
+    rowIdentifierPrefix := aString'.
+
+UIValueTable compile: 'command: aSymbol
+    command := aSymbol'.
+
+UIValueTable compile: 'readOnly: aBoolean
+    readOnly := aBoolean'.
+
 UIContainer subclass: #UISplit instanceVariableNames: ''.
 
 UIContainer subclass: #UIScroll instanceVariableNames: 'contextMenu'.

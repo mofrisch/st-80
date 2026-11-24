@@ -272,6 +272,73 @@ struct ToolWindowTests {
         #expect(await session.browserBytecode(windowID: browser.id, method: primitive) == nil)
     }
 
+    @Test func rejectingABrowserDraftKeepsTheInstalledCodeAndJournalUnchanged() async throws {
+        let session = SmalltalkSession()
+        let initial = await session.snapshot()
+        let browser = try #require(initial.windows.first { $0.kind == .browser })
+        let methods = try #require(element("methodList", in: browser.content))
+        let chosen = await session.uiAction(.select(windowID: browser.id, elementID: methods.id, value: "value"))
+        let selected = try #require(chosen.windows.first { $0.id == browser.id })
+        let method = try #require(selected.browserMethod)
+        let source = try #require(element("methodEditor", in: selected.content))
+        let accept = try #require(element("executeButton", in: selected.content))
+        let installed = try #require(await session.browserBytecode(windowID: browser.id, method: method))
+
+        let draft = "value\n    ^ ("
+        _ = await session.uiAction(.text(windowID: browser.id, elementID: source.id, value: draft))
+        let rejected = await session.uiAction(.click(windowID: browser.id, elementID: accept.id))
+        let afterFailure = try #require(rejected.windows.first { $0.id == browser.id })
+        let result = try #require(element("evaluationResult", in: afterFailure.content))
+        #expect(result.role == "error")
+        #expect(result.text.contains("Line 2"))
+        #expect(element("methodEditor", in: afterFailure.content)?.text == draft)
+        #expect(afterFailure.browserMethod == method)
+        #expect(rejected.changes.map(\.id) == chosen.changes.map(\.id))
+        #expect(await session.browserBytecode(windowID: browser.id, method: method) == installed)
+        #expect(await session.evaluate("Counter new value").value == "0")
+
+        let corrected = "value\n    ^ 42"
+        _ = await session.uiAction(.text(windowID: browser.id, elementID: source.id, value: corrected))
+        let accepted = await session.uiAction(.click(windowID: browser.id, elementID: accept.id))
+        #expect(accepted.error == nil)
+        #expect(accepted.changes.count == chosen.changes.count + 1)
+        #expect(accepted.changes.last?.source == corrected)
+        #expect(await session.browserBytecode(windowID: browser.id, method: method) == nil)
+        #expect(await session.evaluate("Counter new value").value == "42")
+    }
+
+    @Test func transcriptKeepsAUnicodeSuffixAcrossAnImageRoundTripAndClearsThroughItsMenu() async throws {
+        let session = SmalltalkSession()
+        let initial = await session.snapshot()
+        let initialWindow = try #require(initial.windows.first { $0.kind == .transcript })
+        let initialText = try #require(element("transcriptOutput", in: initialWindow.content)?.text)
+        let firstHalf = await session.evaluate("""
+        chunk := '🌍'.
+        1 to: 13 do: [ :index | chunk := chunk , chunk ].
+        Transcript show: chunk
+        """)
+        try #require(firstHalf.error == nil)
+        let full = await session.evaluate("Transcript show: chunk")
+        let fullText = element("transcriptOutput", in: full.windows.first { $0.kind == .transcript }?.content)?.text
+        #expect(full.error == nil)
+        #expect(fullText?.utf8.count == 65_536)
+
+        let appended = await session.evaluate("Transcript show: '✓'")
+        try #require(appended.error == nil)
+        let restored = try await session.loadImage(session.imageData())
+        let window = try #require(restored.evaluation.windows.first { $0.kind == .transcript })
+        let output = try #require(element("transcriptOutput", in: window.content)?.text)
+        #expect(output.utf8.count == 65_535)
+        #expect(output.first == "🌍")
+        #expect(output.last == "✓")
+        #expect(output.count == 16_384)
+
+        let clear = try #require(window.content?.contextMenuItems?.first { $0.command == "clearTranscript" })
+        let cleared = await session.uiAction(.click(windowID: window.id, elementID: clear.id))
+        #expect(cleared.error == nil)
+        #expect(element("transcriptOutput", in: cleared.windows.first { $0.id == window.id }?.content)?.text == initialText)
+    }
+
     @Test func browserOrganizationEditsSurviveClosingTheBrowserAndLoadingAnImage() async throws {
         let session = SmalltalkSession()
         let snapshot = await session.snapshot()

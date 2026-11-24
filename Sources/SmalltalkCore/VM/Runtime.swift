@@ -205,7 +205,8 @@ final class SmalltalkRuntime {
     var catalogDirty = false
     var evaluatingToolSource = false
     var toolRequests: [NativeToolRequest] = []
-    var objectInspectors: [UUID: ObjectInspectorState] = [:]
+    var objectInspectors: [UUID: Value] = [:]
+    var changesBrowser: Value?
     var recordingChanges = false
     var bootstrapError: String?
     let windowEpoch = UUID().uuidString
@@ -585,13 +586,15 @@ final class SmalltalkRuntime {
     }
 
     func snapshot(value: String? = nil, error: String? = nil, requests: [NativeToolRequest] = []) -> EvaluationResult {
+        var presentationError: String?
+        do { try synchronizeChangesBrowser() } catch { presentationError = error.localizedDescription }
         let infos = classes.values.sorted { $0.name < $1.name }.map { stClass in
             ClassInfo(name: stClass.name, superclass: stClass.superclass?.name, fields: stClass.fields,
                       methods: reflectedMethods(on: stClass, side: .instance), classMethods: reflectedMethods(on: stClass, side: .classSide))
         }
         let bindings = bindingInfos()
         let desktop = projectWindows()
-        return EvaluationResult(value: value, error: error ?? desktop.error, executionError: error, transcript: transcript, classes: infos, bindings: bindings, windows: desktop.windows, activeWindowID: desktop.activeID, windowCommands: projectWindowCommands(desktop.windows, active: desktop.activeID, valid: desktop.error == nil), toolRequests: requests, changes: Array(journal.records.suffix(2000)), savedChangeSequence: journal.savedSequence, changesPath: journal.url?.path)
+        return EvaluationResult(value: value, error: error ?? desktop.error ?? presentationError, executionError: error, transcript: transcript, classes: infos, bindings: bindings, windows: desktop.windows, activeWindowID: desktop.activeID, windowCommands: projectWindowCommands(desktop.windows, active: desktop.activeID, valid: desktop.error == nil), toolRequests: requests, changes: Array(journal.records.suffix(2000)), savedChangeSequence: journal.savedSequence, changesPath: journal.url?.path)
     }
     func bindingInfos() -> [BindingInfo] {
         return globals.compactMap { name, value -> BindingInfo? in

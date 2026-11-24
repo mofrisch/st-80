@@ -1,6 +1,6 @@
 import Foundation
 
-public enum DebuggerCommand: Sendable {
+public enum DebuggerCommand: String, Sendable {
     case stepInto, stepOver, stepOut, resume, stop
 }
 
@@ -29,6 +29,7 @@ public struct DebuggerSnapshot: Sendable {
     public let reason: DebuggerPauseReason
     /// The innermost activation comes first.
     public let frames: [DebuggerFrame]
+    let presentation: DebuggerPresentationDefinition?
 }
 
 public enum DebuggerEvent: Sendable {
@@ -225,7 +226,7 @@ final class DebuggerExecution {
                                  line: frame.instruction?.position.line ?? 1, column: frame.instruction?.position.column ?? 1,
                                  instruction: String((frame.instruction?.operation.disassemblyText ?? "").prefix(240)),
                                  variables: variables(in: context, runtime: runtime))
-        })
+        }, presentation: DebuggerPresentationDefinition(runtime.classes["DebuggerPresentation"]))
     }
 
     private func variables(in context: Context, runtime: SmalltalkRuntime) -> [DebuggerVariable] {

@@ -242,6 +242,17 @@ final class Smalltalk80UITests: XCTestCase {
         source.click()
         source.typeKey("z", modifierFlags: .command)
         wait(for: [expectation(for: originalValue, evaluatedWith: source)], timeout: 5)
+
+        let rejected = "value\n    ^ ("
+        replaceText(in: source, with: rejected)
+        source.typeKey("s", modifierFlags: .command)
+        let rejectedResult = expectation(for: NSPredicate(format: "label == %@", "Error"),
+                                         evaluatedWith: browser.buttons["toolResultToggle"])
+        wait(for: [rejectedResult], timeout: 5)
+        XCTAssertTrue(accept.isEnabled)
+        XCTAssertEqual(source.value as? String, rejected)
+        XCTAssertEqual(bytecode.value as? String, listing)
+
         replaceText(in: source, with: draft)
         source.typeKey("s", modifierFlags: .command)
         let acceptedValue = NSPredicate(format: "value CONTAINS %@", "PUSH_LITERAL 19")
@@ -501,14 +512,7 @@ final class Smalltalk80UITests: XCTestCase {
         replaceText(in: editor, with: "1 / 0.\nCounter new value + 42")
         editor.typeKey(.leftArrow, modifierFlags: [.command, .shift])
 
-        editor.coordinate(withNormalizedOffset: CGVector(dx: 0.45, dy: 0.45)).rightClick()
-        let debug = app.menuItems["editorContext-debugIt"].firstMatch
-        XCTAssertTrue(debug.waitForExistence(timeout: 5), editor.debugDescription)
-        XCTAssertEqual(debug.title, "Debug it")
-        debug.click()
-
-        let debugger = app.windows["debugger"].firstMatch
-        XCTAssertTrue(debugger.waitForExistence(timeout: 5))
+        let debugger = openWorkspaceDebugger(in: app, editor: editor)
         let title = debugger.staticTexts["debuggerFrameTitle"]
         let workspaceFrame = NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Workspace", "Workspace")
         wait(for: [expectation(for: workspaceFrame, evaluatedWith: title)], timeout: 5)
@@ -530,8 +534,78 @@ final class Smalltalk80UITests: XCTestCase {
         }
         XCTAssertTrue(initializeFrame.evaluate(with: title), debugger.debugDescription)
 
+        let workspaceRow = debugger.staticTexts["Workspace"].firstMatch
+        XCTAssertTrue(workspaceRow.waitForExistence(timeout: 5))
+        workspaceRow.click()
+        wait(for: [expectation(for: workspaceFrame, evaluatedWith: title)], timeout: 5)
+
         debugger.buttons["debuggerContinue"].click()
         wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: debugger)], timeout: 5)
+        XCTAssertTrue(workspace.staticTexts["42"].waitForExistence(timeout: 5))
+        XCTAssertFalse(workspace.staticTexts["ERROR"].exists)
+    }
+
+    func testWorkspaceDebuggerCanStopWhenItsSmalltalkPresentationFails() {
+        let app = launchFreshApp()
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        let execute = workspace.buttons["executeButton"]
+        replaceText(in: editor, with: """
+        stopProbe := 0.
+        DebuggerPresentation compileClass: 'contentFor: stack frame: frame error: error phase: phase ^ nil'.
+        #debuggerPresentationChanged
+        """)
+        execute.click()
+        XCTAssertTrue(workspace.staticTexts["#debuggerPresentationChanged"].waitForExistence(timeout: 5))
+
+        replaceText(in: editor, with: "stopProbe := stopProbe + 1")
+        let debugger = openWorkspaceDebugger(in: app, editor: editor)
+        let message = "The debugger presentation must provide a control tree."
+        let error = debugger.staticTexts.matching(NSPredicate(format: "label == %@ OR value == %@", message, message)).firstMatch
+        XCTAssertTrue(error.waitForExistence(timeout: 8), debugger.debugDescription)
+        XCTAssertFalse(debugger.buttons["debuggerContinue"].exists)
+
+        let stop = debugger.buttons["debuggerStop"]
+        XCTAssertTrue(stop.isEnabled)
+        stop.click()
+        let closed = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: debugger)
+        let ready = expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: execute)
+        wait(for: [closed, ready], timeout: 5)
+        replaceText(in: editor, with: "stopProbe + 42")
+        execute.click()
+        XCTAssertTrue(workspace.staticTexts["42"].waitForExistence(timeout: 5))
+        XCTAssertFalse(workspace.staticTexts["ERROR"].exists)
+    }
+
+    func testWorkspaceDebuggerShowsTheFailureAndClosesWithoutResuming() {
+        let app = launchFreshApp()
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        let execute = workspace.buttons["executeButton"]
+        replaceText(in: editor, with: "failureProbe := 41.\n1 / 0.\nfailureProbe := 0")
+
+        let debugger = openWorkspaceDebugger(in: app, editor: editor)
+        let resume = debugger.buttons["debuggerContinue"]
+        XCTAssertTrue(resume.waitForExistence(timeout: 8))
+        resume.click()
+
+        let fault = debugger.staticTexts["debuggerError"]
+        let divisionError = NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Division by zero", "Division by zero")
+        wait(for: [expectation(for: divisionError, evaluatedWith: fault)], timeout: 5)
+        XCTAssertFalse(resume.isEnabled)
+        XCTAssertFalse(debugger.buttons["debuggerStepInto"].isEnabled)
+        XCTAssertFalse(debugger.buttons["debuggerStepOver"].isEnabled)
+        XCTAssertFalse(debugger.buttons["debuggerStepOut"].isEnabled)
+        let close = debugger.buttons["debuggerStop"]
+        XCTAssertEqual(close.label, "Close")
+        XCTAssertTrue(close.isEnabled)
+        close.click()
+
+        let closed = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: debugger)
+        let ready = expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: execute)
+        wait(for: [closed, ready], timeout: 5)
+        replaceText(in: editor, with: "failureProbe + 1")
+        execute.click()
         XCTAssertTrue(workspace.staticTexts["42"].waitForExistence(timeout: 5))
         XCTAssertFalse(workspace.staticTexts["ERROR"].exists)
     }
@@ -698,6 +772,92 @@ final class Smalltalk80UITests: XCTestCase {
         reopenedSecondWindow.buttons["executeButton"].click()
         XCTAssertTrue(reopenedSecondWindow.staticTexts["107"].waitForExistence(timeout: 5))
         XCTAssertFalse(reopenedSecondWindow.staticTexts["ERROR"].exists)
+    }
+
+    func testRejectedImagePreservesTheLiveSessionAndResetStartsFresh() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let badImage = directory.appendingPathComponent("Rejected.stimage")
+        try Data(#"{"format":"st80-image","version":0}"#.utf8).write(to: badImage)
+        let app = launchFreshApp()
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        let initialDraft = try XCTUnwrap(editor.value as? String)
+        replaceText(in: editor, with: "resetProbe := Counter new add: 41; yourself. resetProbe value")
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(workspace.staticTexts["41"].waitForExistence(timeout: 5))
+
+        let draft = "resetProbe value + 1"
+        replaceText(in: editor, with: draft)
+        openImage(badImage, in: app)
+        XCTAssertTrue(app.staticTexts["Could not load the image"].waitForExistence(timeout: 5))
+        let reason = "Image version 0 is unsupported."
+        let detail = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", reason, reason)).firstMatch
+        XCTAssertTrue(detail.exists)
+        app.buttons["OK"].click()
+        XCTAssertEqual(editor.value as? String, draft)
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(workspace.staticTexts["42"].waitForExistence(timeout: 5))
+
+        editor.typeKey("i", modifierFlags: .command)
+        let inspector = app.windows["objectInspector"].firstMatch
+        XCTAssertTrue(inspector.waitForExistence(timeout: 5))
+        app.menuBars.menuBarItems["Smalltalk"].click()
+        app.menuItems["Reset Session"].click()
+        let fresh = expectation(for: NSPredicate(format: "value == %@", initialDraft), evaluatedWith: editor)
+        let closed = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: inspector)
+        wait(for: [fresh, closed], timeout: 10)
+        replaceText(in: editor, with: "resetProbe")
+        workspace.buttons["executeButton"].click()
+        let unknownBinding = expectation(for: NSPredicate(format: "label == %@", "Error"),
+                                         evaluatedWith: workspace.buttons["toolResultToggle"])
+        let message = "Unknown variable: resetProbe"
+        let missingProbe = workspace.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", message, message)).firstMatch
+        wait(for: [unknownBinding], timeout: 5)
+        XCTAssertTrue(missingProbe.waitForExistence(timeout: 5))
+    }
+
+    func testWorkspaceSavesAndOpensUnicodeSourceInAnIndependentWindow() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("Workspace.st")
+        let app = launchFreshApp()
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        let source = "\"Café 🛠\"\nTranscript show: 'Grüße 🌍'; cr.\n6 * 7\n"
+        replaceText(in: editor, with: source)
+        editor.typeKey("s", modifierFlags: .command)
+        let panelOK = app.buttons["OKButton"]
+        XCTAssertTrue(panelOK.waitForExistence(timeout: 5))
+        navigateFilePanel(in: app, to: directory.path)
+        panelOK.click()
+        let saved = expectation(for: NSPredicate { _, _ in FileManager.default.fileExists(atPath: file.path) }, evaluatedWith: nil)
+        wait(for: [saved], timeout: 5)
+        XCTAssertEqual(try Data(contentsOf: file), Data(source.utf8))
+
+        let unsaved = "'Different draft'"
+        replaceText(in: editor, with: unsaved)
+        editor.typeKey("o", modifierFlags: .command)
+        XCTAssertTrue(panelOK.waitForExistence(timeout: 5))
+        navigateFilePanel(in: app, to: file.path)
+        panelOK.click()
+        let reopened = app.windows["toolWindow-4"]
+        let reopenedEditor = reopened.textViews["workspaceEditor"]
+        let loaded = expectation(for: NSPredicate(format: "value == %@", source), evaluatedWith: reopenedEditor)
+        wait(for: [loaded], timeout: 10)
+        XCTAssertEqual(editor.value as? String, unsaved)
+
+        reopened.buttons["executeButton"].click()
+        XCTAssertTrue(reopened.staticTexts["42"].waitForExistence(timeout: 5))
+        let transcript = app.windows["toolWindow-3"].staticTexts["transcriptOutput"]
+        let printed = NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Grüße 🌍", "Grüße 🌍")
+        wait(for: [expectation(for: printed, evaluatedWith: transcript)], timeout: 5)
+        app.menuBars.menuBarItems["Smalltalk"].click()
+        app.menuItems["Clear Transcript"].click()
+        wait(for: [expectation(for: NSCompoundPredicate(notPredicateWithSubpredicate: printed), evaluatedWith: transcript)], timeout: 5)
+        XCTAssertTrue(transcript.exists)
+        XCTAssertEqual(editor.value as? String, unsaved)
     }
 
     func testSmalltalkFormFlushesInputsBeforeClickAndSurvivesImageRelaunch() throws {
@@ -982,6 +1142,23 @@ final class Smalltalk80UITests: XCTestCase {
         app.launchEnvironment["ST80_PREFERENCES_SUITE"] = "dev.moritz.Smalltalk80UITests.\(UUID().uuidString)"
         app.launch()
         return app
+    }
+
+    private func temporaryDirectory() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("st80-ui-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    private func openWorkspaceDebugger(in app: XCUIApplication, editor: XCUIElement) -> XCUIElement {
+        editor.coordinate(withNormalizedOffset: CGVector(dx: 0.45, dy: 0.45)).rightClick()
+        let debug = app.menuItems["editorContext-debugIt"].firstMatch
+        XCTAssertTrue(debug.waitForExistence(timeout: 5), editor.debugDescription)
+        XCTAssertEqual(debug.title, "Debug it")
+        debug.click()
+        let debugger = app.windows["debugger"].firstMatch
+        XCTAssertTrue(debugger.waitForExistence(timeout: 5))
+        return debugger
     }
 
     private func replaceText(in editor: XCUIElement, with source: String) {

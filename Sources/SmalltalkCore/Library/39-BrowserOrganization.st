@@ -124,11 +124,11 @@ BrowserOrganization compile: 'categoryOf: name
 BrowserOrganization compile: 'defaultCategoryOf: name
     (#(''Object'' ''Class'' ''UndefinedObject'' ''Boolean'' ''True'' ''False'' ''Number'' ''Integer'' ''SmallInteger'' ''String'' ''Symbol'' ''Array'' ''BlockClosure'') includes: name) ifTrue: [ ^ ''Kernel'' ].
     (#(''STCompilerList'' ''STScanner'' ''STSourceScanner'' ''STCompiler'') includes: name) ifTrue: [ ^ ''Compiler'' ].
-    (#(''Transcript'' ''TranscriptModel'' ''ToolServices'' ''DevelopmentWindow'' ''WorkspaceWindow'' ''BrowserWindow'' ''TranscriptWindow''
+    (#(''Transcript'' ''TranscriptModel'' ''ToolServices'' ''DevelopmentWindow'' ''ChangesBrowser'' ''InspectorModel'' ''InspectorPresentation'' ''DebuggerPresentation'' ''WorkspaceWindow'' ''BrowserWindow'' ''TranscriptWindow''
        ''BrowserGroup'' ''BrowserGrouping'' ''BrowserOrganization'' ''BrowserOrganizationForm'') includes: name) ifTrue: [ ^ ''Tools'' ].
     (#(''Model'' ''Controller'' ''UIBinding'' ''SystemWindow'' ''DesktopModel'' ''DisplayScreen'' ''DesktopManager''
        ''UIElement'' ''UILabel'' ''UIButton'' ''UITextField'' ''UIContainer'' ''UIColumn'' ''UIRow'' ''UISpacer''
-       ''UIWindow'' ''UICodeEditor'' ''UIList'' ''UISplit'' ''UIScroll'' ''UIMenu'' ''UIDivider'') includes: name)
+       ''UIWindow'' ''UICodeEditor'' ''UIList'' ''UIHistoryList'' ''UISourceView'' ''UIValueTable'' ''UISplit'' ''UIScroll'' ''UIMenu'' ''UIDivider'') includes: name)
         ifTrue: [ ^ ''Interface'' ].
     name = ''Counter'' ifTrue: [ ^ ''Examples'' ].
     ^ ''User Classes'''.

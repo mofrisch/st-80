@@ -78,6 +78,26 @@ struct BytecodeTests {
         compare("6 * 7", expected: "42", using: modes)
     }
 
+    @Test func bytecodePreservesArgumentOrderAndSkipsLaterArgumentsOnError() {
+        let modes = interpreters()
+        compare("""
+        Counter compile: 'sum: left with: right ^ left + right'.
+        order := 0.
+        receiver := [ order := order * 10 + 1. Counter new ].
+        first := [ order := order * 10 + 2. 40 ].
+        second := [ order := order * 10 + 3. 2 ].
+        answer := receiver value sum: first value with: second value.
+        (Array new: 2) at: 1 put: answer; at: 2 put: order; yourself
+        """, expected: "#(42 123)", using: modes)
+
+        let failing = "order := 0. receiver value sum: (first value / 0) with: second value"
+        let expected = modes.reference.run(failing)
+        let actual = modes.bytecode.run(failing)
+        #expect(actual.executionError?.contains("Division by zero") == true)
+        #expect(actual.executionError == expected.executionError)
+        compare("order", expected: "12", using: modes)
+    }
+
     @Test func collectionKeepsPendingBytecodeReceiversAndArgumentsAlive() {
         let runtime = SmalltalkRuntime()
         let result = runtime.run("""

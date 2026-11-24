@@ -1,7 +1,27 @@
 import Foundation
 
 public enum UIElementKind: String, Sendable {
-    case label, button, textField, codeEditor, list, column, row, split, scroll, menu, spacer, divider
+    case label, button, textField, codeEditor, sourceView, list, historyList, valueTable, column, row, split, scroll, menu, spacer, divider
+}
+
+public struct UIValueRow: Identifiable, Sendable {
+    public let id: String
+    public let name: String
+    public let value: String
+    public let className: String
+}
+
+public struct UIValueTableInfo: Sendable {
+    public let headings: (name: String, value: String, className: String)
+    public let rowIdentifierPrefix: String
+    public let rows: [UIValueRow]
+}
+
+public struct UIHistoryEntry: Identifiable, Sendable {
+    public let id: String
+    public let title: String
+    public let subtitle: String
+    public let badge: String
 }
 
 /// Immutable native projection. Smalltalk objects and blocks stay on the worker.
@@ -25,8 +45,13 @@ public struct UIElementInfo: Identifiable, Sendable {
     public let maximumHeight: Int64?
     public let readOnly: Bool
     public let items: [String]
+    public let historyEntries: [UIHistoryEntry]
+    public let historyRowIdentifierPrefix: String?
+    public let sourcePosition: (line: Int, column: Int)?
     public let selection: String?
     public let command: String?
+    public let icon: String?
+    public let table: UIValueTableInfo?
     public let selectionSource: String?
     /// A native context menu projected from a Smalltalk control.
     public let contextMenuItems: [UIElementInfo]?
@@ -67,8 +92,8 @@ extension SmalltalkRuntime {
         var seen: Set<ObjectIdentifier> = []
         var controls: [String: ProjectedControl] = [:]
         let kinds: [(String, UIElementKind)] = [
-            ("UILabel", .label), ("UIButton", .button), ("UICodeEditor", .codeEditor),
-            ("UITextField", .textField), ("UIList", .list), ("UIColumn", .column), ("UIRow", .row),
+            ("UILabel", .label), ("UIButton", .button), ("UICodeEditor", .codeEditor), ("UISourceView", .sourceView),
+            ("UITextField", .textField), ("UIValueTable", .valueTable), ("UIHistoryList", .historyList), ("UIList", .list), ("UIColumn", .column), ("UIRow", .row),
             ("UISplit", .split), ("UIScroll", .scroll), ("UIMenu", .menu), ("UISpacer", .spacer), ("UIDivider", .divider),
         ]
         func project(_ value: Value, depth: Int, parentEnabled: Bool) throws -> UIElementInfo {
@@ -79,9 +104,9 @@ extension SmalltalkRuntime {
                   case .boolean(let visible)? = object.fields["visible"] else {
                 throw SmalltalkError("Invalid interface. Expected a tree of UI elements with at most 512 elements, a depth of 16, and no cycles or reused elements.")
             }
-            func string(_ name: String) throws -> String {
-                guard case .string(let text)? = object.fields[name], text.utf8.count <= 65_536 else {
-                    throw SmalltalkError("Invalid interface. \(object.stClass.name)>>\(name) must be a string of at most 64 KiB.")
+            func string(_ name: String, maximum: Int = 65_536) throws -> String {
+                guard case .string(let text)? = object.fields[name], text.utf8.count <= maximum else {
+                    throw SmalltalkError("Invalid interface. \(object.stClass.name)>>\(name) must be a string of at most \(maximum / 1024) KiB.")
                 }
                 return text
             }
@@ -104,11 +129,15 @@ extension SmalltalkRuntime {
             var children: [UIElementInfo] = []
             var readOnly = false
             var items: [String] = []
+            var table: UIValueTableInfo?
+            var historyEntries: [UIHistoryEntry] = []
+            var historyRowIdentifierPrefix: String?
+            var sourcePosition: (line: Int, column: Int)?
             var selectionSource: String?
             var selection: String?
             var contextMenuItems: [UIElementInfo]?
             switch kind {
-            case .label: text = try string("text")
+            case .label: text = try string("text", maximum: symbolField("role") == "document" ? 262_144 : 65_536)
             case .button:
                 text = try string("title")
                 label = field("shortcutHint") ?? ""
@@ -137,6 +166,13 @@ extension SmalltalkRuntime {
                     liveInput = true
                 default: throw SmalltalkError("Invalid text input controller.")
                 }
+            case .sourceView:
+                text = try string("text", maximum: 262_144)
+                guard case .integer(let line)? = object.fields["line"], line > 0,
+                      case .integer(let column)? = object.fields["column"], column > 0 else {
+                    throw SmalltalkError("A source view requires a positive line and column.")
+                }
+                sourcePosition = (Int(line), Int(column))
             case .list:
                 guard case .array(let values)? = object.fields["items"], values.elements.count <= 1024 else {
                     throw SmalltalkError("A list requires an array of at most 1,024 items.")
@@ -151,6 +187,52 @@ extension SmalltalkRuntime {
                     throw SmalltalkError("List items must be unique.")
                 }
                 if let selected = field("selection"), items.contains(selected) { selection = selected }
+            case .historyList:
+                historyRowIdentifierPrefix = field("rowIdentifierPrefix")
+                guard case .array(let source)? = object.fields["entries"], source.elements.count <= 2001 else {
+                    throw SmalltalkError("A history list requires an array of at most 2,001 entries.")
+                }
+                historyEntries = try source.elements.map { value in
+                    guard case .array(let row) = value, row.elements.count == 4,
+                          case .string(let key) = row.elements[0], case .string(let title) = row.elements[1],
+                          case .string(let subtitle) = row.elements[2], case .string(let badge) = row.elements[3],
+                          [key, title, subtitle, badge].allSatisfy({ $0.utf8.count <= 4_096 }) else {
+                        throw SmalltalkError("Invalid history list entry.")
+                    }
+                    return UIHistoryEntry(id: key, title: title, subtitle: subtitle, badge: badge)
+                }
+                let keys = Set(historyEntries.map(\.id))
+                guard keys.count == historyEntries.count else {
+                    throw SmalltalkError("History list keys must be unique.")
+                }
+                if let selected = field("selection"), keys.contains(selected) { selection = selected }
+            case .valueTable:
+                if case .boolean(let value)? = object.fields["readOnly"] { readOnly = value }
+                func strings(_ value: Value?, count: Int) throws -> [String] {
+                    guard case .array(let array)? = value, array.elements.count == count else {
+                        throw SmalltalkError("Invalid value table column count.")
+                    }
+                    return try array.elements.map {
+                        guard case .string(let string) = $0, string.utf8.count <= 4_096 else {
+                            throw SmalltalkError("Value table cells must be strings of at most 4 KiB.")
+                        }
+                        return string
+                    }
+                }
+
+                let headings = try strings(object.fields["headings"], count: 3)
+                guard case .array(let source)? = object.fields["rows"], source.elements.count <= 4_096 else {
+                    throw SmalltalkError("A value table requires an array of at most 4,096 rows.")
+                }
+                let rows = try source.elements.map { value in
+                    let cells = try strings(value, count: 4)
+                    return UIValueRow(id: cells[0], name: cells[1], value: cells[2], className: cells[3])
+                }
+                guard Set(rows.map(\.id)).count == rows.count else {
+                    throw SmalltalkError("Value table row identifiers must be unique.")
+                }
+                table = UIValueTableInfo(headings: (headings[0], headings[1], headings[2]),
+                                         rowIdentifierPrefix: try string("rowIdentifierPrefix"), rows: rows)
             case .column, .row, .split, .scroll, .menu:
                 if kind == .menu { text = try string("title") }
                 guard case .array(let array)? = object.fields["children"], array.elements.count <= 512,
@@ -185,8 +267,10 @@ extension SmalltalkRuntime {
                                  accessibilityID: field("identifier"), role: symbolField("role"), visible: visible,
                                  minimumWidth: dimension("minWidth"), maximumWidth: dimension("maxWidth"),
                                  minimumHeight: dimension("minHeight"), maximumHeight: dimension("maxHeight"),
-                                 readOnly: readOnly, items: items, selection: selection, command: symbolField("command"),
-                                 selectionSource: selectionSource, contextMenuItems: contextMenuItems)
+                                 readOnly: readOnly, items: items, historyEntries: historyEntries,
+                                 historyRowIdentifierPrefix: historyRowIdentifierPrefix, sourcePosition: sourcePosition,
+                                 selection: selection, command: symbolField("command"),
+                                 icon: field("icon"), table: table, selectionSource: selectionSource, contextMenuItems: contextMenuItems)
         }
         let root = try project(value, depth: 0, parentEnabled: true)
         return (root, controls)
@@ -196,7 +280,11 @@ extension SmalltalkRuntime {
         guard isUIClass(object.stClass, named: "UIWindow"), let content = object.fields["content"] else {
             throw SmalltalkError("A custom window must be an instance of UIWindow or one of its subclasses.")
         }
-        return try projectInterface(content).root
+        return try projectContent(content)
+    }
+
+    func projectContent(_ content: Value) throws -> UIElementInfo? {
+        try projectInterface(content).root
     }
 
     func performUIAction(_ action: UIAction) -> EvaluationResult {
@@ -210,7 +298,7 @@ extension SmalltalkRuntime {
             // A callback from a removed control/window or a previous image must
             // never be retargeted to a different object at the same tree position.
             guard let window = projectedWindow(withID: windowID),
-                  let content = window.fields["content"] else { return snapshot() }
+                  let content = changesBrowserContent(for: window) ?? window.fields["content"] else { return snapshot() }
             let projection = try projectInterface(content)
             guard let control = projection.controls[elementID], control.enabled else { return snapshot() }
             let result: Value
@@ -220,7 +308,8 @@ extension SmalltalkRuntime {
                 guard selection.utf8.count <= 65_536 else { throw SmalltalkError("The selection is too large.") }
                 result = try send(.object(control.object), "clickWithSelection:", [.string(selection)])
             case .select(_, _, let value):
-                guard control.kind == .list else { throw SmalltalkError("The element is not a list.") }
+                guard control.kind == .list || control.kind == .historyList || control.kind == .valueTable else { throw SmalltalkError("The element does not support selection.") }
+                if control.kind == .valueTable, case .boolean(true)? = control.object.fields["readOnly"] { return snapshot() }
                 result = try send(.object(control.object), "select:", [value.map(Value.string) ?? .nilValue])
             case .text(_, _, let text):
                 guard control.kind == .textField || control.kind == .codeEditor,

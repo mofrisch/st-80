@@ -7,12 +7,13 @@ struct ValueTable<Row: Identifiable>: View {
     let className: KeyPath<Row, String>
     let identifier: String
     let rowIdentifierPrefix: String
+    var headings: (name: String, value: String, className: String) = ("Name", "Value", "Class")
     var isLoading = false
     var onOpen: ((Row) -> Void)?
 
     var body: some View {
         VStack(spacing: 0) {
-            columns(name: "Name", value: Text("Value"), className: "Class")
+            columns(name: headings.name, value: Text(headings.value), className: headings.className)
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
                 .padding(.vertical, 6)

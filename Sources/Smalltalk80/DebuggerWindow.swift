@@ -59,6 +59,7 @@ final class NativeDebuggerWindow: NSObject, NSWindowDelegate {
         window.delegate = nil
         NSApp.removeWindowsItem(window)
         self.window = nil
+        state?.cancelRendering()
         state = nil
         callback?()
     }
@@ -67,247 +68,100 @@ final class NativeDebuggerWindow: NSObject, NSWindowDelegate {
 @MainActor
 @Observable
 private final class DebuggerWindowState {
-    private(set) var snapshot: DebuggerSnapshot
-    private(set) var isRunning = false
-    private(set) var isStopping = false
-    var selectedFrameID: Int?
+    @ObservationIgnored private var snapshot: DebuggerSnapshot
     @ObservationIgnored private var onCommand: (DebuggerCommand) -> Void
+    @ObservationIgnored private var rendering: Task<Void, Never>?
+    @ObservationIgnored private var selectedFrameID: Int?
+    private(set) var phase = DebuggerPresentationPhase.paused
+    private(set) var content: UIElementInfo?
+    private(set) var presentationError: String?
 
     init(snapshot: DebuggerSnapshot, onCommand: @escaping (DebuggerCommand) -> Void) {
         self.snapshot = snapshot
         self.onCommand = onCommand
-        selectedFrameID = snapshot.frames.first?.id
+        render()
     }
-
-    var selectedFrame: DebuggerFrame? {
-        snapshot.frames.first { $0.id == selectedFrameID } ?? snapshot.frames.first
-    }
-
-    var error: String? {
-        guard case .error(let message) = snapshot.reason else { return nil }
-        return message
-    }
-
-    var canStep: Bool { !isRunning && !isStopping && error == nil }
 
     func update(_ snapshot: DebuggerSnapshot, onCommand: @escaping (DebuggerCommand) -> Void) {
         self.snapshot = snapshot
         self.onCommand = onCommand
-        selectedFrameID = snapshot.frames.first?.id
-        isRunning = false
-        isStopping = false
+        selectedFrameID = nil
+        phase = .paused
+        render()
+    }
+
+    func select(_ control: UIElementInfo, row: String) {
+        guard phase == .paused, control.command == "selectFrame", let id = Int(row),
+              snapshot.frames.contains(where: { $0.id == id }), selectedFrameID != id else { return }
+        selectedFrameID = id
+        render()
+    }
+
+    func click(_ control: UIElementInfo) {
+        guard let command = control.command.flatMap(DebuggerCommand.init(rawValue:)) else { return }
+        perform(command)
     }
 
     func perform(_ command: DebuggerCommand) {
-        switch command {
-        case .stop:
-            guard !isStopping else { return }
-            isStopping = true
-        default:
-            guard canStep else { return }
-            isRunning = true
+        if command == .stop {
+            guard phase != .stopping else { return }
+            phase = .stopping
+        } else {
+            guard phase == .paused else { return }
+            if case .error = snapshot.reason { return }
+            phase = .running
         }
         onCommand(command)
+        render()
+    }
+
+    func cancelRendering() {
+        rendering?.cancel()
+        rendering = nil
+    }
+
+    private func render() {
+        cancelRendering()
+        let snapshot = snapshot
+        let selected = selectedFrameID
+        let phase = phase
+        rendering = Task { [weak self] in
+            do {
+                let content = try await snapshot.controlTree(selectedFrameID: selected, phase: phase)
+                guard !Task.isCancelled else { return }
+                self?.content = content
+                self?.presentationError = nil
+            } catch {
+                guard !Task.isCancelled else { return }
+                self?.presentationError = error.localizedDescription
+            }
+        }
     }
 }
 
 private struct DebuggerView: View {
-    @Bindable var state: DebuggerWindowState
+    let state: DebuggerWindowState
 
     var body: some View {
-        VStack(spacing: 0) {
-            controls
-            Divider()
-            if let error = state.error {
-                Label {
-                    Text(error).textSelection(.enabled)
-                        .accessibilityIdentifier("debuggerError")
-                } icon: {
-                    Image(systemName: "exclamationmark.circle")
-                }
-                .foregroundStyle(.red)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                Divider()
-            }
-            HSplitView {
-                stack.frame(minWidth: 160, idealWidth: 220, maxWidth: 320)
-                if let frame = state.selectedFrame {
-                    VSplitView {
-                        DebuggerSourceView(frame: frame)
-                            .frame(minHeight: 114, idealHeight: 290)
-                        ValueTable(rows: frame.variables, name: \.name, value: \.value, className: \.className,
-                                   identifier: "debuggerVariables", rowIdentifierPrefix: "debuggerVariable")
-                            .frame(minHeight: 95, idealHeight: 150)
-                    }
-                } else {
-                    ContentUnavailableView("No active frame", systemImage: "square.stack")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .disabled(state.isRunning || state.isStopping)
-        }
-        .background(Color(nsColor: .windowBackgroundColor))
-    }
-
-    private var controls: some View {
-        HStack(spacing: 8) {
-            Button("Continue") { state.perform(.resume) }
-                .buttonStyle(.borderedProminent)
-                .disabled(!state.canStep)
-                .accessibilityIdentifier("debuggerContinue")
-            Button("Step Into") { state.perform(.stepInto) }
-                .disabled(!state.canStep)
-                .accessibilityIdentifier("debuggerStepInto")
-            Button("Step Over") { state.perform(.stepOver) }
-                .disabled(!state.canStep)
-                .accessibilityIdentifier("debuggerStepOver")
-            Button("Step Out") { state.perform(.stepOut) }
-                .disabled(!state.canStep || state.snapshot.frames.count < 2)
-                .accessibilityIdentifier("debuggerStepOut")
-            Spacer()
-            if state.isRunning || state.isStopping {
-                Text(state.isStopping ? "Stopping…" : "Running…")
-                    .foregroundStyle(.secondary)
-                    .font(.caption)
-            }
-            Divider().frame(height: 18)
-            Button(state.error == nil ? "Stop" : "Close", role: state.error == nil ? .destructive : nil) {
-                state.perform(.stop)
-            }
-            .disabled(state.isStopping)
-            .accessibilityIdentifier("debuggerStop")
-        }
-        .controlSize(.small)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-    }
-
-    private var stack: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Call Stack")
-                .font(.subheadline.weight(.semibold))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-            Divider()
-            List(selection: $state.selectedFrameID) {
-                ForEach(state.snapshot.frames, id: \.id) { frame in
-                    HStack(spacing: 6) {
-                        Text(frame.title)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Spacer(minLength: 0)
-                        Text(String(frame.line))
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                    }
-                    .tag(frame.id)
-                    .accessibilityIdentifier("debuggerFrame-\(frame.id)")
-                }
-            }
-            .listStyle(.sidebar)
-            .accessibilityIdentifier("debuggerStack")
-        }
-    }
-}
-
-private struct DebuggerSourceView: View {
-    let frame: DebuggerFrame
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(frame.title)
-                    .font(.headline)
-                    .lineLimit(1)
-                    .accessibilityIdentifier("debuggerFrameTitle")
-                Spacer()
-                Text("Line \(frame.line), column \(frame.column)")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .accessibilityIdentifier("debuggerLocation")
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            Divider()
-            if frame.source.isEmpty {
-                Text("Source unavailable")
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+        Group {
+            if let content = state.content, state.presentationError == nil {
+                UIElementView(host: .snapshot(isLoading: false, click: state.click, select: state.select), element: content)
             } else {
-                source
-            }
-            if !frame.instruction.isEmpty {
-                Divider()
-                Text(frame.instruction)
-                    .font(.system(.caption, design: .monospaced))
-                    .lineLimit(1)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 5)
-                    .accessibilityIdentifier("debuggerInstruction")
-            }
-        }
-        .background(Color(nsColor: .textBackgroundColor))
-    }
-
-    private var source: some View {
-        let lines = frame.source.split(omittingEmptySubsequences: false) {
-            $0 == "\n" || $0 == "\r" || $0 == "\r\n"
-        }
-        return ScrollViewReader { reader in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(lines.indices, id: \.self) { index in
-                        sourceLine(lines[index], number: index + 1)
-                            .id(index + 1)
+                // The command path stays usable even if the image's view fails.
+                VStack(alignment: .leading, spacing: 8) {
+                    if let error = state.presentationError {
+                        Text(error).foregroundStyle(.red).textSelection(.enabled)
+                    } else {
+                        ProgressView()
                     }
+                    Button("Stop", role: .destructive) { state.perform(.stop) }
+                        .disabled(state.phase == .stopping)
+                        .accessibilityIdentifier("debuggerStop")
                 }
-            }
-            .accessibilityIdentifier("debuggerSource")
-            .task(id: [frame.id, frame.line]) {
-                guard lines.indices.contains(frame.line - 1) else { return }
-                await Task.yield()
-                guard !Task.isCancelled else { return }
-                reader.scrollTo(frame.line, anchor: .center)
+                .padding(12)
             }
         }
-    }
-
-    private func sourceLine(_ source: Substring, number: Int) -> some View {
-        let current = number == frame.line
-        let width: CGFloat = 42
-        return HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(String(number))
-                .foregroundStyle(.secondary)
-                .frame(width: width, alignment: .trailing)
-                .accessibilityHidden(true)
-            Text(markedSource(source, column: current ? frame.column : nil))
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .font(.system(size: 14, design: .monospaced))
-        .padding(.trailing, 8)
-        .padding(.vertical, 2)
-        .background(current ? Color.accentColor.opacity(0.14) : .clear)
-        .overlay(alignment: .leading) {
-            if current {
-                Rectangle().fill(Color.accentColor).frame(width: 2)
-                    .accessibilityHidden(true)
-                    .allowsHitTesting(false)
-            }
-        }
-    }
-
-    private func markedSource(_ source: Substring, column: Int?) -> AttributedString {
-        var marked = AttributedString(String(source))
-        if let column, column > 0,
-           let start = marked.characters.index(marked.startIndex, offsetBy: column - 1, limitedBy: marked.endIndex),
-           start < marked.endIndex {
-            let end = marked.characters.index(after: start)
-            marked[start..<end].backgroundColor = Color.accentColor.opacity(0.3)
-        }
-        return marked
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 }

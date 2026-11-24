@@ -156,6 +156,29 @@ struct WindowArchitectureTests {
         #expect(stale.windowCommands.acknowledgedEvent == 0)
     }
 
+    @Test func anInvalidNativeEventDoesNotBlockLaterEventsInTheBatch() async throws {
+        let session = SmalltalkSession()
+        let initial = await session.snapshot()
+        let workspace = try #require(initial.windows.first { $0.kind == .workspace })
+        let browser = try #require(initial.windows.first { $0.kind == .browser })
+        let invalid = WindowRect(x: 100, y: 120, width: 0, height: 600)
+        let observed = WindowRect(x: 260, y: 180, width: 720, height: 500)
+        let batch = await session.windowEvents([
+            event(initial, 1, .frame(workspace.id, invalid)),
+            event(initial, 2, .activated(browser.id)),
+            event(initial, 3, .frame(workspace.id, observed)),
+        ])
+        #expect(batch.executionError == "Invalid native window geometry.")
+        #expect(batch.activeWindowID == browser.id)
+        #expect(batch.windows.first { $0.id == workspace.id }?.frame == observed)
+        #expect(batch.windowCommands.acknowledgedEvent == 3)
+
+        let replayed = await session.windowEvents([event(initial, 1, .frame(workspace.id, invalid))])
+        #expect(replayed.error == nil)
+        #expect(replayed.windowCommands.acknowledgedEvent == 3)
+        #expect(replayed.windows.first { $0.id == workspace.id }?.frame == observed)
+    }
+
     @Test func windowAndDesktopModelsNotifyOrdinarySmalltalkObservers() async throws {
         let session = SmalltalkSession()
         let result = await session.evaluate("""

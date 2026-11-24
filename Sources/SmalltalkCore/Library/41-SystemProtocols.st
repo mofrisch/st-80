@@ -119,7 +119,7 @@ BrowserOrganization compile: 'shippedProtocols
             (''Text'' (''text'' ''text:''))))
         (''UIButton'' (
             (''Initialization'' (''initialize''))
-            (''Labeling'' (''title'' ''title:'' ''shortcutHint:''))
+            (''Labeling'' (''title'' ''title:'' ''shortcutHint:'' ''icon:''))
             (''Action Configuration'' (''action:'' ''command:'' ''onClickSend:to:'' ''selectionFrom:action:''))
             (''Activation'' (''click'' ''clickWithSelection:''))))
         (''UITextField'' (
@@ -135,6 +135,16 @@ BrowserOrganization compile: 'shippedProtocols
             (''Initialization'' (''initialize''))
             (''List Contents'' (''items:''))
             (''Selection'' (''selection:'' ''select:'' ''onSelectSend:to:''))))
+        (''UIHistoryList'' (
+            (''Initialization'' (''initialize''))
+            (''History Entries'' (''entries:'' ''includes:'' ''rowIdentifierPrefix:'' ''command:''))))
+        (''UISourceView'' (
+            (''Initialization'' (''initialize''))
+            (''Source'' (''text:'' ''line:column:''))))
+        (''UIValueTable'' (
+            (''Initialization'' (''initialize''))
+            (''Table Contents'' (''rows:'' ''headings:'' ''rowIdentifierPrefix:''))
+            (''Selection'' (''command:'' ''readOnly:''))))
         (''UIContainer'' (
             (''Initialization'' (''initialize''))
             (''Child Management'' (''children'' ''children:'' ''add:'' ''remove:'' ''removeAll''))
@@ -163,6 +173,15 @@ BrowserOrganization compile: 'shippedProtocols
             (''Initialization'' (''initialize''))
             (''Presenting Edits'' (''edit:name:do:'' ''move:choices:selected:do:''))
             (''Applying Edits'' (''chooseDestination:'' ''apply'' ''cancel''))))
+        (''ChangesBrowser'' (
+            (''Layout'' (''initialize'' ''buildContent''))
+            (''History'' (''showClass:selector:side:'' ''allChanges'' ''synchronize'' ''reload''))
+            (''Version Selection'' (''select:'' ''restoreSelected''))))
+        (''InspectorModel'' (
+            (''Opening'' (''openOn:'' ''levelFor:named:'' ''currentLevel''))
+            (''Navigation'' (''dropTo:'' ''back'' ''follow:''))
+            (''Pagination'' (''page:'' ''changePageBy:'' ''pageSize''))
+            (''Snapshot'' (''refresh''))))
         (''DevelopmentWindow'' (
             (''Shared Layout'' (''heading:'' ''caption:'' ''resultPane'' ''toggleResult'' ''resultExpanded:''))
             (''Result Display'' (''result:''))))

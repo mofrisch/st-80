@@ -87,6 +87,7 @@ public struct NativeWindowEvent: Sendable {
 public enum WindowAction: Sendable {
     case showWorkspace
     case arrangeTools
+    case showChanges(className: String?, selector: String?, side: MethodSide)
     case open(ToolKind), close(Int64), activate(Int64), text(Int64, String)
     case frame(Int64, x: Int64, y: Int64, width: Int64, height: Int64)
     case minimize(Int64, Bool)
@@ -127,6 +128,8 @@ extension SmalltalkRuntime {
             case .open(let kind):
                 let selectors: [ToolKind: String] = [.workspace: "openWorkspace", .browser: "openBrowser", .transcript: "openTranscript", .custom: "openWindow", .changes: "openChanges"]
                 _ = try send(desktop, selectors[kind]!, [])
+            case .showChanges(let className, let selector, let side):
+                try showChanges(className: className, selector: selector, side: side, on: desktop)
             case .close(let id): _ = try send(desktop, "requestClose:", [window(id)])
             case .activate(let id): _ = try send(desktop, "activate:", [window(id)])
             case .text(let id, let text): _ = try send(window(id), "text:", [.string(text)])
@@ -256,7 +259,9 @@ extension SmalltalkRuntime {
                 warning = "Desktop contains an invalid window. Check its instance variables."; continue
             }
             var content: UIElementInfo?
-            if object.fields["content"] != nil || kind == .custom {
+            if let changes = changesBrowserContent(for: object) {
+                do { content = try projectContent(changes) } catch { warning = error.localizedDescription }
+            } else if object.fields["content"] != nil || kind == .custom {
                 do { content = try projectWindowContent(object) } catch { warning = error.localizedDescription }
             }
             let method = selectedBrowserMethod(in: object)

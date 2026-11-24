@@ -125,7 +125,7 @@ extension SmalltalkSession {
         Self.baselineVersion(of: selector, in: className, side: side)
     }
 
-    private nonisolated static func baselineVersion(of selector: String, in className: String, side: MethodSide) -> ChangeInfo? {
+    nonisolated static func baselineVersion(of selector: String, in className: String, side: MethodSide) -> ChangeInfo? {
         guard let library = try? SystemLibrary.shared.get(), let source = library.sources[side][className]?[selector] else { return nil }
         let prefix = side == .classSide ? "class-sources:" : "sources:"
         return ChangeInfo(id: "\(prefix)\(className)>>\(selector)", sequence: 0, timestamp: Date(timeIntervalSince1970: 0), kind: .method, className: className, selector: selector, superclass: nil, fields: nil, source: source, methodSide: side == .classSide ? side : nil)
@@ -146,32 +146,52 @@ extension SmalltalkSession {
     public func restoreChange(_ id: String) async -> EvaluationResult {
         await worker.submit { runtime in
             runtime.transcript = ""; runtime.steps = 0; runtime.depth = 0
-            do {
-                let record: ChangeInfo
-                if let saved = runtime.journal.records.first(where: { $0.id == id }) { record = saved }
-                else if id.hasPrefix("sources:") || id.hasPrefix("class-sources:") {
-                    let side: MethodSide = id.hasPrefix("class-sources:") ? .classSide : .instance
-                    let nameAndSelector = id.drop(while: { $0 != ":" }).dropFirst()
-                    guard let separator = nameAndSelector.range(of: ">>"),
-                          let baseline = Self.baselineVersion(of: String(nameAndSelector[separator.upperBound...]), in: String(nameAndSelector[..<separator.lowerBound]), side: side) else {
-                        throw SmalltalkError("This baseline version does not exist.")
-                    }
-                    record = baseline
-                } else { throw SmalltalkError("This source version does not exist.") }
-                switch record.kind {
-                case .method:
-                    guard let stClass = runtime.classes[record.className] else { throw SmalltalkError("Class \(record.className) is missing. Restore its definition first.") }
-                    try runtime.compile(record.source, in: stClass, side: record.side)
-                case .classDefinition:
-                    guard let parent = record.superclass.flatMap({ runtime.classes[$0] }), let fields = record.fields else { throw SmalltalkError("The superclass of the class being restored is missing.") }
-                    if let existing = runtime.classes[record.className] {
-                        try runtime.redefineClass(existing, superclass: parent, fields: fields, source: record.source)
-                    } else {
-                        _ = try runtime.subclass(of: parent, name: record.className, fields: fields.joined(separator: " "))
-                    }
-                }
-                return runtime.finishEvaluation(value: "Restored: \(record.side.displayName(for: record.className))\(record.selector.map { " » \($0)" } ?? "")")
-            } catch { return runtime.finishEvaluation(error: error.localizedDescription) }
+            do { return try runtime.finishEvaluation(value: runtime.restoreVersion(id)) }
+            catch { return runtime.finishEvaluation(error: error.localizedDescription) }
         }
+    }
+}
+
+extension SmalltalkRuntime {
+    func sourceVersion(_ id: String) -> ChangeInfo? {
+        if let saved = journal.records.first(where: { $0.id == id }) { return saved }
+        let side: MethodSide
+        let remainder: Substring
+        if id.hasPrefix("class-sources:") {
+            side = .classSide
+            remainder = id.dropFirst("class-sources:".count)
+        } else if id.hasPrefix("sources:") {
+            side = .instance
+            remainder = id.dropFirst("sources:".count)
+        } else {
+            return nil
+        }
+        guard let delimiter = remainder.range(of: ">>") else { return nil }
+        return SmalltalkSession.baselineVersion(of: String(remainder[delimiter.upperBound...]),
+                                                in: String(remainder[..<delimiter.lowerBound]), side: side)
+    }
+
+    func restoreVersion(_ id: String) throws -> String {
+        guard let record = sourceVersion(id) else {
+            let kind = id.hasPrefix("sources:") || id.hasPrefix("class-sources:") ? "baseline" : "source"
+            throw SmalltalkError("This \(kind) version does not exist.")
+        }
+        switch record.kind {
+        case .method:
+            guard let stClass = classes[record.className] else {
+                throw SmalltalkError("Class \(record.className) is missing. Restore its definition first.")
+            }
+            try compile(record.source, in: stClass, side: record.side)
+        case .classDefinition:
+            guard let parent = record.superclass.flatMap({ classes[$0] }), let fields = record.fields else {
+                throw SmalltalkError("The superclass of the class being restored is missing.")
+            }
+            if let existing = classes[record.className] {
+                try redefineClass(existing, superclass: parent, fields: fields, source: record.source)
+            } else {
+                _ = try subclass(of: parent, name: record.className, fields: fields.joined(separator: " "))
+            }
+        }
+        return "Restored: \(record.side.displayName(for: record.className))\(record.selector.map { " » \($0)" } ?? "")"
     }
 }

@@ -138,7 +138,7 @@ extension SmalltalkRuntime {
             let methodSide = args.count == 3 ? try side(args[2]) : .instance
             toolRequests.append(.showVersions(className: try string(args[0]), selector: try string(args[1]), side: methodSide))
             return .nilValue
-        default: return nil
+        default: return try inspectionPrimitive(selector, args) ?? changesBrowserPrimitive(selector, args)
         }
     }
 

@@ -54,16 +54,6 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "D1DD8B3966EA442D5AB9E9E4";
 		};
-		"42FABE126F0A4A26ECD92256" = {
-			"isa" = "PBXFileReference";
-			"lastKnownFileType" = "sourcecode.swift";
-			"path" = "ChangesView.swift";
-			"sourceTree" = "<group>";
-		};
-		"3FC046D0A808A9A2AD215996" = {
-			"isa" = "PBXBuildFile";
-			"fileRef" = "42FABE126F0A4A26ECD92256";
-		};
 		"B723385D74CB44129972153E" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -158,7 +148,6 @@
 			"isa" = "PBXGroup";
 			"children" = (
 				"D1DD8B3966EA442D5AB9E9E4",
-				"42FABE126F0A4A26ECD92256",
 				"B723385D74CB44129972153E",
 				"DB86519100FECD607F2C06C2",
 				"B57D4FA0FDD0E1FC1C9D8D2E",
@@ -179,7 +168,6 @@
 			"buildActionMask" = "2147483647";
 			"files" = (
 				"07226DF4830160B5221D7445",
-				"3FC046D0A808A9A2AD215996",
 				"0CA934880AB2CC8FA4FF6030",
 				"20AEAF3865E8ABCF63F401C1",
 				"D4B403F4BD9341713D3011D4",
@@ -271,6 +259,16 @@
 			"path" = "Persistence";
 			"sourceTree" = "<group>";
 		};
+		"FDB0093B788E7ECC79E3E11C" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "ChangesBrowser.swift";
+			"sourceTree" = "<group>";
+		};
+		"6D392DBB3174ADFFEEDF76A9" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "FDB0093B788E7ECC79E3E11C";
+		};
 		"E6F920F402BC8BEB3420F831" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -280,6 +278,16 @@
 		"7FBC10CCDCF6467CE568C662" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "E6F920F402BC8BEB3420F831";
+		};
+		"759241880F8E98F43E335599" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "DebuggerPresentation.swift";
+			"sourceTree" = "<group>";
+		};
+		"ADFB3D48E38764BC2545A587" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "759241880F8E98F43E335599";
 		};
 		"7EEFAA2EE3C6314F0DA83F8F" = {
 			"isa" = "PBXFileReference";
@@ -314,7 +322,9 @@
 		"CF4F53C3D5DD196D224DD56C" = {
 			"isa" = "PBXGroup";
 			"children" = (
+				"FDB0093B788E7ECC79E3E11C",
 				"E6F920F402BC8BEB3420F831",
+				"759241880F8E98F43E335599",
 				"7EEFAA2EE3C6314F0DA83F8F",
 				"64E9E9C4191DC340C69685C2",
 				"0F164E19A4F04FB09B50698E",
@@ -502,7 +512,9 @@
 				"344EC10CF527A32745718A25",
 				"E7DDBD907431D35770EB28E5",
 				"8E4416974F7FB9CCDC9A4459",
+				"6D392DBB3174ADFFEEDF76A9",
 				"7FBC10CCDCF6467CE568C662",
+				"ADFB3D48E38764BC2545A587",
 				"6AEE32D77721B485C8E9EF88",
 				"F833CBAC491AC6CBB2166767",
 				"0740159CBBD86BB76459AFF5",

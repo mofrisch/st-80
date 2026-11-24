@@ -68,7 +68,7 @@ UILabel compile: 'text
 UILabel compile: 'text: aString
     text := aString'.
 
-UIElement subclass: #UIButton instanceVariableNames: 'title action command selectionAction selectionSource shortcutHint'.
+UIElement subclass: #UIButton instanceVariableNames: 'title action command selectionAction selectionSource shortcutHint icon'.
 
 UIButton compile: 'initialize
     super initialize.
@@ -83,6 +83,9 @@ UIButton compile: 'shortcutHint: aString
 
 UIButton compile: 'title: aString
     title := aString'.
+
+UIButton compile: 'icon: aString
+    icon := aString'.
 
 UIButton compile: 'action: aBlock
     action := aBlock'.

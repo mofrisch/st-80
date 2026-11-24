@@ -15,6 +15,104 @@ struct SourceJournalTests {
         return await session.evaluate("ToolVM acceptDefinition: '\(definition)' in: \(name) basedOn: (ToolVM definitionOf: \(name))")
     }
 
+    private func element(_ id: String, in root: UIElementInfo?) -> UIElementInfo? {
+        guard let root else { return nil }
+        if root.accessibilityID == id { return root }
+        return root.children.lazy.compactMap { element(id, in: $0) }.first
+    }
+
+    @Test func changesWindowFiltersSelectsAndRestoresThroughItsControls() async throws {
+        let session = SmalltalkSession()
+        #expect(await session.compile("value ^ 51", in: "Counter").executionError == nil)
+        #expect(await session.compile("value ^ 67", in: "Counter", side: .classSide).executionError == nil)
+        let opened = await session.windowAction(.showChanges(className: "Counter", selector: "value", side: .instance))
+        #expect(opened.error == nil)
+        let window = try #require(opened.windows.first { $0.kind == .changes })
+
+        let list = try #require(element("changesList", in: window.content))
+        #expect(list.historyEntries.map(\.title) == ["Counter » value", "Counter » value"])
+        #expect(list.historyEntries.first?.badge == "After Image Checkpoint")
+        #expect(list.historyEntries.last?.subtitle == "Shipped Baseline")
+        let baseline = try #require(list.historyEntries.last)
+        let selected = await session.uiAction(.select(windowID: window.id, elementID: list.id, value: baseline.id))
+        let selectedContent = selected.windows.first { $0.id == window.id }?.content
+        let source = try #require(element("changeSource", in: selectedContent))
+        #expect(source.children.first?.text == "value\n    ^ count")
+        let restore = try #require(element("restoreChangeButton", in: selectedContent))
+        #expect(restore.enabled)
+
+        let restored = await session.uiAction(.click(windowID: window.id, elementID: restore.id))
+        let restoredContent = restored.windows.first { $0.id == window.id }?.content
+        #expect(element("evaluationResult", in: restoredContent)?.text == "Restored: Counter » value")
+        #expect(await session.evaluate("Counter new value").value == "0")
+        #expect(await session.evaluate("Counter value").value == "67")
+
+        let all = try #require(element("allChangesButton", in: restoredContent))
+        let cleared = await session.uiAction(.click(windowID: window.id, elementID: all.id))
+        let allContent = cleared.windows.first { $0.id == window.id }?.content
+        #expect(element("changesList", in: allContent)?.historyEntries.contains { $0.title == "Counter class » value" } == true)
+        #expect(element("restoreChangeButton", in: allContent)?.enabled == false)
+    }
+
+    @Test func changesWindowKeepsItsSelectionAcrossEditsAndImageCheckpoints() async throws {
+        let folder = try directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let image = folder.appendingPathComponent("HistorySelection.stimage")
+        let session = SmalltalkSession()
+        let initialSource = "value ^ 41"
+        let initial = await session.compile(initialSource, in: "Counter")
+        try #require(initial.executionError == nil)
+
+        let opened = await session.windowAction(.showChanges(className: "Counter", selector: "value", side: .instance))
+        let window = try #require(opened.windows.first { $0.kind == .changes })
+
+        func control(_ id: String, in result: EvaluationResult) throws -> UIElementInfo {
+            try #require(element(id, in: result.windows.first { $0.id == window.id }?.content))
+        }
+
+        let list = try control("changesList", in: opened)
+        let record = try #require(list.historyEntries.first)
+        #expect(record.badge == "After Image Checkpoint")
+        let selected = await session.uiAction(.select(windowID: window.id, elementID: list.id, value: record.id))
+        #expect(try control("changeSource", in: selected).children.first?.text == initialSource)
+
+        let changed = await session.compile("value ^ 42", in: "Counter")
+        try #require(changed.executionError == nil)
+        let refreshed = try control("changesList", in: changed)
+        #expect(refreshed.selection == record.id)
+        #expect(refreshed.historyEntries.count == 3)
+        #expect(refreshed.historyEntries[1].id == record.id)
+        #expect(try control("changeSource", in: changed).children.first?.text == initialSource)
+
+        try await session.saveImage(to: image, workspace: "", transcript: "")
+        let afterSave = await session.evaluate("nil")
+        let saved = try control("changesList", in: afterSave)
+        #expect(saved.selection == record.id)
+        #expect(saved.historyEntries.allSatisfy { $0.badge.isEmpty })
+        #expect(try control("changeSource", in: afterSave).children.first?.text == initialSource)
+        #expect(try control("restoreChangeButton", in: afterSave).enabled)
+    }
+
+    @Test func changesWindowSupportsTheFullJournalHistoryLimit() async throws {
+        let session = SmalltalkSession()
+        await session.worker.submit { runtime in
+            let time = Date(timeIntervalSince1970: 1)
+            let entries = (1...2000).map { sequence in
+                ChangeInfo(id: String(sequence), sequence: Int64(sequence), timestamp: time, kind: .method,
+                           className: "Counter", selector: "value", superclass: nil, fields: nil,
+                           source: "value ^ 42", methodSide: nil)
+            }
+            runtime.journal = SourceJournal(records: entries)
+        }
+        let opened = await session.windowAction(.showChanges(className: "Counter", selector: "value", side: .instance))
+        #expect(opened.error == nil)
+        let root = try #require(opened.windows.first { $0.kind == .changes }?.content)
+        let list = try #require(root.children.first { $0.kind == .split }?.children.first)
+        #expect(list.historyEntries.count == 2001)
+        #expect(list.historyEntries.first?.id == "2000")
+        #expect(list.historyEntries.last?.subtitle == "Shipped Baseline")
+    }
+
     @Test func superclassChangesProtectRetainedClassBlocksAndBothImageFormats() async throws {
         let folder = try directory()
         defer { try? FileManager.default.removeItem(at: folder) }

@@ -198,6 +198,7 @@ extension SmalltalkRuntime {
     private var garbageCollectionRoots: [HeapReference] {
         var roots = globals.values.compactMap(HeapReference.init)
         roots.append(contentsOf: inspectorRoots.lazy.compactMap(HeapReference.init))
+        if let changesBrowser, let root = HeapReference(changesBrowser) { roots.append(root) }
         roots.append(contentsOf: evaluationRoots.compactMap(HeapReference.init))
         roots.append(contentsOf: bytecodeOperands.lazy.compactMap { HeapReference($0.value) })
         for activation in activations {

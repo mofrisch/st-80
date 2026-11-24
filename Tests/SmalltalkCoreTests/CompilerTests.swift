@@ -64,6 +64,27 @@ struct CompilerTests {
         #expect(await session.evaluate("Counter new answer").value == "42")
     }
 
+    @Test func mixedLineEndingsAndUnicodeKeepTheirPositionsAcrossAnImageRoundTrip() async throws {
+        let session = SmalltalkSession()
+        let comment = "\"Café 🛠\""
+        let source = "lineProbe\r\n    \(comment)\r    ^ missingLineProbe\n"
+        let compiled = await session.compile(source, in: "Counter")
+        try #require(compiled.executionError == nil)
+        let original = await session.evaluate("Counter new lineProbe")
+        #expect(original.executionError == "Line 3, column 7: Unknown variable: missingLineProbe")
+
+        let reopened = try await session.loadImage(session.imageData())
+        let counter = try #require(reopened.evaluation.classes.first { $0.name == "Counter" })
+        let method = try #require(counter.methods.first { $0.selector == "lineProbe" })
+        #expect(method.source.utf8.elementsEqual(source.utf8))
+        let highlights = await session.sourceHighlights(method.source)
+        let nativeSource = method.source as NSString
+        let substrings = highlights.map { nativeSource.substring(with: NSRange($0.range)) }
+        #expect(substrings == [comment, "^"])
+        let restored = await session.evaluate("Counter new lineProbe")
+        #expect(restored.executionError == original.executionError)
+    }
+
     @Test func imageLoadRejectsOldVersionsBeforeReplacingTheSession() async throws {
         let session = SmalltalkSession()
         _ = await session.evaluate("kept := 42")

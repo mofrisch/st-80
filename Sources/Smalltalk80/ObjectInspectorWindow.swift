@@ -90,8 +90,9 @@ final class NativeInspectorWindows {
 private struct ObjectInspectorView: View {
     let session: SmalltalkSession
     @State private var snapshot: InspectorSnapshot
-    @State private var isLoading = false
-    @State private var isAvailable = true
+    @State private var content: UIElementInfo?
+    @State private var isLoading = true
+    @State private var errorMessage: String?
 
     init(snapshot: InspectorSnapshot, session: SmalltalkSession) {
         self.session = session
@@ -99,115 +100,57 @@ private struct ObjectInspectorView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            navigation
-            if isAvailable {
-                objectSummary
-                if !snapshot.rows.isEmpty {
-                    Divider()
-                    ValueTable(rows: snapshot.rows, name: \.name, value: \.preview, className: \.className,
-                               identifier: "inspectorMembers", rowIdentifierPrefix: "inspectorRow",
-                               isLoading: isLoading) { row in
-                        perform(.follow(row.id))
-                    }
-                    .id([String(snapshot.page)] + snapshot.path)
-                }
-                if snapshot.pageCount > 1 {
-                    Divider()
-                    pagination
-                }
+        Group {
+            if let errorMessage {
+                ContentUnavailableView(errorMessage, systemImage: "magnifyingglass")
+            } else if let content {
+                UIElementView(host: .snapshot(isLoading: isLoading, click: click, select: select), element: content)
             } else {
-                Divider()
-                ContentUnavailableView("Inspection ended", systemImage: "magnifyingglass")
+                ProgressView()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color(nsColor: .windowBackgroundColor))
+        .task { await present(snapshot) }
     }
 
-    private var navigation: some View {
-        HStack(spacing: 10) {
-            Button { perform(.back) } label: { Label("Back", systemImage: "chevron.left") }
-                .disabled(!isAvailable || isLoading || snapshot.path.count < 2)
-                .accessibilityIdentifier("inspectorBack")
-            if isAvailable {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(snapshot.className)
-                        .font(.headline)
-                        .lineLimit(1)
-                        .accessibilityLabel(Text(snapshot.className))
-                        .accessibilityAddTraits(.isHeader)
-                        .accessibilityIdentifier("inspectorClass")
-                    if snapshot.path.count > 1 {
-                        Text(snapshot.path.joined(separator: " › "))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.head)
-                    }
-                }
-            }
-            Spacer()
-            Button { perform(.refresh) } label: { Label("Refresh", systemImage: "arrow.clockwise") }
-                .disabled(!isAvailable || isLoading)
-                .accessibilityIdentifier("inspectorRefresh")
+    private func click(_ control: UIElementInfo) {
+        switch control.command {
+        case "inspectBack": perform(.back)
+        case "inspectRefresh": perform(.refresh)
+        case "inspectPreviousPage": perform(.previousPage)
+        case "inspectNextPage": perform(.nextPage)
+        default: break
         }
-        .controlSize(.small)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
     }
 
-    private var objectSummary: some View {
-        Group {
-            if snapshot.rows.isEmpty {
-                ScrollView { summaryText }
-            } else {
-                summaryText.lineLimit(2)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-    }
-
-    private var summaryText: some View {
-        Text(snapshot.summary)
-            .font(.system(size: 13, design: .monospaced))
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityLabel(Text(snapshot.summary))
-            .accessibilityIdentifier("inspectorSummary")
-    }
-
-    private var pagination: some View {
-        HStack {
-            Button("Previous") { perform(.page(snapshot.page - 1)) }
-                .disabled(isLoading || snapshot.page == 0)
-                .accessibilityIdentifier("inspectorPreviousPage")
-            Spacer()
-            Text("\(snapshot.page + 1) of \(snapshot.pageCount)")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .accessibilityIdentifier("inspectorPage")
-            Spacer()
-            Button("Next") { perform(.page(snapshot.page + 1)) }
-                .disabled(isLoading || snapshot.page >= snapshot.pageCount - 1)
-                .accessibilityIdentifier("inspectorNextPage")
-        }
-        .controlSize(.small)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+    private func select(_ control: UIElementInfo, row: String) {
+        guard control.command == "inspectMember", let index = Int(row), snapshot.rows.indices.contains(index) else { return }
+        perform(.follow(snapshot.rows[index].id))
     }
 
     private func perform(_ action: InspectorAction) {
-        guard !isLoading, isAvailable else { return }
+        guard !isLoading, errorMessage == nil else { return }
         isLoading = true
         Task {
-            defer { isLoading = false }
-            if let updated = await session.inspect(snapshot.id, action: action) {
-                snapshot = updated
-            } else {
-                isAvailable = false
+            guard let updated = await session.inspect(snapshot.id, action: action) else {
+                errorMessage = "Inspection ended"
+                isLoading = false
+                return
             }
+            await present(updated)
+        }
+    }
+
+    private func present(_ updated: InspectorSnapshot) async {
+        defer { isLoading = false }
+        do {
+            let tree = try await session.inspectorContent(for: updated)
+            guard !Task.isCancelled else { return }
+            snapshot = updated
+            content = tree
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 }

@@ -14,6 +14,12 @@ struct DebuggerTests {
         """
         let compiled = await session.compile(method, in: "Counter")
         try #require(compiled.executionError == nil)
+        let custom = await session.compile("""
+        command: title id: identifier send: command enabled: available
+            command = #resume ifTrue: [ title := 'Continue from the image' ].
+            ^ UIButton new title: title; identifier: identifier; command: command; enabled: available; yourself
+        """, in: "DebuggerPresentation", side: .classSide)
+        try #require(custom.executionError == nil)
         let prepared = await session.evaluate("debugCounter := Counter new")
         try #require(prepared.executionError == nil)
 
@@ -52,6 +58,17 @@ struct DebuggerTests {
         #expect(callee.variables.first { $0.name == "self" }?.className == "Counter")
         #expect(callee.variables.first { $0.name == "amount" }?.value == "40")
         #expect(callee.variables.first { $0.name == "local" }?.value == "nil")
+
+        let controls = try await paused.controlTree()
+        #expect(control("debuggerContinue", in: controls)?.text == "Continue from the image")
+        #expect(control("debuggerStepOut", in: controls)?.enabled == true)
+        #expect(control("debuggerSource", in: controls)?.sourcePosition?.line == callee.line)
+        #expect(control("debuggerVariables", in: controls)?.readOnly == true)
+        let callerControls = try await paused.controlTree(selectedFrameID: workspace.id)
+        #expect(control("debuggerFrameTitle", in: callerControls)?.text == "Workspace")
+        let running = try await paused.controlTree(phase: .running)
+        #expect(control("debuggerContinue", in: running)?.enabled == false)
+        #expect(control("debuggerStop", in: running)?.enabled == true)
 
         // Step over the entire line that sends increment, even if the source
         // locations before and after its send use different columns.
@@ -121,6 +138,11 @@ struct DebuggerTests {
         #expect(frame.variables.first { $0.name == "dividend" }?.value == "42")
         #expect(frame.variables.first { $0.name == "divisor" }?.value == "0")
 
+        let controls = try await failure.controlTree()
+        #expect(control("debuggerError", in: controls)?.text.contains("Division by zero") == true)
+        #expect(control("debuggerStepInto", in: controls)?.enabled == false)
+        #expect(control("debuggerStop", in: controls)?.text == "Close")
+
         failing.send(.stop)
         let finished = try requireResult(await failingEvents.next())
         #expect(finished.executionError?.contains("Division by zero") == true)
@@ -160,6 +182,85 @@ struct DebuggerTests {
         let finished = try requireResult(await events.next())
         #expect(finished.executionError == nil)
         #expect(finished.value == "42")
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func anInvalidDebuggerPresentationLeavesThePausedWorldIntact() async throws {
+        let session = SmalltalkSession()
+        let compiled = await session.compile("""
+        contentFor: stack frame: frame error: error phase: phase
+            debugPresentationProbe := 99.
+            ^ nil
+        """, in: "DebuggerPresentation", side: .classSide)
+        try #require(compiled.executionError == nil)
+        let setup = await session.evaluate("debugPresentationProbe := 42")
+        try #require(setup.executionError == nil)
+
+        let debugger = await session.debugSource("debugPresentationProbe := 0")
+        defer { debugger.send(.stop) }
+        var events = debugger.events.makeAsyncIterator()
+        let paused = try requirePause(await events.next())
+        do {
+            _ = try await paused.controlTree()
+            Issue.record("Expected the presentation to reject a write to a global in the paused world.")
+        } catch let error as SmalltalkError {
+            #expect(error.message == "Variable debugPresentationProbe is undeclared.")
+        }
+
+        debugger.send(.stop)
+        let stopped = try requireResult(await events.next())
+        #expect(stopped.executionError == "Debugging stopped.")
+        #expect(stopped.value == nil)
+        #expect(await session.evaluate("debugPresentationProbe").value == "42")
+
+        let fresh = SmalltalkSession()
+        let next = await fresh.debugSource("6 * 7")
+        defer { next.send(.stop) }
+        var nextEvents = next.events.makeAsyncIterator()
+        let nextPause = try requirePause(await nextEvents.next())
+        #expect(control("debuggerContinue", in: try await nextPause.controlTree())?.enabled == true)
+        next.send(.resume)
+        #expect(try requireResult(await nextEvents.next()).value == "42")
+    }
+
+    @Test(.timeLimit(.minutes(1)), arguments: [4_096, 4_097])
+    func debuggerRendersAtTheVariableTableLimit(variableCount: Int) async throws {
+        let longName = String(repeating: "🔧", count: 1_025)
+        let variables = (0..<variableCount).map { index in
+            DebuggerVariable(name: index == 0 ? longName : "local\(index)", value: String(index), className: "SmallInteger")
+        }
+        let frame = DebuggerFrame(id: 7, title: longName, source: "| temp |\n    temp := 42", line: 2, column: 5,
+                                  instruction: "pushLiteral 42", variables: variables)
+        let snapshot = DebuggerSnapshot(reason: .step, frames: [frame], presentation: nil)
+
+        let root = try await snapshot.controlTree(selectedFrameID: -1, phase: .stopping)
+        let stack = try #require(control("debuggerStack", in: root))
+        #expect(stack.selection == "7")
+        #expect(stack.enabled == false)
+        let title = try #require(stack.historyEntries.first?.title)
+        #expect(title.utf8.count <= 4_096)
+        #expect(title.hasSuffix("…"))
+        #expect(control("debuggerSource", in: root)?.sourcePosition?.column == 5)
+        #expect(control("debuggerStop", in: root)?.enabled == false)
+
+        let table = try #require(control("debuggerVariables", in: root))
+        let rows = try #require(table.table?.rows)
+        #expect(table.readOnly)
+        #expect(rows.count == 4_096)
+        #expect(rows.first?.name == title)
+        #expect(rows.dropLast().last?.name == "local4094")
+        if variableCount == 4_096 {
+            #expect(rows.last?.name == "local4095")
+            #expect(rows.last?.value == "4095")
+        } else {
+            #expect(rows.last?.name == "…")
+            #expect(rows.last?.value == "2 more variables")
+        }
+    }
+
+    private func control(_ id: String, in root: UIElementInfo) -> UIElementInfo? {
+        if root.accessibilityID == id { return root }
+        return root.children.lazy.compactMap { control(id, in: $0) }.first
     }
 
     private func requirePause(_ event: DebuggerEvent?) throws -> DebuggerSnapshot {

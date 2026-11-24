@@ -21,21 +21,17 @@ struct ToolContentView: View {
     var body: some View {
         Group {
             if let window = controller.presentedWindow(windowID) {
-                if window.info.kind == .changes {
-                    ChangesView(controller: controller)
-                } else {
-                    VStack(spacing: 0) {
-                        if let content = window.info.content {
-                            UIElementView(controller: controller, windowID: windowID, element: content)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                        }
-                        if let error = window.inputError ?? (controller.activeWindowID == windowID ? controller.error : nil),
-                           window.info.content?.firstVisible(where: { $0.accessibilityID == "evaluationResult" })?.text != error {
-                            Divider()
-                            Text(error).foregroundStyle(.red)
-                                .textSelection(.enabled).padding(12)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
+                VStack(spacing: 0) {
+                    if let content = window.info.content {
+                        UIElementView(controller: controller, windowID: windowID, element: content)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    }
+                    if let error = window.inputError ?? (controller.activeWindowID == windowID ? controller.error : nil),
+                       window.info.content?.firstVisible(where: { $0.accessibilityID == "evaluationResult" })?.text != error {
+                        Divider()
+                        Text(error).foregroundStyle(.red)
+                            .textSelection(.enabled).padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
             }
@@ -44,15 +40,43 @@ struct ToolContentView: View {
 
 }
 
+enum UIElementHost {
+    case window(AppController, Int64)
+    case snapshot(isLoading: Bool, click: (UIElementInfo) -> Void, select: (UIElementInfo, String) -> Void)
+
+    var window: (controller: AppController, id: Int64)? {
+        if case .window(let controller, let id) = self { return (controller, id) }
+        return nil
+    }
+
+    @MainActor
+    func canPerform(_ element: UIElementInfo) -> Bool {
+        switch self {
+        case .window(let controller, let id):
+            return !controller.isRunning && controller.canPerform(element, in: id)
+        case .snapshot(let isLoading, _, _):
+            return !isLoading && element.enabled
+        }
+    }
+}
+
 struct UIElementView: View {
-    @Bindable var controller: AppController
-    let windowID: Int64
+    let host: UIElementHost
     let element: UIElementInfo
+
+    init(controller: AppController, windowID: Int64, element: UIElementInfo) {
+        self.init(host: .window(controller, windowID), element: element)
+    }
+
+    init(host: UIElementHost, element: UIElementInfo) {
+        self.host = host
+        self.element = element
+    }
 
     var body: some View {
         if element.visible {
             content
-                .disabled(controller.isRunning || !controller.canPerform(element, in: windowID))
+                .disabled(!host.canPerform(element))
                 .frame(
                     minWidth: element.minimumWidth.map { CGFloat($0) },
                     maxWidth: element.maximumWidth.map { CGFloat($0) },
@@ -66,7 +90,8 @@ struct UIElementView: View {
     var identifier: String { element.accessibilityID ?? "ui-\(element.id)" }
 
     var text: Binding<String> {
-        Binding(
+        guard let (controller, windowID) = host.window else { return .constant(element.text) }
+        return Binding(
             get: { controller.inputText(windowID: windowID, element: element) },
             set: { controller.editInput(windowID: windowID, elementID: element.id, text: $0) }
         )
@@ -89,6 +114,10 @@ struct UIElementView: View {
             }
         case .codeEditor:
             codeEditor.frame(maxWidth: .infinity, minHeight: 64, maxHeight: .infinity)
+        case .sourceView:
+            if let position = element.sourcePosition {
+                PositionedSourceView(text: element.text, line: position.line, column: position.column, identifier: identifier)
+            }
         case .list:
             Group {
                 if element.role == "pane" {
@@ -97,6 +126,34 @@ struct UIElementView: View {
                     list.listStyle(.sidebar)
                 }
             }.accessibilityIdentifier(identifier)
+        case .historyList:
+            List(selection: Binding(get: { element.selection }, set: select)) {
+                ForEach(element.historyEntries) { entry in
+                    if element.role == "compactEntries" {
+                        HStack(spacing: 6) {
+                            Text(entry.title).lineLimit(1).truncationMode(.middle)
+                            Spacer(minLength: 0)
+                            Text(entry.subtitle).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                        }
+                        .tag(entry.id)
+                        .accessibilityIdentifier(element.historyRowIdentifierPrefix.map { "\($0)-\(entry.id)" } ?? entry.id)
+                    } else {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(entry.title)
+                            HStack {
+                                Text(entry.subtitle)
+                                if !entry.badge.isEmpty { Text(entry.badge).foregroundStyle(.orange) }
+                            }.font(.caption)
+                        }.tag(entry.id)
+                    }
+                }
+            }.accessibilityIdentifier(identifier)
+        case .valueTable:
+            if let table = element.table {
+                ValueTable(rows: table.rows, name: \.name, value: \.value, className: \.className,
+                           identifier: identifier, rowIdentifierPrefix: table.rowIdentifierPrefix,
+                           headings: table.headings, onOpen: element.readOnly ? nil : { row in select(row.id) })
+            }
         case .column:
             VStack(alignment: .leading, spacing: CGFloat(element.spacing)) { children }
                 .padding(CGFloat(element.padding))
@@ -114,9 +171,9 @@ struct UIElementView: View {
             if let items = element.contextMenuItems, !items.isEmpty {
                 scroll.contextMenu {
                     ForEach(items) { item in control(item) }
-                }
+                }.accessibilityIdentifier(identifier)
             } else {
-                scroll
+                scroll.accessibilityIdentifier(identifier)
             }
         case .menu:
             menu
@@ -127,13 +184,23 @@ struct UIElementView: View {
         }
     }
 
+    @ViewBuilder
     private var children: some View {
-        ForEach(element.children.filter { !$0.isWindowChrome }) { child in control(child) }
+        let children = element.children.filter { !$0.isWindowChrome }
+        switch host {
+        case .window:
+            ForEach(children) { child in control(child) }
+        case .snapshot:
+            // The image creates new controls for each snapshot. Keep native view state at the same position.
+            ForEach(children.indices, id: \.self) { index in
+                control(children[index]).id(children[index].accessibilityID)
+            }
+        }
     }
 
     private func control(_ child: UIElementInfo) -> some View {
         // Type erasure bounds the recursive SwiftUI view type.
-        AnyView(UIElementView(controller: controller, windowID: windowID, element: child))
+        AnyView(UIElementView(host: host, element: child))
     }
 
     @ViewBuilder
@@ -192,37 +259,47 @@ struct UIElementView: View {
         }
     }
 
+    @ViewBuilder
     private var codeEditor: some View {
-        CodeEditor(
-            text: text,
-            selection: Binding(
-                get: { controller.editorSelection(windowID: windowID, elementID: element.id) },
-                set: { controller.setEditorSelection($0, windowID: windowID, elementID: element.id) }
-            ),
-            isEditable: !element.readOnly && element.enabled && !controller.isRunning,
-            identifier: identifier,
-            label: element.label,
-            allowsUndo: !element.readOnly,
-            usesSmalltalkSourceStyle: element.role == "source",
-            highlightsForSource: controller.sourceHighlights,
-            contextMenuItems: controller.editorContextItems(windowID: windowID, editor: element),
-            contextCommandsEnabled: element.enabled && !controller.isRunning,
-            onContextCommand: { action, selection in
-                Task { await controller.performEditorContextAction(action, windowID: windowID, selection: selection) }
-            }
-        )
+        if let (controller, windowID) = host.window {
+            CodeEditor(
+                text: text,
+                selection: Binding(
+                    get: { controller.editorSelection(windowID: windowID, elementID: element.id) },
+                    set: { controller.setEditorSelection($0, windowID: windowID, elementID: element.id) }
+                ),
+                isEditable: !element.readOnly && element.enabled && !controller.isRunning,
+                identifier: identifier,
+                label: element.label,
+                allowsUndo: !element.readOnly,
+                usesSmalltalkSourceStyle: element.role == "source",
+                highlightsForSource: controller.sourceHighlights,
+                contextMenuItems: controller.editorContextItems(windowID: windowID, editor: element),
+                contextCommandsEnabled: element.enabled && !controller.isRunning,
+                onContextCommand: { action, selection in
+                    Task { await controller.performEditorContextAction(action, windowID: windowID, selection: selection) }
+                }
+            )
+        } else {
+            CodeEditor(text: text, selection: .constant(NSRange()), isEditable: false, identifier: identifier,
+                       label: element.label, allowsUndo: false)
+        }
     }
 
     private var list: some View {
-        List(selection: Binding(
-            get: { element.selection },
-            set: { value in
-                Task { await controller.selectControl(windowID: windowID, elementID: element.id, value: value) }
-            }
-        )) {
+        List(selection: Binding(get: { element.selection }, set: select)) {
             ForEach(element.items, id: \.self) { entry in
                 Text(entry).font(.system(size: 12, design: .monospaced)).tag(entry)
             }
+        }
+    }
+
+    private func select(_ value: String?) {
+        switch host {
+        case .window(let controller, let windowID):
+            Task { await controller.selectControl(windowID: windowID, elementID: element.id, value: value) }
+        case .snapshot(_, _, let select):
+            if let value { select(element, value) }
         }
     }
 
@@ -252,13 +329,23 @@ struct UIElementView: View {
             .accessibilityLabel(element.text)
             .accessibilityValue(expanded ? "Expanded" : "Collapsed")
             .accessibilityIdentifier(identifier)
+        } else if element.role == "destructive" {
+            Button(element.text, role: .destructive, action: click).accessibilityIdentifier(identifier)
+        } else if let icon = element.icon {
+            Button(action: click) { Label(element.text, systemImage: icon) }
+                .accessibilityIdentifier(identifier)
         } else {
             Button(element.text, action: click).accessibilityIdentifier(identifier)
         }
     }
 
     private func click() {
-        Task { await controller.clickControl(windowID: windowID, elementID: element.id) }
+        switch host {
+        case .window(let controller, let windowID):
+            Task { await controller.clickControl(windowID: windowID, elementID: element.id) }
+        case .snapshot(_, let click, _):
+            click(element)
+        }
     }
 
     @ViewBuilder
@@ -266,7 +353,9 @@ struct UIElementView: View {
         switch element.role {
         case "heading": Text(element.text).font(.headline)
         case "caption": Text(element.text).font(.caption).foregroundStyle(.secondary)
-        case "code": Text(element.text).font(.system(size: 13, design: .monospaced))
+        case "breadcrumb": Text(element.text).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
+        case "pageNumber": Text(element.text).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+        case "code", "document": Text(element.text).font(.system(size: 13, design: .monospaced))
         case "error": Text(element.text).font(.system(size: 13, design: .monospaced)).foregroundStyle(.red)
         case "codePreview": Text(element.text).font(.system(size: 13, design: .monospaced)).lineLimit(1)
         case "errorPreview": Text(element.text).font(.system(size: 13, design: .monospaced)).foregroundStyle(.red).lineLimit(1)
@@ -280,5 +369,77 @@ extension UIElementInfo {
 
     var windowToolbar: UIElementInfo? {
         children.first { $0.role == "windowToolbar" && $0.visible }
+    }
+}
+
+private struct PositionedSourceView: View {
+    let text: String
+    let line: Int
+    let column: Int
+    let identifier: String
+
+    private struct SourceLocation: Equatable {
+        let text: String
+        let line: Int
+    }
+
+    var body: some View {
+        let lines = text.split(omittingEmptySubsequences: false) {
+            $0 == "\n" || $0 == "\r" || $0 == "\r\n"
+        }
+        return ScrollViewReader { reader in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(lines.indices, id: \.self) { index in
+                        sourceLine(lines[index], number: index + 1)
+                            .id(index + 1)
+                    }
+                }
+            }
+            .accessibilityIdentifier(identifier)
+            .task(id: SourceLocation(text: text, line: line)) {
+                guard lines.indices.contains(line - 1) else { return }
+                await Task.yield()
+                guard !Task.isCancelled else { return }
+                reader.scrollTo(line, anchor: .center)
+            }
+        }
+        .background(Color(nsColor: .textBackgroundColor))
+    }
+
+    private func sourceLine(_ source: Substring, number: Int) -> some View {
+        let current = number == line
+        let width: CGFloat = 42
+        return HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(String(number))
+                .foregroundStyle(.secondary)
+                .frame(width: width, alignment: .trailing)
+                .accessibilityHidden(true)
+            Text(markedSource(source, column: current ? column : nil))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .font(.system(size: 14, design: .monospaced))
+        .padding(.trailing, 8)
+        .padding(.vertical, 2)
+        .background(current ? Color.accentColor.opacity(0.14) : .clear)
+        .overlay(alignment: .leading) {
+            if current {
+                Rectangle().fill(Color.accentColor).frame(width: 2)
+                    .accessibilityHidden(true)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+
+    private func markedSource(_ source: Substring, column: Int?) -> AttributedString {
+        var marked = AttributedString(String(source))
+        if let column, column > 0,
+           let start = marked.characters.index(marked.startIndex, offsetBy: column - 1, limitedBy: marked.endIndex),
+           start < marked.endIndex {
+            let end = marked.characters.index(after: start)
+            marked[start..<end].backgroundColor = Color.accentColor.opacity(0.3)
+        }
+        return marked
     }
 }

@@ -76,6 +76,24 @@ struct SystemLibrary: Sendable {
 
     static func digest(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
 
+    func bundledClass(_ name: String, in runtime: SmalltalkRuntime) throws -> STClass {
+        guard let definition = definitions.first(where: { $0.name == name }),
+              let parent = runtime.classes[definition.superclass] else {
+            throw SmalltalkError("The bundled class \(name) is missing.")
+        }
+        let target = STClass(name, superclass: parent, fields: definition.fields)
+        for side in MethodSide.allCases {
+            for (selector, code) in seed[side][name] ?? [:] {
+                guard let source = sources[side][name]?[selector] else {
+                    throw SmalltalkError("The bundled source for \(name)>>\(selector) is missing.")
+                }
+                target[side][selector] = try code.validatedMethod(selector: selector, source: source,
+                                                                  fields: target.fields(for: side))
+            }
+        }
+        return target
+    }
+
     func install(in runtime: SmalltalkRuntime) throws {
         for definition in definitions {
             guard let parent = runtime.classes[definition.superclass] else { throw SmalltalkError("System superclass \(definition.superclass) is missing.") }

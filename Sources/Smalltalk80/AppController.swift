@@ -8,7 +8,6 @@ import UniformTypeIdentifiers
 final class AppController {
     private var windowPresentation = WindowPresentation()
     private var controlEdits = ControlEdits()
-    var result = "Ready."
     var error: String?
     var isRunning = false {
         didSet {
@@ -39,14 +38,7 @@ final class AppController {
     private var windowDebounce: Task<Void, Never>?
     private var currentEpoch: String?
     private var latestRevision: Int64 = 0
-    var changes: [ChangeInfo] = []
-    var savedChangeSequence: Int64 = 0
-    var changesPath: String?
-    var changeClassFilter: String?
-    var changeMethodFilter: String?
-    var changeSideFilter: MethodSide?
-    var selectedChange: String?
-    var baseChange: ChangeInfo?
+    private var changesPath: String?
     @ObservationIgnored private var nativeWindows: NativeWindowBackend?
     private static var imageType: UTType { UTType(filenameExtension: "stimage", conformingTo: .data) ?? .data }
 
@@ -166,11 +158,8 @@ final class AppController {
         currentEpoch = evaluation.windowCommands.epoch
         latestRevision = evaluation.windowCommands.revision
         if replacingWindows { inspectorWindows.closeAll() }
-        changes = evaluation.changes
-        savedChangeSequence = evaluation.savedChangeSequence
         changesPath = evaluation.changesPath
         error = evaluation.error
-        if let value = evaluation.value { result = value }
         windowPresentation.update(from: evaluation, replacingWindows: replacingWindows)
         controlEdits.reconcile(with: evaluation.windows)
         nativeWindows?.execute(evaluation.windowCommands)
@@ -572,8 +561,14 @@ final class AppController {
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        do { try await restoreImage(from: url) }
-        catch { self.error = "Could not load the image: \(error.localizedDescription)" }
+        do {
+            try await restoreImage(from: url)
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = "Could not load the image"
+            alert.informativeText = error.localizedDescription
+            alert.runModal()
+        }
     }
 
     enum ImageSaveResult {
@@ -605,7 +600,7 @@ final class AppController {
             apply(await session.snapshot())
             imageURL = url
             imageHasChanges = controlEdits.hasPendingEdits || !pendingWindowEvents.isEmpty
-            result = "Saved image: \(url.lastPathComponent)"; error = nil
+            error = nil
             return .saved
         } catch {
             self.error = "Could not save the image: \(error.localizedDescription)"
@@ -635,25 +630,10 @@ final class AppController {
         try await session.startChangeLog(at: base.appendingPathComponent(UUID().uuidString + ".changes"))
     }
 
-    var filteredChanges: [ChangeInfo] {
-        let history = changes.reversed().filter {
-            (changeClassFilter == nil || $0.className == changeClassFilter) &&
-            (changeMethodFilter == nil || $0.selector == changeMethodFilter) &&
-            (changeSideFilter == nil || $0.side == changeSideFilter)
-        }
-        if let baseChange, changeClassFilter == baseChange.className, changeMethodFilter == baseChange.selector,
-           changeSideFilter == baseChange.side { return history + [baseChange] }
-        return history
-    }
     func showChanges(className: String? = nil, selector: String? = nil, side: MethodSide = .instance) async {
-        changeClassFilter = className
-        changeMethodFilter = selector
-        changeSideFilter = selector == nil ? nil : side
-        selectedChange = nil
-        baseChange = nil
-        if let className, let selector { baseChange = await session.baseVersion(of: selector, in: className, side: side) }
-        await openTool(.changes)
+        await sendWindowAction(.showChanges(className: className, selector: selector, side: side))
     }
+
     func openChanges() async {
         guard !isRunning else { return }
         let panel = NSOpenPanel()
@@ -667,20 +647,11 @@ final class AppController {
         isRunning = false
         await showChanges()
     }
-    func restoreSelectedChange() async {
-        guard !isRunning, let selectedChange else { return }
-        isRunning = true; defer { isRunning = false }
-        guard await flushWindowState(allowInputFailure: true) else { return }
-        let evaluation = await session.restoreChange(selectedChange)
-        apply(evaluation)
-        if evaluation.executionError == nil { imageHasChanges = true }
-    }
-
     private func restoreImage(from url: URL) async throws {
         let image = try await session.loadImage(from: url)
         clearPending()
         apply(image.evaluation, replacingWindows: true)
         imageURL = url; imageHasChanges = false
-        result = "Loaded image: \(url.lastPathComponent)"; error = nil
+        error = nil
     }
 }

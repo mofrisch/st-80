@@ -204,6 +204,7 @@ final class SmalltalkRuntime {
     var journal = SourceJournal()
     var catalogDirty = false
     var evaluatingToolSource = false
+    var capturingTestPhase = false
     var toolRequests: [NativeToolRequest] = []
     var objectInspectors: [UUID: Value] = [:]
     var changesBrowser: Value?
@@ -381,7 +382,7 @@ final class SmalltalkRuntime {
                 throw ReturnSignal(value: try evaluate(expression, context: context), homeID: context.homeID)
             }
         } catch var error as SmalltalkError {
-            if error.position == nil { error.position = expression.position }
+            error.locate(at: expression.position, in: context)
             throw error
         }
     }

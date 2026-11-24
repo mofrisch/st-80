@@ -111,7 +111,7 @@ Object subclass: #BrowserOrganization instanceVariableNames: 'classCategories ca
 
 BrowserOrganization compile: 'initialize
     classCategories := BrowserGrouping new.
-    classCategories defineDefaults: #(''Kernel'' ''Compiler'' ''Interface'' ''Tools'' ''Examples'' ''User Classes'').
+    classCategories defineDefaults: #(''Kernel'' ''Compiler'' ''Interface'' ''Tools'' ''Examples'' ''Tests'' ''User Classes'').
     systemProtocols := self shippedProtocols.
     catalogs := #()'.
 
@@ -125,12 +125,14 @@ BrowserOrganization compile: 'defaultCategoryOf: name
     (#(''Object'' ''Class'' ''UndefinedObject'' ''Boolean'' ''True'' ''False'' ''Number'' ''Integer'' ''SmallInteger'' ''String'' ''Symbol'' ''Array'' ''BlockClosure'') includes: name) ifTrue: [ ^ ''Kernel'' ].
     (#(''STCompilerList'' ''STScanner'' ''STSourceScanner'' ''STCompiler'') includes: name) ifTrue: [ ^ ''Compiler'' ].
     (#(''Transcript'' ''TranscriptModel'' ''ToolServices'' ''DevelopmentWindow'' ''ChangesBrowser'' ''InspectorModel'' ''InspectorPresentation'' ''DebuggerPresentation'' ''WorkspaceWindow'' ''BrowserWindow'' ''TranscriptWindow''
-       ''BrowserGroup'' ''BrowserGrouping'' ''BrowserOrganization'' ''BrowserOrganizationForm'') includes: name) ifTrue: [ ^ ''Tools'' ].
+       ''BrowserGroup'' ''BrowserGrouping'' ''BrowserOrganization'' ''BrowserOrganizationForm''
+       ''TestCase'' ''TestOutcome'' ''TestResult'' ''TestRunner'') includes: name) ifTrue: [ ^ ''Tools'' ].
     (#(''Model'' ''Controller'' ''UIBinding'' ''SystemWindow'' ''DesktopModel'' ''DisplayScreen'' ''DesktopManager''
        ''UIElement'' ''UILabel'' ''UIButton'' ''UITextField'' ''UIContainer'' ''UIColumn'' ''UIRow'' ''UISpacer''
        ''UIWindow'' ''UICodeEditor'' ''UIList'' ''UIHistoryList'' ''UISourceView'' ''UIValueTable'' ''UISplit'' ''UIScroll'' ''UIMenu'' ''UIDivider'') includes: name)
         ifTrue: [ ^ ''Interface'' ].
     name = ''Counter'' ifTrue: [ ^ ''Examples'' ].
+    (#(''CounterTest'' ''CollectionsTest'' ''BindingTestModel'' ''UIBindingTest'') includes: name) ifTrue: [ ^ ''Tests'' ].
     ^ ''User Classes'''.
 
 BrowserOrganization compile: 'protocolsOf: target

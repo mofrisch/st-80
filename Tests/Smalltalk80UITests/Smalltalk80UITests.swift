@@ -3,6 +3,18 @@ import XCTest
 
 @MainActor
 final class Smalltalk80UITests: XCTestCase {
+    func testFreshImageRunsTheBundledSmalltalkSuiteInTheWorkspace() {
+        let app = launchFreshApp()
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        replaceText(in: editor, with: "TestRunner runAll summary")
+        workspace.buttons["executeButton"].click()
+
+        let summary = "6 total, 6 passed, 0 failed, 0 with errors"
+        let result = workspace.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", summary, summary)).firstMatch
+        XCTAssertTrue(result.waitForExistence(timeout: 5), workspace.debugDescription)
+    }
+
     func testFreshToolsPlaceBrowserLeftAndStackWorkspaceAndTranscriptRight() {
         let app = launchFreshApp()
         let browser = app.windows["toolWindow-2"]

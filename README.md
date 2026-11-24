@@ -301,6 +301,26 @@ python3 scripts/prepare-app-icon.py Design/AppIcon.png
 
 The project generator preserves the asset catalog and app icon settings for Debug and Release.
 
+## Smalltalk tests
+
+Run `TestRunner runAll summary` in a fresh Workspace to run the six bundled tests for counters, collections, and MVC bindings. You can browse their source under **Tests** in the System Browser.
+
+Define a subclass of `TestCase` in the Workspace or Browser. Its own parameterless instance methods named `testSomething` run in alphabetical order. Each method runs on a fresh instance. Override `setUp` and `tearDown` for fixtures.
+
+```smalltalk
+TestCase subclass: #MyCounterTest instanceVariableNames: 'counter'.
+MyCounterTest compile: 'setUp
+    counter := Counter new'.
+MyCounterTest compile: 'testIncrement
+    counter increment.
+    self assert: counter value equals: 1'.
+MyCounterTest run summary
+```
+
+Use `(MyCounterTest run: #testIncrement) summary` to run one method, or `TestRunner runAll summary` for every test class. The available assertions are `assert:`, `deny:`, `assert:equals:` and `fail:`. `TestResult>>outcomes` lists the individual results. Each outcome has a `status` of `#passed`, `#failure` or `#error`. Its `diagnostics` are arrays of phase, status, message, line and column. Unavailable positions are `nil`.
+
+Workspace runs use the live image. The automated suite uses the same bundled test classes in a fresh boot image and checks their result in both SwiftPM and Xcode. `swift test --filter SmalltalkTestFrameworkTests` runs the Smalltalk suite and the runner's regression tests.
+
 ## Build and test
 
 ```sh

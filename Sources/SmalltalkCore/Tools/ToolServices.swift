@@ -26,6 +26,10 @@ extension SmalltalkRuntime {
             return methodSide
         }
         switch selector {
+        case "failTest:":
+            throw SmalltalkError(try string(args[0]), isTestFailure: true)
+        case "captureTestPhase:":
+            return try captureTestPhase(args[0])
         case "inspect:":
             try requestInspection(args[0])
             return args[0]
@@ -139,6 +143,28 @@ extension SmalltalkRuntime {
             toolRequests.append(.showVersions(className: try string(args[0]), selector: try string(args[1]), side: methodSide))
             return .nilValue
         default: return try inspectionPrimitive(selector, args) ?? changesBrowserPrimitive(selector, args)
+        }
+    }
+
+    private func captureTestPhase(_ block: Value) throws -> Value {
+        guard !capturingTestPhase else { throw SmalltalkError("A test phase is already running.") }
+        let enclosingSteps = steps
+        capturingTestPhase = true
+        steps = 0
+        defer {
+            steps = enclosingSteps
+            capturingTestPhase = false
+        }
+        do {
+            _ = try invokeBlock(block)
+            return .nilValue
+        } catch let error as SmalltalkError {
+            return try array([
+                .symbol(error.isTestFailure ? "failure" : "error"),
+                .string(error.message),
+                error.position.map { .integer(Int64($0.line)) } ?? .nilValue,
+                error.position.map { .integer(Int64($0.column)) } ?? .nilValue,
+            ])
         }
     }
 

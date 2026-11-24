@@ -8,14 +8,23 @@ public struct SourcePosition: Sendable, Equatable, Codable {
 public struct SmalltalkError: Error, LocalizedError, Sendable {
     public let message: String
     public var position: SourcePosition?
+    let isTestFailure: Bool
 
     public var errorDescription: String? {
         if let position { return "Line \(position.line), column \(position.column): \(message)" }
         return message
     }
 
-    init(_ message: String, at position: SourcePosition? = nil) {
+    init(_ message: String, at position: SourcePosition? = nil, isTestFailure: Bool = false) {
         self.message = message
+        self.position = position
+        self.isTestFailure = isTestFailure
+    }
+
+    mutating func locate(at position: SourcePosition, in context: Context) {
+        guard self.position == nil else { return }
+        // Report assertion calls in the test rather than inside TestCase's helpers.
+        if isTestFailure, context.homeClass?.name == "TestCase" { return }
         self.position = position
     }
 }

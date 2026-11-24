@@ -82,12 +82,12 @@ for name in products:
     resource_folders = set()
     resource_refs = []
     resource_builds[name] = []
-    if name == "SmalltalkCore":
-        path = Path("Library")
-        library = add("File.Library", "PBXFileReference", lastKnownFileType="folder", path=str(path), sourceTree="<group>")
+    if name in {"SmalltalkCore", "SmalltalkCoreTests"}:
+        path = Path("Library" if name == "SmalltalkCore" else "SmalltalkTests")
+        folder = add(f"File.{path}", "PBXFileReference", lastKnownFileType="folder", path=str(path), sourceTree="<group>")
         resource_folders.add(path)
-        resource_refs.append(library)
-        resource_builds[name].append(add("Build.Library", "PBXBuildFile", fileRef=library))
+        resource_refs.append(folder)
+        resource_builds[name].append(add(f"Build.{path}", "PBXBuildFile", fileRef=folder))
     if name == "Smalltalk80":
         path = Path("Assets.xcassets")
         catalog = add(f"File.{directory / path}", "PBXFileReference", lastKnownFileType="folder.assetcatalog", path=str(path), sourceTree="<group>")

@@ -59,7 +59,7 @@ extension SmalltalkRuntime {
                     return bytecodeOperands[bytecodeOperands.count - 1].value
                 }
             } catch var error as SmalltalkError {
-                if error.position == nil { error.position = instruction.position }
+                error.locate(at: instruction.position, in: context)
                 debugger?.report(error, at: instruction, runtime: self)
                 throw error
             } catch {

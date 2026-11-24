@@ -17,6 +17,6 @@ let package = Package(
             exclude: ["Assets.xcassets"]
         ),
         .executableTarget(name: "SmalltalkBootstrap", dependencies: ["SmalltalkCore"]),
-        .testTarget(name: "SmalltalkCoreTests", dependencies: ["SmalltalkCore"]),
+        .testTarget(name: "SmalltalkCoreTests", dependencies: ["SmalltalkCore"], resources: [.copy("SmalltalkTests")]),
     ]
 )

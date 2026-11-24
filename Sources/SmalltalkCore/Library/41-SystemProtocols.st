@@ -209,4 +209,23 @@ BrowserOrganization compile: 'shippedProtocols
             (''Output Buffer'' (''text'' ''append:'' ''clear''))))
         (''TranscriptWindow'' (
             (''Initialization'' (''initialize''))))
+        (''TestCase'' (
+            (''Fixtures'' (''setUp'' ''tearDown''))
+            (''Assertions'' (''assert:'' ''deny:'' ''assert:equals:'' ''fail:''))))
+        (''TestOutcome'' (
+            (''Initialization'' (''initialize'' ''testClass:selector:''))
+            (''Outcome'' (''testClass'' ''selector'' ''diagnostics'' ''status'' ''record:during:''))))
+        (''TestResult'' (
+            (''Initialization'' (''initialize'' ''outcomes:''))
+            (''Results'' (''outcomes'' ''testCount'' ''passedCount'' ''failureCount'' ''errorCount'' ''isSuccess'' ''summary''))))
+        (''CounterTest'' (
+            (''Fixtures'' (''setUp''))
+            (''Tests'' (''testIncrement'' ''testCountersStartIndependently''))))
+        (''CollectionsTest'' (
+            (''Tests'' (''testArrayCollectAndSelect'' ''testFalseAndDoesNotEvaluateItsBlock''))))
+        (''BindingTestModel'' (
+            (''Accessing'' (''caption'' ''caption:''))))
+        (''UIBindingTest'' (
+            (''Fixtures'' (''setUp'' ''tearDown''))
+            (''Tests'' (''testBindingReadsAndUpdatesTheLabel'' ''testUnbindingStopsUpdates''))))
     )'.

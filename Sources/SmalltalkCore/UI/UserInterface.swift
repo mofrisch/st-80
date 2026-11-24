@@ -15,6 +15,27 @@ public struct UIValueTableInfo: Sendable {
     public let headings: (name: String, value: String, className: String)
     public let rowIdentifierPrefix: String
     public let rows: [UIValueRow]
+    package let nameWidth: Int
+    package let classWidth: Int
+    package let columnSpacing: Int
+    package let horizontalPadding: Int
+    package let valueLines: Int
+}
+
+package enum UIEditorAction: String, Sendable {
+    case cut, copy, paste, selectAll
+}
+
+package struct UIEditorMenuItem: Sendable {
+    package let action: UIEditorAction
+    package let title: String
+}
+
+package struct UIEditorInfo: Sendable {
+    package let lineNumbers: Bool
+    package let syntaxHighlighting: Bool
+    package let undoEnabled: Bool
+    package let editingMenu: [UIEditorMenuItem]
 }
 
 public struct UIHistoryEntry: Identifiable, Sendable {
@@ -52,9 +73,22 @@ public struct UIElementInfo: Identifiable, Sendable {
     public let command: String?
     public let icon: String?
     public let table: UIValueTableInfo?
+    package let editor: UIEditorInfo?
     public let selectionSource: String?
     /// A native context menu projected from a Smalltalk control.
     public let contextMenuItems: [UIElementInfo]?
+
+    package func firstVisible(where matches: (UIElementInfo) -> Bool) -> UIElementInfo? {
+        guard visible else { return nil }
+        if matches(self) { return self }
+        for child in children {
+            if let found = child.firstVisible(where: matches) { return found }
+        }
+        for item in contextMenuItems ?? [] {
+            if let found = item.firstVisible(where: matches) { return found }
+        }
+        return nil
+    }
 }
 
 public enum UIAction: Sendable {
@@ -130,6 +164,7 @@ extension SmalltalkRuntime {
             var readOnly = false
             var items: [String] = []
             var table: UIValueTableInfo?
+            var editor: UIEditorInfo?
             var historyEntries: [UIHistoryEntry] = []
             var historyRowIdentifierPrefix: String?
             var sourcePosition: (line: Int, column: Int)?
@@ -156,6 +191,9 @@ extension SmalltalkRuntime {
             case .textField, .codeEditor:
                 if case .boolean(let value)? = object.fields["readOnly"] { readOnly = value }
                 text = try string("text"); label = try string("label"); placeholder = try string("placeholder")
+                if kind == .codeEditor {
+                    editor = try projectEditor(object, readOnly: readOnly, sourceRole: symbolField("role") == "source")
+                }
                 switch object.fields["mvcInputTarget"] {
                 case .nilValue?: break
                 case .object?:
@@ -231,8 +269,20 @@ extension SmalltalkRuntime {
                 guard Set(rows.map(\.id)).count == rows.count else {
                     throw SmalltalkError("Value table row identifiers must be unique.")
                 }
+                func layout(_ name: String, default defaultValue: Int, in range: ClosedRange<Int64>) throws -> Int {
+                    switch object.fields[name] {
+                    case nil, .nilValue?: return defaultValue
+                    case .integer(let value)? where range.contains(value): return Int(value)
+                    default: throw SmalltalkError("Invalid value table layout for \(name).")
+                    }
+                }
                 table = UIValueTableInfo(headings: (headings[0], headings[1], headings[2]),
-                                         rowIdentifierPrefix: try string("rowIdentifierPrefix"), rows: rows)
+                                         rowIdentifierPrefix: try string("rowIdentifierPrefix"), rows: rows,
+                                         nameWidth: try layout("nameWidth", default: 96, in: 1...8192),
+                                         classWidth: try layout("classWidth", default: 108, in: 1...8192),
+                                         columnSpacing: try layout("columnSpacing", default: 12, in: 0...128),
+                                         horizontalPadding: try layout("horizontalPadding", default: 12, in: 0...256),
+                                         valueLines: try layout("valueLines", default: 3, in: 1...128))
             case .column, .row, .split, .scroll, .menu:
                 if kind == .menu { text = try string("title") }
                 guard case .array(let array)? = object.fields["children"], array.elements.count <= 512,
@@ -270,10 +320,45 @@ extension SmalltalkRuntime {
                                  readOnly: readOnly, items: items, historyEntries: historyEntries,
                                  historyRowIdentifierPrefix: historyRowIdentifierPrefix, sourcePosition: sourcePosition,
                                  selection: selection, command: symbolField("command"),
-                                 icon: field("icon"), table: table, selectionSource: selectionSource, contextMenuItems: contextMenuItems)
+                                 icon: field("icon"), table: table, editor: editor, selectionSource: selectionSource,
+                                 contextMenuItems: contextMenuItems)
         }
         let root = try project(value, depth: 0, parentEnabled: true)
         return (root, controls)
+    }
+
+    private func projectEditor(_ object: STObject, readOnly: Bool, sourceRole: Bool) throws -> UIEditorInfo {
+        func flag(_ name: String, default defaultValue: Bool) throws -> Bool {
+            switch object.fields[name] {
+            case nil, .nilValue?: return defaultValue
+            case .boolean(let value)?: return value
+            default: throw SmalltalkError("Invalid code editor setting for \(name).")
+            }
+        }
+
+        let menu: [UIEditorMenuItem]
+        switch object.fields["editingMenu"] {
+        case nil, .nilValue?:
+            // Older image layouts still use the standard AppKit editing commands.
+            menu = [UIEditorMenuItem(action: .cut, title: "Cut"), UIEditorMenuItem(action: .copy, title: "Copy"),
+                    UIEditorMenuItem(action: .paste, title: "Paste"), UIEditorMenuItem(action: .selectAll, title: "Select All")]
+        case .array(let entries)? where entries.elements.count <= 4:
+            menu = try entries.elements.map { entry in
+                guard case .array(let row) = entry, row.elements.count == 2,
+                      case .symbol(let name) = row.elements[0], let action = UIEditorAction(rawValue: name),
+                      case .string(let title) = row.elements[1], !title.isEmpty, title.utf8.count <= 4096 else {
+                    throw SmalltalkError("Invalid code editor menu action or title.")
+                }
+                return UIEditorMenuItem(action: action, title: title)
+            }
+            guard Set(menu.map(\.action)).count == menu.count else {
+                throw SmalltalkError("Code editor menu actions must be unique.")
+            }
+        default: throw SmalltalkError("A code editor menu requires an array of at most four editing actions.")
+        }
+        return UIEditorInfo(lineNumbers: try flag("lineNumbers", default: sourceRole),
+                            syntaxHighlighting: try flag("syntaxHighlighting", default: sourceRole),
+                            undoEnabled: try flag("undoEnabled", default: true) && !readOnly, editingMenu: menu)
     }
 
     func projectWindowContent(_ object: STObject) throws -> UIElementInfo? {

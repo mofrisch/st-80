@@ -141,6 +141,8 @@ for name, (_, _, product_type) in products.items():
         "MARKETING_VERSION": "0.1.0",
         "LD_RUNPATH_SEARCH_PATHS": ["$(inherited)", "@executable_path/../Frameworks", "@loader_path/../Frameworks", "$(BUILT_PRODUCTS_DIR)"],
     }
+    if name in {"Smalltalk80", "SmalltalkCore", "SmalltalkCoreTests"}:
+        settings["SWIFT_PACKAGE_NAME"] = "Smalltalk80"
     if name == "Smalltalk80":
         settings.update({
             "INFOPLIST_KEY_CFBundleDisplayName": "Smalltalk/80",

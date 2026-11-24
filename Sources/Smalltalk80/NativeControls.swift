@@ -26,14 +26,16 @@ enum EditorContextItem {
     }
 }
 
-struct CodeEditor: NSViewRepresentable {
+struct NativeCodeEditor: NSViewRepresentable {
     @Binding var text: String
     @Binding var selection: NSRange
     var isEditable = true
     var identifier: String
     var label: String
     var allowsUndo = true
-    var usesSmalltalkSourceStyle = false
+    var lineNumbers: Bool
+    var syntaxHighlighting: Bool
+    var editingMenu: [UIEditorMenuItem]
     var highlightsForSource: @MainActor (String) async -> [SourceHighlight] = { _ in [] }
     var contextMenuItems: [EditorContextItem] = []
     var contextCommandsEnabled = true
@@ -81,7 +83,7 @@ struct CodeEditor: NSViewRepresentable {
         textView.setAccessibilityIdentifier(identifier)
         textView.setAccessibilityLabel(label)
         scrollView.documentView = textView
-        if textView.setSourceStyle(usesSmalltalkSourceStyle, in: scrollView) {
+        if textView.setPresentation(lineNumbers: lineNumbers, syntaxHighlighting: syntaxHighlighting, in: scrollView) {
             textView.refreshSourceStyle(with: highlightsForSource)
         }
         return scrollView
@@ -95,7 +97,8 @@ struct CodeEditor: NSViewRepresentable {
         context.coordinator.isUpdatingView = true
         defer { context.coordinator.isUpdatingView = false }
         if textView.isEditable != isEditable { textView.isEditable = isEditable }
-        let styleChanged = textView.setSourceStyle(usesSmalltalkSourceStyle, in: scrollView)
+        if textView.allowsUndo != allowsUndo { textView.allowsUndo = allowsUndo }
+        let styleChanged = textView.setPresentation(lineNumbers: lineNumbers, syntaxHighlighting: syntaxHighlighting, in: scrollView)
         let textChanged = !textView.string.utf16.elementsEqual(text.utf16)
         if textChanged {
             textView.string = text
@@ -118,10 +121,10 @@ struct CodeEditor: NSViewRepresentable {
             let selection: String
         }
 
-        var parent: CodeEditor
+        var parent: NativeCodeEditor
         var isUpdatingView = false
         private let editorUndoManager = UndoManager()
-        init(_ parent: CodeEditor) { self.parent = parent }
+        init(_ parent: NativeCodeEditor) { self.parent = parent }
 
         func undoManager(for view: NSTextView) -> UndoManager? {
             parent.allowsUndo ? editorUndoManager : nil
@@ -175,25 +178,31 @@ struct CodeEditor: NSViewRepresentable {
 private final class CodeEditorTextView: NSTextView {
     private weak var lineNumbers: SourceLineNumberRuler?
     private var highlightTask: Task<Void, Never>?
+    private var highlightsSyntax = false
 
-    /// Returns true when the source presentation was enabled or disabled.
-    func setSourceStyle(_ enabled: Bool, in scrollView: NSScrollView) -> Bool {
-        guard enabled != (lineNumbers != nil) else { return false }
-        if enabled {
-            let ruler = SourceLineNumberRuler(scrollView: scrollView, editor: self)
-            lineNumbers = ruler
-            scrollView.verticalRulerView = ruler
-            scrollView.hasVerticalRuler = true
-            scrollView.rulersVisible = true
-        } else {
+    func setPresentation(lineNumbers showsLineNumbers: Bool, syntaxHighlighting: Bool, in scrollView: NSScrollView) -> Bool {
+        let rulerChanged = showsLineNumbers != (lineNumbers != nil)
+        let highlightingChanged = syntaxHighlighting != highlightsSyntax
+        if rulerChanged {
+            if showsLineNumbers {
+                let ruler = SourceLineNumberRuler(scrollView: scrollView, editor: self)
+                lineNumbers = ruler
+                scrollView.verticalRulerView = ruler
+                scrollView.hasVerticalRuler = true
+                scrollView.rulersVisible = true
+            } else {
+                scrollView.rulersVisible = false
+                scrollView.hasVerticalRuler = false
+                scrollView.verticalRulerView = nil
+                lineNumbers = nil
+            }
+        }
+        highlightsSyntax = syntaxHighlighting
+        if highlightingChanged && !syntaxHighlighting {
             cancelSourceHighlighting()
-            scrollView.rulersVisible = false
-            scrollView.hasVerticalRuler = false
-            scrollView.verticalRulerView = nil
-            lineNumbers = nil
             applySourceHighlights([])
         }
-        return true
+        return rulerChanged || highlightingChanged
     }
 
     func cancelSourceHighlighting() {
@@ -203,10 +212,9 @@ private final class CodeEditorTextView: NSTextView {
 
     func refreshSourceStyle(with scan: @escaping @MainActor (String) async -> [SourceHighlight]) {
         cancelSourceHighlighting()
-        guard let lineNumbers else { return }
         let source = string
-        lineNumbers.updateLineStarts(in: source as NSString)
-        guard !source.isEmpty else { return }
+        lineNumbers?.updateLineStarts(in: source as NSString)
+        guard highlightsSyntax, !source.isEmpty else { return }
         highlightTask = Task { [weak self] in
             do { try await Task.sleep(for: .milliseconds(90)) } catch { return }
             let highlights = await scan(source)
@@ -278,28 +286,41 @@ private final class CodeEditorTextView: NSTextView {
         let range = selectedRange()
         let hasSelection = range.length > 0
 
-        if let coordinator = delegate as? CodeEditor.Coordinator {
-            let source = string as NSString
-            let selection = range.location <= source.length && range.length <= source.length - range.location
-                ? source.substring(with: range) : ""
-            for item in coordinator.contextItems(for: selection) { menu.addItem(item) }
-            if menu.numberOfItems > 0 { menu.addItem(.separator()) }
-        }
-
-        func add(_ title: String, _ identifier: String, _ action: Selector, enabled: Bool = true) {
-            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        guard let coordinator = delegate as? NativeCodeEditor.Coordinator else { return nil }
+        let source = string as NSString
+        let selection = range.location <= source.length && range.length <= source.length - range.location
+            ? source.substring(with: range) : ""
+        let commands = coordinator.contextItems(for: selection)
+        let editing = coordinator.parent.editingMenu.compactMap { descriptor -> NSMenuItem? in
+            let action: Selector
+            let enabled: Bool
+            switch descriptor.action {
+            case .cut:
+                guard isEditable else { return nil }
+                action = #selector(cut(_:))
+                enabled = hasSelection
+            case .copy:
+                action = #selector(copy(_:))
+                enabled = hasSelection
+            case .paste:
+                guard isEditable else { return nil }
+                action = #selector(paste(_:))
+                // Read the clipboard only if the user chooses to paste.
+                enabled = true
+            case .selectAll:
+                action = #selector(selectAll(_:))
+                enabled = !string.isEmpty
+            }
+            let item = NSMenuItem(title: descriptor.title, action: action, keyEquivalent: "")
             item.target = self
-            item.setAccessibilityIdentifier("editorContext-\(identifier)")
+            item.setAccessibilityIdentifier("editorContext-\(descriptor.action.rawValue)")
             item.isEnabled = enabled
-            menu.addItem(item)
+            return item
         }
-
-        if isEditable { add("Cut", "cut", #selector(cut(_:)), enabled: hasSelection) }
-        add("Copy", "copy", #selector(copy(_:)), enabled: hasSelection)
-        // Read the clipboard only if the user chooses to paste.
-        if isEditable { add("Paste", "paste", #selector(paste(_:))) }
-        add("Select All", "selectAll", #selector(selectAll(_:)), enabled: !string.isEmpty)
-        return menu
+        for item in commands { menu.addItem(item) }
+        if !commands.isEmpty && !editing.isEmpty { menu.addItem(.separator()) }
+        for item in editing { menu.addItem(item) }
+        return menu.numberOfItems > 0 ? menu : nil
     }
 }
 
@@ -386,5 +407,74 @@ private final class SourceLineNumberRuler: NSRulerView {
         if let number = lineNumbers[length], layout.extraLineFragmentTextContainer === container {
             drawNumber(number, at: layout.extraLineFragmentUsedRect)
         }
+    }
+}
+
+struct NativeValueTable: View {
+    let table: UIValueTableInfo
+    let identifier: String
+    let onOpen: ((String) -> Void)?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            columns(name: table.headings.name, value: Text(table.headings.value), className: table.headings.className)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+                .padding(.vertical, 6)
+                .background(Color(nsColor: .controlBackgroundColor))
+            Divider()
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(table.rows) { row in
+                        rowView(row)
+                        Divider().padding(.leading, CGFloat(table.horizontalPadding))
+                    }
+                }
+            }
+            .accessibilityIdentifier(identifier)
+        }
+    }
+
+    @ViewBuilder
+    private func rowView(_ row: UIValueRow) -> some View {
+        let rowID = "\(table.rowIdentifierPrefix)-\(row.name)"
+        if let onOpen {
+            Button { onOpen(row.id) } label: {
+                columns(name: row.name, value: Text(row.value), className: row.className, showsChevron: true)
+                    .font(.system(size: 13, design: .monospaced))
+                    .padding(.vertical, 6)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(row.name))
+            .accessibilityValue(Text("\(row.value), \(row.className)"))
+            .accessibilityAddTraits(.isButton)
+            .accessibilityIdentifier(rowID)
+        } else {
+            columns(name: row.name, value: Text(row.value).lineLimit(table.valueLines).textSelection(.enabled), className: row.className)
+                .font(.system(size: 13, design: .monospaced))
+                .padding(.vertical, 6)
+                .accessibilityIdentifier(rowID)
+        }
+    }
+
+    private func columns(name: String, value: some View, className: String, showsChevron: Bool = false) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: CGFloat(table.columnSpacing)) {
+            Text(name).lineLimit(1).frame(width: CGFloat(table.nameWidth), alignment: .leading)
+            value.frame(maxWidth: .infinity, alignment: .leading)
+            Text(className).lineLimit(1).foregroundStyle(.secondary)
+                .frame(width: CGFloat(table.classWidth), alignment: .leading)
+            if onOpen != nil {
+                Image(systemName: "chevron.right")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 10)
+                    .opacity(showsChevron ? 1 : 0)
+                    .accessibilityHidden(true)
+            }
+        }
+        .lineLimit(1)
+        .padding(.horizontal, CGFloat(table.horizontalPadding))
     }
 }

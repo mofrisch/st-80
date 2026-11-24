@@ -40,6 +40,25 @@ struct ToolContentView: View {
 
 }
 
+struct SnapshotWindowContentView: View {
+    let content: () -> UIElementInfo?
+    var isLoading: () -> Bool = { false }
+    let click: (UIElementInfo) -> Void
+    let select: (UIElementInfo, String) -> Void
+
+    var body: some View {
+        Group {
+            if let content = content() {
+                UIElementView(host: .snapshot(isLoading: isLoading(), click: click, select: select), element: content)
+            } else {
+                ProgressView().padding(12)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+}
+
 enum UIElementHost {
     case window(AppController, Int64)
     case snapshot(isLoading: Bool, click: (UIElementInfo) -> Void, select: (UIElementInfo, String) -> Void)
@@ -113,7 +132,9 @@ struct UIElementView: View {
                     .accessibilityIdentifier(identifier)
             }
         case .codeEditor:
-            codeEditor.frame(maxWidth: .infinity, minHeight: 64, maxHeight: .infinity)
+            if let options = element.editor {
+                codeEditor(options).frame(maxWidth: .infinity, minHeight: 64, maxHeight: .infinity)
+            }
         case .sourceView:
             if let position = element.sourcePosition {
                 PositionedSourceView(text: element.text, line: position.line, column: position.column, identifier: identifier)
@@ -150,9 +171,7 @@ struct UIElementView: View {
             }.accessibilityIdentifier(identifier)
         case .valueTable:
             if let table = element.table {
-                ValueTable(rows: table.rows, name: \.name, value: \.value, className: \.className,
-                           identifier: identifier, rowIdentifierPrefix: table.rowIdentifierPrefix,
-                           headings: table.headings, onOpen: element.readOnly ? nil : { row in select(row.id) })
+                NativeValueTable(table: table, identifier: identifier, onOpen: element.readOnly ? nil : { select($0) })
             }
         case .column:
             VStack(alignment: .leading, spacing: CGFloat(element.spacing)) { children }
@@ -260,9 +279,9 @@ struct UIElementView: View {
     }
 
     @ViewBuilder
-    private var codeEditor: some View {
+    private func codeEditor(_ options: UIEditorInfo) -> some View {
         if let (controller, windowID) = host.window {
-            CodeEditor(
+            NativeCodeEditor(
                 text: text,
                 selection: Binding(
                     get: { controller.editorSelection(windowID: windowID, elementID: element.id) },
@@ -271,8 +290,10 @@ struct UIElementView: View {
                 isEditable: !element.readOnly && element.enabled && !controller.isRunning,
                 identifier: identifier,
                 label: element.label,
-                allowsUndo: !element.readOnly,
-                usesSmalltalkSourceStyle: element.role == "source",
+                allowsUndo: options.undoEnabled,
+                lineNumbers: options.lineNumbers,
+                syntaxHighlighting: options.syntaxHighlighting,
+                editingMenu: options.editingMenu,
                 highlightsForSource: controller.sourceHighlights,
                 contextMenuItems: controller.editorContextItems(windowID: windowID, editor: element),
                 contextCommandsEnabled: element.enabled && !controller.isRunning,
@@ -281,8 +302,9 @@ struct UIElementView: View {
                 }
             )
         } else {
-            CodeEditor(text: text, selection: .constant(NSRange()), isEditable: false, identifier: identifier,
-                       label: element.label, allowsUndo: false)
+            NativeCodeEditor(text: text, selection: .constant(NSRange()), isEditable: false, identifier: identifier,
+                             label: element.label, allowsUndo: false, lineNumbers: options.lineNumbers,
+                             syntaxHighlighting: false, editingMenu: options.editingMenu)
         }
     }
 

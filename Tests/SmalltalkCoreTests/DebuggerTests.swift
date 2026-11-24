@@ -41,6 +41,8 @@ struct DebuggerTests {
         #expect(workspace.source == source)
         #expect(workspace.line == 2)
         #expect(workspace.variables.first { $0.name == "answer" }?.value == "nil")
+        #expect(try await paused.commandPhase(after: .stepInto, from: .paused) == .running)
+        #expect(try await paused.commandPhase(after: .stepOut, from: .paused) == nil)
 
         for _ in 0..<16 where paused.frames.count == 1 {
             debugger.send(.stepInto)
@@ -69,6 +71,8 @@ struct DebuggerTests {
         let running = try await paused.controlTree(phase: .running)
         #expect(control("debuggerContinue", in: running)?.enabled == false)
         #expect(control("debuggerStop", in: running)?.enabled == true)
+        #expect(try await paused.commandPhase(after: .stepOut, from: .paused) == .running)
+        #expect(try await paused.commandPhase(after: .resume, from: .running) == nil)
 
         // Step over the entire line that sends increment, even if the source
         // locations before and after its send use different columns.
@@ -142,6 +146,7 @@ struct DebuggerTests {
         #expect(control("debuggerError", in: controls)?.text.contains("Division by zero") == true)
         #expect(control("debuggerStepInto", in: controls)?.enabled == false)
         #expect(control("debuggerStop", in: controls)?.text == "Close")
+        #expect(try await failure.commandPhase(after: .resume, from: .paused) == nil)
 
         failing.send(.stop)
         let finished = try requireResult(await failingEvents.next())

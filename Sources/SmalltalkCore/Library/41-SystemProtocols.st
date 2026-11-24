@@ -129,8 +129,9 @@ BrowserOrganization compile: 'shippedProtocols
             (''Input Handling'' (''editText:'' ''onChangeSend:to:''))))
         (''UICodeEditor'' (
             (''Initialization'' (''initialize''))
-            (''Editing Permissions'' (''readOnly:''))
-            (''Context Menu'' (''contextMenu'' ''contextMenu:''))))
+            (''Editing Permissions'' (''readOnly:'' ''undoEnabled:''))
+            (''Source Display'' (''role:'' ''lineNumbers:'' ''syntaxHighlighting:''))
+            (''Context Menu'' (''contextMenu'' ''contextMenu:'' ''editingMenu:''))))
         (''UIList'' (
             (''Initialization'' (''initialize''))
             (''List Contents'' (''items:''))
@@ -144,6 +145,7 @@ BrowserOrganization compile: 'shippedProtocols
         (''UIValueTable'' (
             (''Initialization'' (''initialize''))
             (''Table Contents'' (''rows:'' ''headings:'' ''rowIdentifierPrefix:''))
+            (''Layout'' (''nameWidth:classWidth:'' ''columnSpacing:padding:'' ''valueLines:''))
             (''Selection'' (''command:'' ''readOnly:''))))
         (''UIContainer'' (
             (''Initialization'' (''initialize''))
@@ -182,9 +184,13 @@ BrowserOrganization compile: 'shippedProtocols
             (''Navigation'' (''dropTo:'' ''back'' ''follow:''))
             (''Pagination'' (''page:'' ''changePageBy:'' ''pageSize''))
             (''Snapshot'' (''refresh''))))
+        (''ObjectInspectorWindow'' (
+            (''Initialization'' (''initialize''))))
         (''DevelopmentWindow'' (
             (''Shared Layout'' (''heading:'' ''caption:'' ''resultPane'' ''toggleResult'' ''resultExpanded:''))
             (''Result Display'' (''result:''))))
+        (''DebuggerWindow'' (
+            (''Initialization'' (''initialize''))))
         (''WorkspaceWindow'' (
             (''Initialization'' (''initialize''))
             (''Code Evaluation'' (''text:'' ''sourceForSelection:'' ''doIt:'' ''printIt:'' ''inspect:'' ''debugIt:'' ''execute:printing:''))

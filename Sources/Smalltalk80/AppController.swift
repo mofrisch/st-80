@@ -24,8 +24,8 @@ final class AppController {
     var imageURL: URL?
     private(set) var imageHasChanges = false
     private let session = SmalltalkSession()
-    @ObservationIgnored private lazy var inspectorWindows = NativeInspectorWindows(session: session)
-    @ObservationIgnored private let debuggerWindow = NativeDebuggerWindow()
+    @ObservationIgnored private var inspectors: [UUID: InspectorPresentationState] = [:]
+    private var keyInspectorID: UUID?
     @ObservationIgnored private var debugSession: WorkspaceDebugSession?
     @ObservationIgnored private var debuggerStopRequested = false
     private var hasLoaded = false
@@ -149,7 +149,7 @@ final class AppController {
                 // A newer window snapshot may arrive first. An inspector
                 // request still owns a live root in this session.
                 for case .openInspector(let snapshot) in evaluation.toolRequests {
-                    inspectorWindows.open(snapshot)
+                    openInspector(snapshot)
                 }
                 return
             }
@@ -157,7 +157,9 @@ final class AppController {
         }
         currentEpoch = evaluation.windowCommands.epoch
         latestRevision = evaluation.windowCommands.revision
-        if replacingWindows { inspectorWindows.closeAll() }
+        if replacingWindows {
+            for id in Array(inspectors.keys) { closeInspector(id) }
+        }
         changesPath = evaluation.changesPath
         error = evaluation.error
         windowPresentation.update(from: evaluation, replacingWindows: replacingWindows)
@@ -170,7 +172,7 @@ final class AppController {
             case .showVersions(let className, let selector, let side):
                 Task { [weak self] in await self?.showChanges(className: className, selector: selector, side: side) }
             case .openInspector(let snapshot):
-                inspectorWindows.open(snapshot)
+                openInspector(snapshot)
             case .debugWorkspace(let id, let identity, let source):
                 Task { [weak self] in
                     guard let self, let window = self.presentedWindow(id)?.info,
@@ -260,7 +262,7 @@ final class AppController {
     }
 
     private func activeButton(for command: String) -> (windowID: Int64, button: UIElementInfo)? {
-        guard !inspectorWindows.hasKeyWindow, let window = windowPresentation.activeWindow?.info,
+        guard keyInspectorID == nil, let window = windowPresentation.activeWindow?.info,
               let button = window.content?.firstVisible(where: { $0.command == command && $0.enabled }),
               canPerform(button, in: window.id) else { return nil }
         return (window.id, button)
@@ -295,7 +297,7 @@ final class AppController {
     }
 
     var canInspectWorkspace: Bool {
-        guard !inspectorWindows.hasKeyWindow, let window = windowPresentation.activeWindow?.info else { return false }
+        guard keyInspectorID == nil, let window = windowPresentation.activeWindow?.info else { return false }
         return hasCommand("inspectIt") || legacyWorkspaceEditor(in: window) != nil
     }
 
@@ -335,7 +337,7 @@ final class AppController {
     }
 
     var canDebugWorkspace: Bool {
-        guard !isRunning, !inspectorWindows.hasKeyWindow, let window = windowPresentation.activeWindow?.info else {
+        guard !isRunning, keyInspectorID == nil, let window = windowPresentation.activeWindow?.info else {
             return false
         }
         return workspaceEditor(in: window) != nil
@@ -363,10 +365,13 @@ final class AppController {
         let text = inputText(windowID: windowID, element: editor)
         let selected = capturedSelection ?? selectedText(in: editor, windowID: windowID, text: text)
         let source = preparedSource ?? (selected.isEmpty ? text : selected)
+        let debuggerWindowID = UUID()
+        var presentation: DebuggerPresentationState?
         debuggerStopRequested = false
         isRunning = true
         defer {
-            debuggerWindow.close()
+            presentation?.cancel()
+            nativeWindows?.closeTransientWindow(debuggerWindowID)
             debugSession = nil
             isRunning = false
         }
@@ -379,10 +384,23 @@ final class AppController {
             switch event {
             case .paused(let snapshot):
                 guard !debuggerStopRequested else { continue }
-                debuggerWindow.show(snapshot, onCommand: { [weak self] command in
+                if let presentation {
+                    presentation.update(snapshot)
+                    nativeWindows?.activateTransientWindow(debuggerWindowID)
+                    continue
+                }
+                guard let nativeWindows, let info = try? await snapshot.windowInfo() else {
+                    stopDebugging()
+                    continue
+                }
+                guard !debuggerStopRequested else { continue }
+                let state = DebuggerPresentationState(snapshot: snapshot) { [weak self] command in
                     if case .stop = command { self?.stopDebugging() }
                     else { self?.debugSession?.send(command) }
-                }, onClose: { [weak self] in self?.stopDebugging() })
+                }
+                presentation = state
+                let content = SnapshotWindowContentView(content: { state.content }, click: state.click, select: state.select)
+                nativeWindows.showTransientWindow(debuggerWindowID, info: info, content: AnyView(content), onClose: state.stop)
             case .finished(let evaluation):
                 apply(evaluation)
                 windowPresentation.setInputError(evaluation.error, for: windowID)
@@ -392,8 +410,44 @@ final class AppController {
         }
     }
 
+    private func openInspector(_ snapshot: InspectorSnapshot) {
+        let id = snapshot.id
+        if inspectors[id] != nil {
+            nativeWindows?.activateTransientWindow(id)
+            return
+        }
+
+        let state = InspectorPresentationState(snapshot: snapshot, session: session)
+        inspectors[id] = state
+        Task { [weak self, session] in
+            do {
+                let info = try await session.inspectorWindowInfo(for: id)
+                guard let self, inspectors[id] === state else { return }
+                guard let nativeWindows else { closeInspector(id); return }
+                let content = SnapshotWindowContentView(content: { state.content }, isLoading: { state.isLoading },
+                                                        click: state.click, select: state.select)
+                nativeWindows.showTransientWindow(id, info: info, content: AnyView(content), onKeyChange: { [weak self] isKey in
+                    guard let self else { return }
+                    if isKey { keyInspectorID = id }
+                    else if keyInspectorID == id { keyInspectorID = nil }
+                }, onClose: { [weak self] in self?.closeInspector(id) })
+            } catch {
+                guard let self, inspectors[id] === state else { return }
+                self.error = error.localizedDescription
+                closeInspector(id)
+            }
+        }
+    }
+
+    private func closeInspector(_ id: UUID) {
+        guard let state = inspectors.removeValue(forKey: id) else { return }
+        if keyInspectorID == id { keyInspectorID = nil }
+        nativeWindows?.closeTransientWindow(id)
+        state.close()
+    }
+
     func inspectWorkspace() async {
-        guard !isRunning, !inspectorWindows.hasKeyWindow else { return }
+        guard !isRunning, keyInspectorID == nil else { return }
         if hasCommand("inspectIt") {
             await performCommand("inspectIt")
             return

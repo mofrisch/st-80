@@ -76,6 +76,31 @@ InspectorModel compile: 'refresh
 
 "The inspector describes its controls from an immutable snapshot of VM data."
 
+UIWindow subclass: #ObjectInspectorWindow instanceVariableNames: 'identifier'.
+
+ObjectInspectorWindow compile: 'initialize
+    super initialize.
+    identifier := ''objectInspector''.
+    self title: ''Object Inspector'';
+        minimumWidth: 380 height: 250;
+        resizeWidth: 540 height: 440'.
+
+ObjectInspectorWindow compileClass: 'action: command row: row on: model members: members
+    | index |
+    command = #inspectBack ifTrue: [ ^ model back ].
+    command = #inspectRefresh ifTrue: [ ^ model refresh ].
+    command = #inspectPreviousPage ifTrue: [ ^ model changePageBy: -1 ].
+    command = #inspectNextPage ifTrue: [ ^ model changePageBy: 1 ].
+    (command = #inspectMember and: [ row notNil ]) ifFalse: [ ^ nil ].
+    index := row asIntegerOrNil.
+    (index isNil or: [ index < 0 or: [ index >= members size ] ]) ifTrue: [ ^ nil ].
+    ^ model follow: (members at: index + 1)'.
+
+ObjectInspectorWindow compileClass: 'fallbackFor: message
+    ^ UIColumn new padding: 12;
+        add: (UILabel new role: #error; text: message; yourself);
+        yourself'.
+
 Object subclass: #InspectorPresentation instanceVariableNames: ''.
 
 InspectorPresentation compileClass: 'contentFor: className summary: preview path: path rows: rows page: page pageCount: pageCount

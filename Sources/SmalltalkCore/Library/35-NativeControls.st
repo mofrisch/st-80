@@ -1,11 +1,32 @@
-UITextField subclass: #UICodeEditor instanceVariableNames: 'readOnly contextMenu'.
+UITextField subclass: #UICodeEditor instanceVariableNames: 'readOnly contextMenu lineNumbers syntaxHighlighting undoEnabled editingMenu'.
 
 UICodeEditor compile: 'initialize
     super initialize.
-    readOnly := false'.
+    readOnly := false.
+    lineNumbers := false.
+    syntaxHighlighting := false.
+    undoEnabled := true.
+    editingMenu := #((#cut ''Cut'') (#copy ''Copy'') (#paste ''Paste'') (#selectAll ''Select All''))'.
 
 UICodeEditor compile: 'readOnly: aBoolean
     readOnly := aBoolean'.
+
+UICodeEditor compile: 'role: aSymbol
+    super role: aSymbol.
+    lineNumbers := aSymbol = #source.
+    syntaxHighlighting := lineNumbers'.
+
+UICodeEditor compile: 'lineNumbers: aBoolean
+    lineNumbers := aBoolean'.
+
+UICodeEditor compile: 'syntaxHighlighting: aBoolean
+    syntaxHighlighting := aBoolean'.
+
+UICodeEditor compile: 'undoEnabled: aBoolean
+    undoEnabled := aBoolean'.
+
+UICodeEditor compile: 'editingMenu: entries
+    editingMenu := entries'.
 
 UICodeEditor compile: 'contextMenu
     ^ contextMenu'.
@@ -69,13 +90,16 @@ UISourceView compile: 'line: aLine column: aColumn
     line := aLine.
     column := aColumn'.
 
-UIList subclass: #UIValueTable instanceVariableNames: 'rows headings rowIdentifierPrefix command readOnly'.
+UIList subclass: #UIValueTable instanceVariableNames: 'rows headings rowIdentifierPrefix command readOnly nameWidth classWidth columnSpacing horizontalPadding valueLines'.
 
 UIValueTable compile: 'initialize
     super initialize.
     rows := #().
     headings := #(''Name'' ''Value'' ''Class'').
-    rowIdentifierPrefix := ''row'''.
+    rowIdentifierPrefix := ''row''.
+    self nameWidth: 96 classWidth: 108;
+        columnSpacing: 12 padding: 12;
+        valueLines: 3'.
 
 UIValueTable compile: 'rows: entries
     rows := entries.
@@ -92,6 +116,17 @@ UIValueTable compile: 'command: aSymbol
 
 UIValueTable compile: 'readOnly: aBoolean
     readOnly := aBoolean'.
+
+UIValueTable compile: 'nameWidth: nameColumn classWidth: classColumn
+    nameWidth := nameColumn.
+    classWidth := classColumn'.
+
+UIValueTable compile: 'columnSpacing: spacing padding: padding
+    columnSpacing := spacing.
+    horizontalPadding := padding'.
+
+UIValueTable compile: 'valueLines: count
+    valueLines := count'.
 
 UIContainer subclass: #UISplit instanceVariableNames: ''.
 

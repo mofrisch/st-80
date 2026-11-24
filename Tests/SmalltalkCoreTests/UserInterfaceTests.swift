@@ -9,6 +9,35 @@ struct UserInterfaceTests {
         return [root] + root.children.flatMap { elements($0) }
     }
 
+    @Test func editorAndValueTableProjectTheirSettingsFromSmalltalk() async throws {
+        let session = SmalltalkSession()
+        let opened = await session.evaluate("""
+        editor := UICodeEditor new identifier: 'configurableEditor'; role: #source;
+            lineNumbers: false; undoEnabled: false;
+            editingMenu: #((#copy 'Copy Source') (#selectAll 'Select Everything')); yourself.
+        table := UIValueTable new identifier: 'configurableTable'; readOnly: true;
+            nameWidth: 130 classWidth: 70; columnSpacing: 7 padding: 6; valueLines: 5; yourself.
+        UIWindow new content: (UIColumn new add: editor; add: table; yourself); open
+        """)
+        #expect(opened.error == nil)
+        let controls = elements(opened.windows.first { $0.kind == .custom }?.content)
+        let editor = try #require(controls.first { $0.accessibilityID == "configurableEditor" }?.editor)
+        #expect(!editor.lineNumbers)
+        #expect(editor.syntaxHighlighting)
+        #expect(!editor.undoEnabled)
+        #expect(editor.editingMenu.map(\.action) == [.copy, .selectAll])
+        #expect(editor.editingMenu.map(\.title) == ["Copy Source", "Select Everything"])
+
+        let control = try #require(controls.first { $0.accessibilityID == "configurableTable" })
+        let table = try #require(control.table)
+        #expect(control.readOnly)
+        #expect(table.nameWidth == 130)
+        #expect(table.classWidth == 70)
+        #expect(table.columnSpacing == 7)
+        #expect(table.horizontalPadding == 6)
+        #expect(table.valueLines == 5)
+    }
+
     @Test func exampleProjectsNestedLayoutsAndDispatchesTextAndButtons() async throws {
         let session = SmalltalkSession()
         let opened = await session.evaluate(SmalltalkExamples.legacyUserInterface)

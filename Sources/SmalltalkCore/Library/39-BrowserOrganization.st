@@ -124,7 +124,7 @@ BrowserOrganization compile: 'categoryOf: name
 BrowserOrganization compile: 'defaultCategoryOf: name
     (#(''Object'' ''Class'' ''UndefinedObject'' ''Boolean'' ''True'' ''False'' ''Number'' ''Integer'' ''SmallInteger'' ''String'' ''Symbol'' ''Array'' ''BlockClosure'') includes: name) ifTrue: [ ^ ''Kernel'' ].
     (#(''STCompilerList'' ''STScanner'' ''STSourceScanner'' ''STCompiler'') includes: name) ifTrue: [ ^ ''Compiler'' ].
-    (#(''Transcript'' ''TranscriptModel'' ''ToolServices'' ''DevelopmentWindow'' ''ChangesBrowser'' ''InspectorModel'' ''InspectorPresentation'' ''DebuggerPresentation'' ''WorkspaceWindow'' ''BrowserWindow'' ''TranscriptWindow''
+    (#(''Transcript'' ''TranscriptModel'' ''ToolServices'' ''DevelopmentWindow'' ''ChangesBrowser'' ''InspectorModel'' ''ObjectInspectorWindow'' ''InspectorPresentation'' ''DebuggerWindow'' ''DebuggerPresentation'' ''WorkspaceWindow'' ''BrowserWindow'' ''TranscriptWindow''
        ''BrowserGroup'' ''BrowserGrouping'' ''BrowserOrganization'' ''BrowserOrganizationForm''
        ''TestCase'' ''TestOutcome'' ''TestResult'' ''TestRunner'') includes: name) ifTrue: [ ^ ''Tools'' ].
     (#(''Model'' ''Controller'' ''UIBinding'' ''SystemWindow'' ''DesktopModel'' ''DisplayScreen'' ''DesktopManager''

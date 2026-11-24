@@ -1,4 +1,29 @@
-"The native debugger transports immutable data to this presentation in a separate interpreter."
+"The debugger window and its controls run against immutable snapshots in a separate interpreter."
+
+UIWindow subclass: #DebuggerWindow instanceVariableNames: 'identifier'.
+
+DebuggerWindow compile: 'initialize
+    super initialize.
+    identifier := ''debugger''.
+    self title: ''Debugger'';
+        minimumWidth: 620 height: 360;
+        resizeWidth: 840 height: 540'.
+
+DebuggerWindow compileClass: 'phaseAfter: phase command: command error: hasError frameCount: count
+    (phase = #paused and: [ hasError not ]) ifFalse: [ ^ nil ].
+    (command = #stepOut and: [ count < 2 ]) ifTrue: [ ^ nil ].
+    (#(#stepInto #stepOver #stepOut #resume) includes: command) ifFalse: [ ^ nil ].
+    ^ #running'.
+
+DebuggerWindow compileClass: 'selectionFor: stack requested: key
+    stack do: [ :frame | (frame at: 1) = key ifTrue: [ ^ key ] ].
+    ^ stack isEmpty ifTrue: [ nil ] ifFalse: [ (stack at: 1) at: 1 ]'.
+
+DebuggerWindow compileClass: 'fallbackFor: message phase: phase
+    ^ UIColumn new padding: 12;
+        add: (UILabel new role: #error; text: message; yourself);
+        add: (DebuggerPresentation command: ''Stop'' id: ''debuggerStop'' send: #stop enabled: phase ~= #stopping);
+        yourself'.
 
 Object subclass: #DebuggerPresentation instanceVariableNames: ''.
 

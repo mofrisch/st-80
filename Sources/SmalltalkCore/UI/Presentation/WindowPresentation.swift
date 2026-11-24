@@ -1,30 +1,31 @@
 import Foundation
-import SmalltalkCore
 
 /// The VM snapshot owns display state. File associations and input errors are
-/// native details attached to the lifetime of a particular window.
-struct PresentedWindow {
-    var info: ToolWindowInfo
-    var documentURL: URL?
-    var inputError: String?
+/// attached to the lifetime of a particular window.
+package struct PresentedWindow {
+    package fileprivate(set) var info: ToolWindowInfo
+    package fileprivate(set) var documentURL: URL?
+    package fileprivate(set) var inputError: String?
 }
 
-struct WindowPresentation {
-    private(set) var windows: [PresentedWindow] = []
-    var activeID: Int64?
+package struct WindowPresentation {
+    package private(set) var windows: [PresentedWindow] = []
+    package var activeID: Int64?
 
-    func window(_ id: Int64) -> PresentedWindow? {
+    package init() {}
+
+    package func window(_ id: Int64) -> PresentedWindow? {
         windows.first { $0.info.id == id }
     }
 
-    var activeWindow: PresentedWindow? { activeID.flatMap(window) }
+    package var activeWindow: PresentedWindow? { activeID.flatMap(window) }
 
-    var workspace: PresentedWindow? {
+    package var workspace: PresentedWindow? {
         if let activeWindow, activeWindow.info.kind == .workspace { return activeWindow }
         return windows.last { $0.info.kind == .workspace }
     }
 
-    mutating func update(from evaluation: EvaluationResult, replacingWindows: Bool) {
+    package mutating func update(from evaluation: EvaluationResult, replacingWindows: Bool) {
         let previous = replacingWindows ? [:] : Dictionary(uniqueKeysWithValues: windows.map { ($0.info.id, $0) })
         windows = evaluation.windows.map { info in
             guard var existing = previous[info.id], existing.info.identity == info.identity,
@@ -35,11 +36,11 @@ struct WindowPresentation {
         activeID = evaluation.activeWindowID
     }
 
-    mutating func setDocumentURL(_ url: URL, for id: Int64) {
+    package mutating func setDocumentURL(_ url: URL, for id: Int64) {
         if let index = index(of: id) { windows[index].documentURL = url }
     }
 
-    mutating func setInputError(_ error: String?, for id: Int64) {
+    package mutating func setInputError(_ error: String?, for id: Int64) {
         if let index = index(of: id) { windows[index].inputError = error }
     }
 

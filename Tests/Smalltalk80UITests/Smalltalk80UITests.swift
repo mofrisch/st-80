@@ -517,6 +517,34 @@ final class Smalltalk80UITests: XCTestCase {
         wait(for: [expectation(for: inspected, evaluatedWith: summary)], timeout: 5)
     }
 
+    func testNativeEditorUsesTheEditingMenuFromSmalltalk() {
+        let app = launchFreshApp()
+        let workspace = app.windows["toolWindow-1"]
+        replaceText(in: workspace.textViews["workspaceEditor"], with: """
+        menuEditor := UICodeEditor new identifier: 'menuEditor'; text: 'Copy this';
+            editingMenu: #((#copy 'Copy Source') (#selectAll 'Select Everything')); yourself.
+        UIWindow new title: 'Editor Menu'; content: menuEditor; open
+        """)
+        workspace.buttons["executeButton"].click()
+        let editor = app.windows["toolWindow-4"].textViews["menuEditor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.click()
+        editor.typeKey("a", modifierFlags: .command)
+        let point = editor.coordinate(withNormalizedOffset: CGVector(dx: 0.45, dy: 0.45))
+        withPreservedPasteboard { pasteboard in
+            pasteboard.clearContents()
+            point.rightClick()
+            let copy = app.menuItems["editorContext-copy"].firstMatch
+            XCTAssertTrue(copy.waitForExistence(timeout: 5))
+            XCTAssertEqual(copy.title, "Copy Source")
+            XCTAssertEqual(app.menuItems["editorContext-selectAll"].firstMatch.title, "Select Everything")
+            XCTAssertFalse(app.menuItems["editorContext-cut"].exists)
+            XCTAssertFalse(app.menuItems["editorContext-paste"].exists)
+            copy.click()
+            XCTAssertEqual(pasteboard.string(forType: .string), "Copy this")
+        }
+    }
+
     func testWorkspaceDebuggerStepsIntoSelectedCodeAndContinues() {
         let app = launchFreshApp()
         let workspace = app.windows["toolWindow-1"]
@@ -587,6 +615,36 @@ final class Smalltalk80UITests: XCTestCase {
         execute.click()
         XCTAssertTrue(workspace.staticTexts["42"].waitForExistence(timeout: 5))
         XCTAssertFalse(workspace.staticTexts["ERROR"].exists)
+    }
+
+    func testWorkspaceDebuggerUsesTheImageWindowAndStopsWhenClosed() {
+        let app = launchFreshApp()
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        let execute = workspace.buttons["executeButton"]
+        replaceText(in: editor, with: """
+        closeProbe := 0.
+        DebuggerWindow compile: 'initialize
+            super initialize.
+            identifier := ''debugger''.
+            self title: ''Smalltalk Debugger''; minimumWidth: 620 height: 360; resizeWidth: 700 height: 450'.
+        #debuggerWindowChanged
+        """)
+        execute.click()
+        XCTAssertTrue(workspace.staticTexts["#debuggerWindowChanged"].waitForExistence(timeout: 5))
+
+        replaceText(in: editor, with: "closeProbe := closeProbe + 1")
+        let debugger = openWorkspaceDebugger(in: app, editor: editor)
+        XCTAssertEqual(debugger.title, "Smalltalk Debugger")
+        XCTAssertEqual(debugger.frame.width, 700, accuracy: 2)
+        XCTAssertTrue(debugger.buttons["debuggerContinue"].waitForExistence(timeout: 5))
+        debugger.buttons[XCUIIdentifierCloseWindow].click()
+        let closed = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: debugger)
+        let ready = expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: execute)
+        wait(for: [closed, ready], timeout: 5)
+        replaceText(in: editor, with: "closeProbe + 42")
+        execute.click()
+        XCTAssertTrue(workspace.staticTexts["42"].waitForExistence(timeout: 5))
     }
 
     func testWorkspaceDebuggerShowsTheFailureAndClosesWithoutResuming() {
@@ -667,6 +725,46 @@ final class Smalltalk80UITests: XCTestCase {
         inspector.buttons[XCUIIdentifierCloseWindow].click()
         let closed = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: inspector)
         wait(for: [closed], timeout: 5)
+    }
+
+    func testObjectInspectorsUseTheImageWindowAndCloseIndependently() {
+        let app = launchFreshApp()
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        replaceText(in: editor, with: """
+        ObjectInspectorWindow compile: 'initialize
+            super initialize.
+            identifier := ''objectInspector''.
+            self title: ''Smalltalk Inspector''; minimumWidth: 380 height: 250; resizeWidth: 640 height: 440'.
+        #inspectorWindowChanged
+        """)
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(workspace.staticTexts["#inspectorWindowChanged"].waitForExistence(timeout: 5))
+
+        let inspectors = app.windows.matching(identifier: "objectInspector")
+        func inspector(for className: String) -> XCUIElement {
+            inspectors.containing(NSPredicate(format: "identifier == %@ AND (label == %@ OR value == %@)",
+                                             "inspectorClass", className, className)).firstMatch
+        }
+
+        replaceText(in: editor, with: "Counter new add: 41")
+        editor.typeKey("i", modifierFlags: .command)
+        let counter = inspector(for: "Counter")
+        XCTAssertTrue(counter.waitForExistence(timeout: 5))
+        XCTAssertEqual(counter.title, "Smalltalk Inspector")
+        XCTAssertEqual(counter.frame.width, 640, accuracy: 2)
+
+        app.typeKey("1", modifierFlags: .command)
+        replaceText(in: editor, with: "#(1 2)")
+        editor.typeKey("i", modifierFlags: .command)
+        let array = inspector(for: "Array")
+        XCTAssertTrue(array.waitForExistence(timeout: 5))
+        XCTAssertEqual(inspectors.count, 2)
+        array.buttons[XCUIIdentifierCloseWindow].click()
+        let closed = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: array)
+        wait(for: [closed], timeout: 5)
+        XCTAssertTrue(counter.exists)
+        XCTAssertEqual(inspectors.count, 1)
     }
 
     func testNativeWorkspacesKeepIndependentBuffersShareObjectsAndCloseSeparately() {

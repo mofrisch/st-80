@@ -35,6 +35,8 @@ final class NativeWindowBackend {
     private let toolbar: (ToolWindowInfo) -> AnyView?
     private let onEvent: (NativeWindowEvent) -> Void
     private var entries: [Int64: Entry] = [:]
+    private var transientWindows: [UUID: (window: NSWindow, delegate: TransientWindowDelegate)] = [:]
+    private let windowStyle: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable]
     private var applying = false
     private var epoch = ""
     private var revision: Int64 = 0
@@ -71,6 +73,37 @@ final class NativeWindowBackend {
         applying = false
         for event in acknowledgements.frames { emit(event) }
         for event in acknowledgements.states { emit(event) }
+    }
+
+    func showTransientWindow(_ id: UUID, info: TransientWindowInfo, content: AnyView,
+                             onKeyChange: ((Bool) -> Void)? = nil, onClose: @escaping () -> Void) {
+        let window = makeWindow(contentRect: NSRect(x: 0, y: 0, width: CGFloat(info.width), height: CGFloat(info.height)),
+                                title: info.title, identifier: info.identifier)
+        window.identifier = NSUserInterfaceItemIdentifier("\(info.identifier)-\(id.uuidString)")
+        let hosting = NSHostingController(rootView: content)
+        hosting.sizingOptions = []
+        window.contentViewController = hosting
+        window.contentMinSize = NSSize(width: CGFloat(info.minimumWidth), height: CGFloat(info.minimumHeight))
+        window.setContentSize(NSSize(width: CGFloat(info.width), height: CGFloat(info.height)))
+        window.center()
+        let delegate = TransientWindowDelegate(onKeyChange: onKeyChange) { [weak self] in
+            self?.removeTransientWindow(id, close: false)
+            onClose()
+        }
+        window.delegate = delegate
+        transientWindows[id] = (window, delegate)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    func activateTransientWindow(_ id: UUID) { transientWindows[id]?.window.makeKeyAndOrderFront(nil) }
+
+    func closeTransientWindow(_ id: UUID) { removeTransientWindow(id, close: true) }
+
+    private func removeTransientWindow(_ id: UUID, close: Bool) {
+        guard let entry = transientWindows.removeValue(forKey: id) else { return }
+        entry.window.delegate = nil
+        NSApp.removeWindowsItem(entry.window)
+        if close { entry.window.close() }
     }
 
     private func startEpoch(_ newEpoch: String) {
@@ -202,21 +235,26 @@ final class NativeWindowBackend {
     }
 
     private func makeWindow(_ info: ToolWindowInfo) -> Entry {
-        let style: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable]
-        let window = NSWindow(contentRect: NSWindow.contentRect(forFrameRect: rect(info.frame), styleMask: style), styleMask: style, backing: .buffered, defer: false)
-        window.title = info.title
-        window.identifier = NSUserInterfaceItemIdentifier("toolWindow-\(info.id)")
-        window.setAccessibilityIdentifier("toolWindow-\(info.id)")
-        window.setAccessibilityLabel(info.title)
-        window.isReleasedWhenClosed = false
-        window.isRestorable = false
-        window.tabbingMode = .disallowed
+        let contentRect = NSWindow.contentRect(forFrameRect: rect(info.frame), styleMask: windowStyle)
+        let window = makeWindow(contentRect: contentRect, title: info.title, identifier: "toolWindow-\(info.id)")
         window.animationBehavior = .documentWindow
         window.contentViewController = NSHostingController(rootView: content(info.id))
         let delegate = WindowDelegate(id: info.id, backend: self)
         window.delegate = delegate
-        NSApp.addWindowsItem(window, title: info.title, filename: false)
         return Entry(window: window, delegate: delegate, identity: info.identity)
+    }
+
+    private func makeWindow(contentRect: NSRect, title: String, identifier: String) -> NSWindow {
+        let window = NSWindow(contentRect: contentRect, styleMask: windowStyle, backing: .buffered, defer: false)
+        window.title = title
+        window.identifier = NSUserInterfaceItemIdentifier(identifier)
+        window.setAccessibilityIdentifier(identifier)
+        window.setAccessibilityLabel(title)
+        window.isReleasedWhenClosed = false
+        window.isRestorable = false
+        window.tabbingMode = .disallowed
+        NSApp.addWindowsItem(window, title: title, filename: false)
+        return window
     }
     private func remove(_ id: Int64) {
         guard let entry = entries.removeValue(forKey: id) else { return }
@@ -231,6 +269,21 @@ final class NativeWindowBackend {
         guard !applying, let entry = entries[id], !nearlyEqual(entry.window.frame, entry.observedFrame) else { return }
         entry.observedFrame = entry.window.frame
         emit(.frame(id, facts(entry.observedFrame)))
+    }
+
+    @MainActor
+    private final class TransientWindowDelegate: NSObject, NSWindowDelegate {
+        let onKeyChange: ((Bool) -> Void)?
+        let onClose: () -> Void
+
+        init(onKeyChange: ((Bool) -> Void)?, onClose: @escaping () -> Void) {
+            self.onKeyChange = onKeyChange
+            self.onClose = onClose
+        }
+
+        func windowDidBecomeKey(_ notification: Notification) { onKeyChange?(true) }
+        func windowDidResignKey(_ notification: Notification) { onKeyChange?(false) }
+        func windowWillClose(_ notification: Notification) { onClose() }
     }
 
     @MainActor

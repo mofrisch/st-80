@@ -226,7 +226,8 @@ final class DebuggerExecution {
                                  line: frame.instruction?.position.line ?? 1, column: frame.instruction?.position.column ?? 1,
                                  instruction: String((frame.instruction?.operation.disassemblyText ?? "").prefix(240)),
                                  variables: variables(in: context, runtime: runtime))
-        }, presentation: DebuggerPresentationDefinition(runtime.classes["DebuggerPresentation"]))
+        }, presentation: DebuggerPresentationDefinition(content: runtime.classes["DebuggerPresentation"],
+                                                        window: runtime.classes["DebuggerWindow"]))
     }
 
     private func variables(in context: Context, runtime: SmalltalkRuntime) -> [DebuggerVariable] {

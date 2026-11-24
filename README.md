@@ -37,9 +37,9 @@ Local builds use ad hoc signing, so you can run the app without a development te
 
 The Object Inspector shows a value's class, instance variables, and one-based array elements. Open a row to follow its value, use **Back** to return, and use **Refresh** after another workspace changes the object. Long arrays are shown one page at a time. Smalltalk code can also open the window with `ToolVM inspect: anObject`.
 
-An open inspector keeps its current value and navigation history reachable for garbage collection. `42-Inspector.st` defines the control tree and the Smalltalk model that manages the path, follows object references, and pages through members. VM primitives provide object identity, names, and values on demand. Inspectors belong to the running session. Loading an image or resetting the session closes them.
+An open inspector keeps its current value and navigation history reachable for garbage collection. `ObjectInspectorWindow` defines the title, dimensions, and control actions in `42-Inspector.st`. The shared native backend hosts the window. `InspectorPresentation` builds its controls, and `InspectorModel` manages the path, follows references, and pages through members. Loading an image or resetting the session closes the inspectors.
 
-The debugger pauses at entry. The image’s `DebuggerPresentation` builds the interface from immutable stack snapshots on a separate interpreter thread. The native command channel can wake the paused interpreter directly. Select a stack frame to see its source, current instruction, receiver, and variables. **Step Into** follows calls, **Step Over** runs to the next location in the current frame or its caller, and **Step Out** returns to the caller. **Continue** runs until completion or a runtime error. An error shows the failing stack. **Stop** and closing the debugger end the evaluation and keep effects already performed.
+The debugger pauses at entry. `DebuggerWindow` defines its title, dimensions, frame selection, command policy, and recovery view in the image. `DebuggerPresentation` builds the controls from immutable stack snapshots on a separate interpreter thread. The shared native window backend hosts the window. **Stop** and closing the window use a direct command channel to end the evaluation and keep effects already performed. Select a stack frame to see its source, current instruction, receiver, and variables. **Step Into** follows calls, **Step Over** runs to the next location in the current frame or its caller, and **Step Out** returns to the caller. **Continue** runs until completion or a runtime error. An error shows the failing stack.
 
 ## Save and load images
 
@@ -163,6 +163,8 @@ Accepting a revised class definition updates existing instances of the class and
 The Browser, Workspace, and Transcript use the same SwiftUI control renderer as custom windows. Their Smalltalk descriptions place controls, set their visibility, and handle disclosure buttons and menus. A direct child of the content with role `#windowToolbar` mounts in the native title bar. The Workspace supplies its Examples menu as a direct child with role `#applicationMenu` for the Smalltalk menu in the macOS menu bar.
 
 File dialogs, keyboard shortcuts, native text editing, and control rendering sit at the macOS boundary. See `35-NativeControls.st` for the additional controls.
+
+`UICodeEditor` configures line numbers, syntax highlighting, undo, and the order and labels of standard editing actions. The `#source` role enables line numbers and highlighting by default. `UIValueTable` defines its headings, column widths, spacing, and value line limit. The native renderer supplies TextKit and renders table rows as they come into view.
 
 ## Interfaces with MVC
 

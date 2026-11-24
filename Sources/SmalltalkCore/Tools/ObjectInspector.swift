@@ -58,6 +58,18 @@ extension SmalltalkSession {
 
     private static let bundledInspectorWorker = InterpreterWorker()
 
+    package func inspectorWindowInfo(for id: UUID) async throws -> TransientWindowInfo {
+        let info: TransientWindowInfo? = try await worker.submitThrowing { runtime in
+            guard runtime.objectInspectors[id] != nil else { throw SmalltalkError("Inspection ended.") }
+            guard let windowClass = runtime.classes["ObjectInspectorWindow"] else { return nil }
+            return try? runtime.inspectorWindowInfo(windowClass)
+        }
+        if let info { return info }
+        return try await Self.bundledInspectorWorker.submitThrowing { runtime in
+            try runtime.inspectorWindowInfo(runtime.inspectorWindowClass())
+        }
+    }
+
     public func inspectorContent(for snapshot: InspectorSnapshot) async throws -> UIElementInfo {
         let content: UIElementInfo? = try await worker.submitThrowing { runtime in
             guard runtime.objectInspectors[snapshot.id] != nil else { throw SmalltalkError("Inspection ended.") }
@@ -72,6 +84,25 @@ extension SmalltalkSession {
         }
     }
 
+    func inspectorAction(_ command: String, row: String?, in snapshot: InspectorSnapshot) async throws -> InspectorSnapshot? {
+        try await worker.submitThrowing { runtime in
+            try runtime.performInspectorAction(command, row: row, in: snapshot)
+        }
+    }
+
+    func inspectorRecoveryContent(_ message: String) async throws -> UIElementInfo {
+        try await Self.bundledInspectorWorker.submitThrowing { runtime in
+            runtime.steps = 0
+            let windowClass = try runtime.inspectorWindowClass()
+            let label = String(decoding: message.utf8.prefix(65_533), as: UTF8.self)
+            let tree = try runtime.send(.classObject(windowClass), "fallbackFor:", [.string(label)])
+            guard let content = try runtime.projectContent(tree) else {
+                throw SmalltalkError("The inspector recovery view is missing.")
+            }
+            return content
+        }
+    }
+
     public func closeInspector(_ id: UUID) async {
         await worker.submit { runtime in
             _ = runtime.objectInspectors.removeValue(forKey: id)
@@ -81,6 +112,28 @@ extension SmalltalkSession {
 
 extension SmalltalkRuntime {
     private static let inspectorWindowLimit = 32
+
+    fileprivate func inspectorWindowClass() throws -> STClass {
+        if let windowClass = classes["ObjectInspectorWindow"] { return windowClass }
+        return try SystemLibrary.shared.get().bundledClass("ObjectInspectorWindow", in: self)
+    }
+
+    fileprivate func inspectorWindowInfo(_ windowClass: STClass) throws -> TransientWindowInfo {
+        steps = 0
+        return try projectTransientWindow(send(.classObject(windowClass), "new", []))
+    }
+
+    fileprivate func performInspectorAction(_ command: String, row: String?, in snapshot: InspectorSnapshot) throws -> InspectorSnapshot? {
+        guard let model = objectInspectors[snapshot.id] else { throw SmalltalkError("Inspection ended.") }
+        let windowClass = try inspectorWindowClass()
+        steps = 0
+        let members = try array(snapshot.rows.map(\.id.key))
+        let data = try send(.classObject(windowClass), "action:row:on:members:", [
+            .symbol(command), row.map(Value.string) ?? .nilValue, model, members,
+        ])
+        if case .nilValue = data { return nil }
+        return try inspectionSnapshot(snapshot.id, from: data)
+    }
 
     fileprivate func inspectorContent(for snapshot: InspectorSnapshot) throws -> UIElementInfo {
         guard let presentation = classes["InspectorPresentation"] else {

@@ -111,7 +111,8 @@ struct ObjectInspectorTests {
         #expect(control("inspectorPreviousPage", in: root)?.enabled == false)
         #expect(control("inspectorNextPage", in: root)?.enabled == true)
 
-        let lastPage = try #require(await session.inspect(opened.id, action: .page(1)))
+        let next = try #require(control("inspectorNextPage", in: root)?.command)
+        let lastPage = try #require(try await session.inspectorAction(next, row: nil, in: opened))
         let paginated = try await session.inspectorContent(for: lastPage)
         #expect(control("inspectorPage", in: paginated)?.text == "2 of 2")
         #expect(control("inspectorMembers", in: paginated)?.table?.rows.map(\.name) == ["[101]", "[102]"])
@@ -119,7 +120,11 @@ struct ObjectInspectorTests {
 
         let updated = await session.compile("breadcrumbFor: path ^ 'Live path'", in: "InspectorPresentation", side: .classSide)
         #expect(updated.executionError == nil)
-        let member = try #require(await session.inspect(opened.id, action: .follow(.index(102))))
+        let members = try #require(control("inspectorMembers", in: paginated))
+        let follow = try #require(members.command)
+        let lastRow = try #require(members.table?.rows.last?.id)
+        #expect(try await session.inspectorAction(follow, row: "99", in: lastPage) == nil)
+        let member = try #require(try await session.inspectorAction(follow, row: lastRow, in: lastPage))
         let nested = try await session.inspectorContent(for: member)
         #expect(control("inspectorBack", in: nested)?.enabled == true)
         #expect(control("inspectorSummary", in: nested)?.text == "nil")
@@ -185,10 +190,10 @@ struct ObjectInspectorTests {
         #expect(afterClose.liveObjects == baseline.liveObjects)
     }
 
-    @Test func anOlderImageUsesTheBundledInspectorModel() async throws {
+    @Test func anOlderImageUsesTheBundledInspector() async throws {
         let previous = SmalltalkSession()
         await previous.worker.submit { runtime in
-            for name in ["InspectorModel", "InspectorPresentation"] {
+            for name in ["InspectorModel", "InspectorPresentation", "ObjectInspectorWindow"] {
                 runtime.globals.removeValue(forKey: name)
                 runtime.classes.removeValue(forKey: name)
             }
@@ -197,11 +202,13 @@ struct ObjectInspectorTests {
         _ = try await session.loadImage(previous.imageData())
 
         let opened = try openedInspector(in: await session.inspectSource("#(1 2)"))
-        let member = try #require(await session.inspect(opened.id, action: .follow(.index(2))))
+        #expect(try await session.inspectorWindowInfo(for: opened.id).title == "Object Inspector")
+        let member = try #require(try await session.inspectorAction("inspectMember", row: "1", in: opened))
         #expect(member.summary == "2")
         #expect(member.path == ["Array", "[2]"])
         #expect(try await session.inspectorContent(for: member).kind == .column)
         #expect(await session.evaluate("ToolVM classNamed: 'InspectorModel'").value == "nil")
+        #expect(await session.evaluate("ToolVM classNamed: 'ObjectInspectorWindow'").value == "nil")
     }
 
     @Test func inspectorRootsAreTransientAcrossImageLoadAndReset() async throws {

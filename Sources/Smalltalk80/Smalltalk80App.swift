@@ -106,7 +106,11 @@ struct Smalltalk80App: App {
                 Button("Debug it") { Task { await controller.debugWorkspace() } }
                     .keyboardShortcut("d", modifiers: [.command, .shift]).disabled(!controller.canDebugWorkspace)
                 Divider()
-                WorkspaceExamplesMenu(controller: controller)
+                ForEach(controller.workspaceAppMenus) { menu in
+                    if let id = controller.workspaceWindow?.id {
+                        UIElementView(controller: controller, windowID: id, element: menu)
+                    }
+                }
                 Button("Show Workspace") { Task { await controller.showWorkspace() } }.keyboardShortcut("1")
                 Button("Open Browser") { Task { await controller.openTool(.browser) } }.keyboardShortcut("2")
                 Button("Open Transcript") { Task { await controller.openTool(.transcript) } }.keyboardShortcut("3")

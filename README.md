@@ -25,7 +25,7 @@ Local builds use ad hoc signing, so you can run the app without a development te
 - The ellipsis next to **Do it** and the editor's context menu offer **Print it** (**⌘P**), **Inspect it** (**⌘I**) and **Debug it** (**⌘⇧D**). **Print it** adds the result to the Transcript. **Inspect it** opens the value in the Object Inspector, and **Debug it** pauses at entry.
 - The result row below the Workspace editor shows the latest result. Click **Result** or **Error** to expand it. Choose **Smalltalk → Clear Transcript** or use the Transcript's context menu to clear the output.
 - The **System Browser** has four lists for class categories, classes, protocols, and methods. Switch between **Instance** and **Class** above the lists. Each side has its own protocols, methods, and editor draft. Start with **New Method**, and use **Accept** or **⌘S** to compile a changed method. Its history is under **Method Actions → Versions**.
-- The Workspace and method editors show line numbers and highlight Smalltalk syntax.
+- The Workspace and method editors show line numbers and highlight Smalltalk syntax. The image’s `STSourceScanner` shares the compiler’s lexical rules and tolerates unfinished input. It supplies text ranges to the native editor.
 - With a method selected, click **Bytecode** below the source editor to expand a read-only listing of the compiled method, including the instructions inside blocks. The listing updates when you accept a source edit. The browser identifies VM primitives that have no bytecode.
 - Selecting a class shows its definition in the source editor. **Definition** returns to it from a method. Edit the superclass or instance variable names in `subclass:instanceVariableNames:` and press **⌘S**. Use **Move Class …** to change the category.
 - Create classes in the Workspace by evaluating `Object subclass: #Greeter instanceVariableNames: 'name'`. Use **New Method** in the browser to add a method. The browser shows the selected class's own methods. Select its superclass to browse inherited methods.
@@ -152,7 +152,7 @@ The app sends window text to the Smalltalk objects before an evaluation or image
 
 `40-Tools.st` defines `WorkspaceWindow`, `BrowserWindow`, and `TranscriptWindow`. You can edit those classes in the browser and subclass them to create new windows. `DesktopManager>>windowClassFor:` chooses the class to instantiate when opening a tool.
 
-Smalltalk workspace actions use the native text selection when present and the whole buffer otherwise. The browser manages filters, selection, drafts, class creation, and method acceptance in Smalltalk. It reads VM reflection through `ToolVM` and `Class`. `Transcript show:`, `cr`, and `clear` update the observable `TranscriptBuffer` model, which retains the last 64 KiB of output.
+Smalltalk workspace actions use the native text selection when present and the whole buffer otherwise. The browser manages filters, selection, drafts, class definition edits, and method acceptance in Smalltalk. It reads VM reflection through `ToolVM` and `Class`. `Transcript show:`, `cr`, and `clear` update the observable `TranscriptBuffer` model, which retains the last 64 KiB of output.
 
 The **⋯** menus in **Class Categories** and **Protocols** let you create and rename groups and move the selected class or method. Select an existing group before choosing **Rename Category …** or **Rename Protocol …**. Use **Move Class …** or **Move Method …** to choose a destination. The browser files new classes and methods into the current category or protocol when one is selected. A method with no assignment appears under **Unclassified**.
 
@@ -160,7 +160,9 @@ Protocols are specific to each class. The shipped system groups methods by purpo
 
 Accepting a revised class definition updates existing instances of the class and its subclasses. Fields with matching names retain their values. New fields start as `nil`. The editor rejects cycles and conflicting fields. Fields cannot be removed while they hold values or are referenced by installed methods, running code, or retained blocks. A superclass change is rejected if it would detach a retained class-side block or running class method from its defining class. The selected class name identifies the definition being edited. Built-in VM class layouts are read-only. Accepted definitions appear in **Code Changes**, and saving an image preserves the new layout.
 
-The SwiftUI renderer uses the same control tree for built-in tools and custom windows. File dialogs, keyboard shortcuts, native text editing, and control rendering sit at the macOS boundary. See `35-NativeControls.st` for the additional controls.
+The Browser, Workspace, and Transcript use the same SwiftUI control renderer as custom windows. Their Smalltalk descriptions place controls, set their visibility, and handle disclosure buttons and menus. A direct child of the content with role `#windowToolbar` mounts in the native title bar. The Workspace supplies its Examples menu as a direct child with role `#applicationMenu` for the Smalltalk menu in the macOS menu bar.
+
+File dialogs, keyboard shortcuts, native text editing, and control rendering sit at the macOS boundary. See `35-NativeControls.st` for the additional controls.
 
 ## Interfaces with MVC
 
@@ -223,7 +225,7 @@ You can bind `text` on labels and text fields, `title` on buttons, `enabled` and
 | `UITextField` | `label:`, `placeholder:`, `text:`, `text`, `onChangeSend:to:` |
 | `UICodeEditor` | Text field messages, plus `readOnly:`, native text selection, and `contextMenu:` to attach a `UIMenu` of buttons and dividers |
 | `UIList` | `items:` with unique strings, `selection:`, `onSelectSend:to:` |
-| `UISplit`, `UIScroll`, `UIMenu` | Containers for split views, scrolling, and menus. `UISplit` stacks its panes with `role: #vertical`. `UIMenu` also supports `title:`. |
+| `UISplit`, `UIScroll`, `UIMenu` | Containers for split views, scrolling, and menus. `UISplit` stacks its panes with `role: #vertical`. `UIMenu` also supports `title:`. `UIScroll` accepts `contextMenu:` for a menu of buttons and dividers. |
 | `UIDivider` | Separator |
 | `UIColumn`, `UIRow` | `add:`, `remove:`, `removeAll`, `children:`, `spacing:`, `padding:` |
 | `UISpacer` | Flexible space in a row or column |

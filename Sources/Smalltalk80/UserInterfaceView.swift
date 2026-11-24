@@ -1,14 +1,15 @@
 import SmalltalkCore
 import SwiftUI
 
-struct WorkspaceTitlebarView: View {
+struct WindowToolbarView: View {
     let controller: AppController
     let windowID: Int64
 
     var body: some View {
-        if let content = controller.presentedWindow(windowID)?.info.content,
-           let toolbar = WorkspaceToolbar(controller: controller, windowID: windowID, content: content) {
-            toolbar
+        if let toolbar = controller.presentedWindow(windowID)?.info.content?.windowToolbar {
+            UIElementView(controller: controller, windowID: windowID, element: toolbar)
+                .controlSize(.small)
+                .fixedSize()
         }
     }
 }
@@ -25,7 +26,7 @@ struct ToolContentView: View {
                 } else {
                     VStack(spacing: 0) {
                         if let content = window.info.content {
-                            toolView(kind: window.info.kind, content: content)
+                            UIElementView(controller: controller, windowID: windowID, element: content)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                         }
                         if let error = window.inputError ?? (controller.activeWindowID == windowID ? controller.error : nil),
@@ -41,18 +42,6 @@ struct ToolContentView: View {
         }.background(Color(nsColor: .windowBackgroundColor))
     }
 
-    @ViewBuilder
-    private func toolView(kind: ToolKind, content: UIElementInfo) -> some View {
-        if kind == .workspace, let workspace = WorkspaceToolView(controller: controller, windowID: windowID, content: content) {
-            workspace
-        } else if kind == .browser, let browser = ClassicBrowserView(controller: controller, windowID: windowID, content: content) {
-            browser
-        } else if kind == .transcript, let transcript = TranscriptToolView(controller: controller, windowID: windowID, content: content) {
-            transcript
-        } else {
-            UIElementView(controller: controller, windowID: windowID, element: content)
-        }
-    }
 }
 
 struct UIElementView: View {
@@ -99,21 +88,7 @@ struct UIElementView: View {
                     .accessibilityIdentifier(identifier)
             }
         case .codeEditor:
-            if identifier == "methodEditor", let window = controller.presentedWindow(windowID), window.info.kind == .browser {
-                VStack(spacing: 0) {
-                    codeEditor.frame(minHeight: 64)
-                    Divider()
-                    bytecodeToggle(for: window)
-                    if window.showsBytecode, let method = window.info.browserMethod {
-                        Divider()
-                        BrowserBytecodeEditor(controller: controller, windowID: windowID, method: method)
-                            .id(method)
-                            .frame(minHeight: 64, idealHeight: 144, maxHeight: 184)
-                    }
-                }
-            } else {
-                codeEditor
-            }
+            codeEditor.frame(maxWidth: .infinity, minHeight: 64, maxHeight: .infinity)
         case .list:
             Group {
                 if element.role == "pane" {
@@ -126,41 +101,25 @@ struct UIElementView: View {
             VStack(alignment: .leading, spacing: CGFloat(element.spacing)) { children }
                 .padding(CGFloat(element.padding))
         case .row:
-            HStack(alignment: .center, spacing: CGFloat(element.spacing)) { children }
-                .padding(CGFloat(element.padding))
+            row
         case .split:
-            if element.role == "vertical" {
-                VSplitView { children }
-            } else {
-                HSplitView { children }
-            }
+            Group {
+                if element.role == "vertical" {
+                    VSplitView { children }
+                } else {
+                    HSplitView { children }
+                }
+            }.accessibilityIdentifier(identifier)
         case .scroll:
-            ScrollViewReader { reader in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: CGFloat(element.spacing)) {
-                        children
-                        if element.role == "followEnd" { Color.clear.frame(height: 1).id("end") }
-                    }
-                    .padding(CGFloat(element.padding))
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+            if let items = element.contextMenuItems, !items.isEmpty {
+                scroll.contextMenu {
+                    ForEach(items) { item in control(item) }
                 }
-                .onChange(of: element.children.map(\.text), initial: true) {
-                    if element.role == "followEnd" { reader.scrollTo("end", anchor: .bottom) }
-                }
+            } else {
+                scroll
             }
         case .menu:
-            if element.role == "paneMenu" {
-                Menu {
-                    children
-                } label: {
-                    Image(systemName: "ellipsis.circle").accessibilityLabel(element.text)
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .accessibilityIdentifier(identifier)
-            } else {
-                Menu(element.text) { children }
-            }
+            menu
         case .spacer:
             Spacer(minLength: 8)
         case .divider:
@@ -169,9 +128,67 @@ struct UIElementView: View {
     }
 
     private var children: some View {
-        ForEach(element.children) { child in
-            // Type erasure bounds the recursive SwiftUI view type.
-            AnyView(UIElementView(controller: controller, windowID: windowID, element: child))
+        ForEach(element.children.filter { !$0.isWindowChrome }) { child in control(child) }
+    }
+
+    private func control(_ child: UIElementInfo) -> some View {
+        // Type erasure bounds the recursive SwiftUI view type.
+        AnyView(UIElementView(controller: controller, windowID: windowID, element: child))
+    }
+
+    @ViewBuilder
+    private var row: some View {
+        switch element.role {
+        case "segmented":
+            ControlGroup { children }.fixedSize()
+        case "compactBar", "paneHeader":
+            HStack(spacing: element.role == "paneHeader" ? 4 : 8) { children }
+                .controlSize(.small)
+                .lineLimit(1)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+        default:
+            HStack(spacing: CGFloat(element.spacing)) { children }
+                .padding(CGFloat(element.padding))
+        }
+    }
+
+    private var scroll: some View {
+        let followsEnd = element.role == "followEnd"
+        return ScrollViewReader { reader in
+            ScrollView {
+                VStack(alignment: .leading, spacing: CGFloat(element.spacing)) {
+                    children
+                    if followsEnd { Color.clear.frame(height: 1).id("end") }
+                }
+                .padding(CGFloat(element.padding))
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .onChange(of: element.children.map(\.text), initial: true) {
+                if followsEnd { reader.scrollTo("end", anchor: .bottom) }
+            }
+            .background(followsEnd ? Color(nsColor: .textBackgroundColor) : .clear)
+        }
+    }
+
+    @ViewBuilder
+    private var menu: some View {
+        if element.role == "paneMenu" || element.role == "moreMenu" {
+            Menu {
+                children
+            } label: {
+                Image(systemName: element.role == "paneMenu" ? "ellipsis.circle" : "ellipsis")
+                    .accessibilityLabel(element.text)
+                    .padding(.horizontal, element.role == "moreMenu" ? 5 : 0)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help(element.text)
+            .accessibilityLabel(element.text)
+            .accessibilityIdentifier(identifier)
+        } else {
+            Menu(element.text) { children }
         }
     }
 
@@ -185,39 +202,15 @@ struct UIElementView: View {
             isEditable: !element.readOnly && element.enabled && !controller.isRunning,
             identifier: identifier,
             label: element.label,
-            usesSmalltalkSourceStyle: identifier == "workspaceEditor" || identifier == "methodEditor",
+            allowsUndo: !element.readOnly,
+            usesSmalltalkSourceStyle: element.role == "source",
+            highlightsForSource: controller.sourceHighlights,
             contextMenuItems: controller.editorContextItems(windowID: windowID, editor: element),
             contextCommandsEnabled: element.enabled && !controller.isRunning,
             onContextCommand: { action, selection in
                 Task { await controller.performEditorContextAction(action, windowID: windowID, selection: selection) }
             }
         )
-    }
-
-    private func bytecodeToggle(for window: PresentedWindow) -> some View {
-        Button {
-            controller.toggleBrowserBytecode(windowID: windowID)
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: window.showsBytecode ? "chevron.down" : "chevron.right")
-                    .font(.caption2)
-                    .accessibilityHidden(true)
-                Text("Bytecode").font(.callout)
-                Spacer()
-                if window.showsBytecode {
-                    Text("Read-only").font(.caption).foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(window.info.browserMethod == nil)
-        .accessibilityLabel("Bytecode")
-        .accessibilityValue(window.showsBytecode ? "Expanded" : "Collapsed")
-        .accessibilityIdentifier("methodBytecodeToggle")
     }
 
     private var list: some View {
@@ -236,8 +229,29 @@ struct UIElementView: View {
     @ViewBuilder
     private var button: some View {
         if element.role == "primary" {
-            Button(element.text, action: click)
-                .buttonStyle(.borderedProminent).accessibilityIdentifier(identifier)
+            Button(action: click) {
+                HStack(spacing: 6) {
+                    Text(element.text)
+                    if !element.label.isEmpty {
+                        Text(element.label).font(.caption).accessibilityHidden(true)
+                    }
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .fixedSize()
+            .accessibilityLabel(element.text)
+            .accessibilityIdentifier(identifier)
+        } else if element.role == "disclosureOpen" || element.role == "disclosureClosed" {
+            let expanded = element.role == "disclosureOpen"
+            Button(action: click) {
+                Label(element.text, systemImage: expanded ? "chevron.down" : "chevron.right")
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+            .fixedSize()
+            .accessibilityLabel(element.text)
+            .accessibilityValue(expanded ? "Expanded" : "Collapsed")
+            .accessibilityIdentifier(identifier)
         } else {
             Button(element.text, action: click).accessibilityIdentifier(identifier)
         }
@@ -254,35 +268,17 @@ struct UIElementView: View {
         case "caption": Text(element.text).font(.caption).foregroundStyle(.secondary)
         case "code": Text(element.text).font(.system(size: 13, design: .monospaced))
         case "error": Text(element.text).font(.system(size: 13, design: .monospaced)).foregroundStyle(.red)
-        case "imageName":
-            Text(controller.imageURL?.lastPathComponent ?? "No image saved yet").font(.caption.weight(.medium))
-        case "imageStatus":
-            if controller.imageHasChanges {
-                Text("Unsaved changes").font(.caption).foregroundStyle(.secondary)
-            } else if controller.imageURL != nil {
-                Text("Saved").font(.caption).foregroundStyle(.secondary)
-            }
+        case "codePreview": Text(element.text).font(.system(size: 13, design: .monospaced)).lineLimit(1)
+        case "errorPreview": Text(element.text).font(.system(size: 13, design: .monospaced)).foregroundStyle(.red).lineLimit(1)
         default: Text(element.text)
         }
     }
 }
 
-private struct BrowserBytecodeEditor: View {
-    let controller: AppController
-    let windowID: Int64
-    let method: BrowserMethodSelection
-    @State private var listing: String?
-    @State private var selection = NSRange(location: 0, length: 0)
+extension UIElementInfo {
+    var isWindowChrome: Bool { role == "windowToolbar" || role == "applicationMenu" }
 
-    var body: some View {
-        let text = method.isPrimitive ? "This VM primitive has no bytecode." : listing ?? "Loading bytecode…"
-        CodeEditor(text: .constant(text), selection: $selection, isEditable: false,
-                   identifier: "bytecodeEditor", label: "Method Bytecode", allowsUndo: false)
-            .task {
-                guard !method.isPrimitive else { return }
-                let value = await controller.browserBytecode(windowID: windowID, method: method)
-                guard !Task.isCancelled else { return }
-                listing = value ?? "Bytecode unavailable."
-            }
+    var windowToolbar: UIElementInfo? {
+        children.first { $0.role == "windowToolbar" && $0.visible }
     }
 }

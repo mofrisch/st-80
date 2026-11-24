@@ -2,25 +2,40 @@
 
 Object subclass: #UIElement instanceVariableNames: 'enabled mvcBindings identifier role visible minWidth maxWidth minHeight maxHeight'.
 
-UIElement compile: 'initialize enabled := true. visible := true. mvcBindings := nil'.
+UIElement compile: 'initialize
+    enabled := true.
+    visible := true.
+    mvcBindings := nil'.
 
-UIElement compile: 'enabled ^ enabled'.
+UIElement compile: 'enabled
+    ^ enabled'.
 
-UIElement compile: 'enabled: aBoolean enabled := aBoolean'.
+UIElement compile: 'enabled: aBoolean
+    enabled := aBoolean'.
 
-UIElement compile: 'identifier: aString identifier := aString'.
+UIElement compile: 'identifier: aString
+    identifier := aString'.
 
-UIElement compile: 'role: aSymbol role := aSymbol'.
+UIElement compile: 'role: aSymbol
+    role := aSymbol'.
 
-UIElement compile: 'visible ^ visible'.
+UIElement compile: 'visible
+    ^ visible'.
 
-UIElement compile: 'visible: aBoolean visible := aBoolean'.
+UIElement compile: 'visible: aBoolean
+    visible := aBoolean'.
 
-UIElement compile: 'widthFrom: minimum to: maximum minWidth := minimum. maxWidth := maximum'.
+UIElement compile: 'widthFrom: minimum to: maximum
+    minWidth := minimum.
+    maxWidth := maximum'.
 
-UIElement compile: 'heightFrom: minimum to: maximum minHeight := minimum. maxHeight := maximum'.
+UIElement compile: 'heightFrom: minimum to: maximum
+    minHeight := minimum.
+    maxHeight := maximum'.
 
-UIElement compile: 'bindings mvcBindings isNil ifTrue: [ mvcBindings := Array new: 0 ]. ^ mvcBindings'.
+UIElement compile: 'bindings
+    mvcBindings isNil ifTrue: [ mvcBindings := Array new: 0 ].
+    ^ mvcBindings'.
 
 UIElement compile: 'bind: aProperty to: aModel aspect: anAspect
     | binding replacement |
@@ -37,56 +52,89 @@ UIElement compile: 'unbind: aProperty
     self bindings do: [ :each | each property = aProperty ifTrue: [ each disconnect ] ].
     mvcBindings := mvcBindings select: [ :each | (each property = aProperty) not ]'.
 
-UIElement compile: 'unbindAll self bindings do: [ :each | each disconnect ]. mvcBindings := nil'.
+UIElement compile: 'unbindAll
+    self bindings do: [ :each | each disconnect ].
+    mvcBindings := nil'.
 
 UIElement subclass: #UILabel instanceVariableNames: 'text'.
 
-UILabel compile: 'initialize super initialize. text := '''''.
+UILabel compile: 'initialize
+    super initialize.
+    text := '''''.
 
-UILabel compile: 'text ^ text'.
+UILabel compile: 'text
+    ^ text'.
 
-UILabel compile: 'text: aString text := aString'.
+UILabel compile: 'text: aString
+    text := aString'.
 
-UIElement subclass: #UIButton instanceVariableNames: 'title action command selectionAction selectionSource'.
+UIElement subclass: #UIButton instanceVariableNames: 'title action command selectionAction selectionSource shortcutHint'.
 
-UIButton compile: 'initialize super initialize. title := ''Button''. action := nil'.
+UIButton compile: 'initialize
+    super initialize.
+    title := ''Button''.
+    action := nil'.
 
-UIButton compile: 'title ^ title'.
+UIButton compile: 'title
+    ^ title'.
 
-UIButton compile: 'title: aString title := aString'.
+UIButton compile: 'shortcutHint: aString
+    shortcutHint := aString'.
 
-UIButton compile: 'action: aBlock action := aBlock'.
+UIButton compile: 'title: aString
+    title := aString'.
 
-UIButton compile: 'click enabled ifFalse: [ ^ self ]. action notNil ifTrue: [ ^ action value ]'.
+UIButton compile: 'action: aBlock
+    action := aBlock'.
 
-UIButton compile: 'command: aSymbol command := aSymbol'.
+UIButton compile: 'click
+    enabled ifFalse: [ ^ self ].
+    action notNil ifTrue: [ ^ action value ]'.
 
-UIButton compile: 'selectionFrom: anEditor action: aBlock selectionSource := anEditor. selectionAction := aBlock'.
+UIButton compile: 'command: aSymbol
+    command := aSymbol'.
+
+UIButton compile: 'selectionFrom: anEditor action: aBlock
+    selectionSource := anEditor.
+    selectionAction := aBlock'.
 
 UIButton compile: 'clickWithSelection: aString
     enabled ifFalse: [ ^ self ].
     selectionAction isNil ifTrue: [ ^ self click ].
     ^ selectionAction value: aString'.
 
-UIButton compile: 'onClickSend: aSelector to: aController self action: [ aController perform: aSelector ]'.
+UIButton compile: 'onClickSend: aSelector to: aController
+    self action: [ aController perform: aSelector ]'.
 
 UIElement subclass: #UITextField instanceVariableNames: 'label text placeholder mvcInputTarget mvcInputSelector'.
 
-UITextField compile: 'initialize super initialize. label := ''''. text := ''''. placeholder := '''''.
+UITextField compile: 'initialize
+    super initialize.
+    label := ''''.
+    text := ''''.
+    placeholder := '''''.
 
-UITextField compile: 'label ^ label'.
+UITextField compile: 'label
+    ^ label'.
 
-UITextField compile: 'label: aString label := aString'.
+UITextField compile: 'label: aString
+    label := aString'.
 
-UITextField compile: 'text ^ text'.
+UITextField compile: 'text
+    ^ text'.
 
-UITextField compile: 'text: aString text := aString'.
+UITextField compile: 'text: aString
+    text := aString'.
 
-UITextField compile: 'placeholder ^ placeholder'.
+UITextField compile: 'placeholder
+    ^ placeholder'.
 
-UITextField compile: 'placeholder: aString placeholder := aString'.
+UITextField compile: 'placeholder: aString
+    placeholder := aString'.
 
-UITextField compile: 'onChangeSend: aSelector to: aController mvcInputTarget := aController. mvcInputSelector := aSelector'.
+UITextField compile: 'onChangeSend: aSelector to: aController
+    mvcInputTarget := aController.
+    mvcInputSelector := aSelector'.
 
 UITextField compile: 'editText: aString
     self text: aString.
@@ -94,19 +142,29 @@ UITextField compile: 'editText: aString
 
 UIElement subclass: #UIContainer instanceVariableNames: 'children spacing padding'.
 
-UIContainer compile: 'initialize super initialize. children := Array new: 0. spacing := 8. padding := 0'.
+UIContainer compile: 'initialize
+    super initialize.
+    children := Array new: 0.
+    spacing := 8.
+    padding := 0'.
 
-UIContainer compile: 'children ^ children'.
+UIContainer compile: 'children
+    ^ children'.
 
-UIContainer compile: 'children: anArray children := anArray'.
+UIContainer compile: 'children: anArray
+    children := anArray'.
 
-UIContainer compile: 'spacing ^ spacing'.
+UIContainer compile: 'spacing
+    ^ spacing'.
 
-UIContainer compile: 'spacing: aNumber spacing := aNumber'.
+UIContainer compile: 'spacing: aNumber
+    spacing := aNumber'.
 
-UIContainer compile: 'padding ^ padding'.
+UIContainer compile: 'padding
+    ^ padding'.
 
-UIContainer compile: 'padding: aNumber padding := aNumber'.
+UIContainer compile: 'padding: aNumber
+    padding := aNumber'.
 
 UIContainer compile: 'add: anElement
     | replacement |
@@ -116,9 +174,11 @@ UIContainer compile: 'add: anElement
     children := replacement.
     ^ anElement'.
 
-UIContainer compile: 'remove: anElement children := children select: [ :each | (each == anElement) not ]'.
+UIContainer compile: 'remove: anElement
+    children := children select: [ :each | (each == anElement) not ]'.
 
-UIContainer compile: 'removeAll children := Array new: 0'.
+UIContainer compile: 'removeAll
+    children := Array new: 0'.
 
 UIContainer subclass: #UIColumn instanceVariableNames: ''.
 
@@ -128,8 +188,16 @@ UIElement subclass: #UISpacer instanceVariableNames: ''.
 
 SystemWindow subclass: #UIWindow instanceVariableNames: 'content'.
 
-UIWindow compile: 'initialize super initialize. self kind: #custom. title := ''Window''. width := 480. height := 320. content := nil'.
+UIWindow compile: 'initialize
+    super initialize.
+    self kind: #custom.
+    title := ''Window''.
+    width := 480.
+    height := 320.
+    content := nil'.
 
-UIWindow compile: 'content ^ content'.
+UIWindow compile: 'content
+    ^ content'.
 
-UIWindow compile: 'content: anElement content := anElement'.
+UIWindow compile: 'content: anElement
+    content := anElement'.

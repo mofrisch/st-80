@@ -32,7 +32,7 @@ final class NativeWindowBackend {
     }
 
     private let content: (Int64) -> AnyView
-    private let workspaceToolbar: (ToolWindowInfo) -> AnyView?
+    private let toolbar: (ToolWindowInfo) -> AnyView?
     private let onEvent: (NativeWindowEvent) -> Void
     private var entries: [Int64: Entry] = [:]
     private var applying = false
@@ -43,10 +43,10 @@ final class NativeWindowBackend {
     private var latestFocusEvent: Int64 = 0
     private var screenObserver: NSObjectProtocol?
 
-    init(content: @escaping (Int64) -> AnyView, workspaceToolbar: @escaping (ToolWindowInfo) -> AnyView?,
+    init(content: @escaping (Int64) -> AnyView, toolbar: @escaping (ToolWindowInfo) -> AnyView?,
          onEvent: @escaping (NativeWindowEvent) -> Void) {
         self.content = content
-        self.workspaceToolbar = workspaceToolbar
+        self.toolbar = toolbar
         self.onEvent = onEvent
         screenObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.screensChanged() }
@@ -116,7 +116,7 @@ final class NativeWindowBackend {
     }
 
     private func updateTitlebar(for entry: Entry, info: ToolWindowInfo) {
-        if info.kind == .workspace, let content = workspaceToolbar(info) {
+        if let content = toolbar(info) {
             guard entry.titlebarAccessory == nil else { return }
             let host = NSHostingView(rootView: content.fixedSize())
             host.setFrameSize(host.fittingSize)

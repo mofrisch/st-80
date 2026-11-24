@@ -9,9 +9,12 @@ SystemWindow compile: 'initialize
     maximumWidth := 8192. maximumHeight := 8192.
     frameRevision := 1. stateRevision := 1.
     nativeMinimumWidth := 480. nativeMinimumHeight := 320. nativeMaximumWidth := 8192. nativeMaximumHeight := 8192'.
-SystemWindow compile: 'id ^ id'.
-SystemWindow compile: 'id: anID id := anID'.
-SystemWindow compile: 'kind ^ kind'.
+SystemWindow compile: 'id
+    ^ id'.
+SystemWindow compile: 'id: anID
+    id := anID'.
+SystemWindow compile: 'kind
+    ^ kind'.
 SystemWindow compile: 'kind: aKind
     kind := aKind.
     minimumWidth := 320. minimumHeight := 160.
@@ -19,18 +22,32 @@ SystemWindow compile: 'kind: aKind
     (kind = #browser or: [ kind = #changes ]) ifTrue: [ minimumWidth := 750. minimumHeight := 500 ].
     kind = #transcript ifTrue: [ minimumWidth := 400. minimumHeight := 200 ].
     frameRevision := frameRevision + 1. self changed: #kind. Desktop constrain: self'.
-SystemWindow compile: 'title ^ title'.
-SystemWindow compile: 'title: aTitle title := aTitle. self changed: #title'.
-SystemWindow compile: 'text ^ text'.
-SystemWindow compile: 'text: aString text := aString. self changed: #text'.
-SystemWindow compile: 'x ^ x'.
-SystemWindow compile: 'y ^ y'.
-SystemWindow compile: 'width ^ width'.
-SystemWindow compile: 'height ^ height'.
-SystemWindow compile: 'minimumWidth ^ minimumWidth'.
-SystemWindow compile: 'minimumHeight ^ minimumHeight'.
-SystemWindow compile: 'maximumWidth ^ maximumWidth'.
-SystemWindow compile: 'maximumHeight ^ maximumHeight'.
+SystemWindow compile: 'title
+    ^ title'.
+SystemWindow compile: 'title: aTitle
+    title := aTitle.
+    self changed: #title'.
+SystemWindow compile: 'text
+    ^ text'.
+SystemWindow compile: 'text: aString
+    text := aString.
+    self changed: #text'.
+SystemWindow compile: 'x
+    ^ x'.
+SystemWindow compile: 'y
+    ^ y'.
+SystemWindow compile: 'width
+    ^ width'.
+SystemWindow compile: 'height
+    ^ height'.
+SystemWindow compile: 'minimumWidth
+    ^ minimumWidth'.
+SystemWindow compile: 'minimumHeight
+    ^ minimumHeight'.
+SystemWindow compile: 'maximumWidth
+    ^ maximumWidth'.
+SystemWindow compile: 'maximumHeight
+    ^ maximumHeight'.
 SystemWindow compile: 'minimumWidth: newWidth height: newHeight
     minimumWidth := newWidth clampFrom: 1 to: 8192.
     minimumHeight := newHeight clampFrom: 1 to: 8192.
@@ -59,40 +76,70 @@ SystemWindow compile: 'observeX: newX y: newY width: newWidth height: newHeight
     self changed: #frame'.
 SystemWindow compile: 'frameApplied: aRevision x: newX y: newY width: newWidth height: newHeight
     frameRevision = aRevision ifTrue: [ self observeX: newX y: newY width: newWidth height: newHeight ]'.
-SystemWindow compile: 'frameRevision ^ frameRevision'.
-SystemWindow compile: 'stateRevision ^ stateRevision'.
-SystemWindow compile: 'minimized ^ minimized'.
-SystemWindow compile: 'minimized: aBoolean minimized := aBoolean. stateRevision := stateRevision + 1. self changed: #minimized'.
-SystemWindow compile: 'observeMinimized: aBoolean minimized := aBoolean. self changed: #minimized'.
+SystemWindow compile: 'frameRevision
+    ^ frameRevision'.
+SystemWindow compile: 'stateRevision
+    ^ stateRevision'.
+SystemWindow compile: 'minimized
+    ^ minimized'.
+SystemWindow compile: 'minimized: aBoolean
+    minimized := aBoolean.
+    stateRevision := stateRevision + 1.
+    self changed: #minimized'.
+SystemWindow compile: 'observeMinimized: aBoolean
+    minimized := aBoolean.
+    self changed: #minimized'.
 SystemWindow compile: 'nativeMinimumWidth: minWidth height: minHeight maximumWidth: maxWidth height: maxHeight
     nativeMinimumWidth := minWidth. nativeMinimumHeight := minHeight.
     nativeMaximumWidth := maxWidth. nativeMaximumHeight := maxHeight'.
-SystemWindow compile: 'canClose ^ true'.
-SystemWindow compile: 'open ^ Desktop open: self'.
-SystemWindow compile: 'close ^ Desktop requestClose: self'.
-SystemWindow compile: 'activate ^ Desktop activate: self'.
+SystemWindow compile: 'canClose
+    ^ true'.
+SystemWindow compile: 'open
+    ^ Desktop open: self'.
+SystemWindow compile: 'close
+    ^ Desktop requestClose: self'.
+SystemWindow compile: 'activate
+    ^ Desktop activate: self'.
 
 Model subclass: #DesktopModel instanceVariableNames: 'windows activeWindow nextID screens focusRevision'.
 DesktopModel compile: 'initialize
     super initialize. windows := Array new: 0. activeWindow := nil.
     nextID := 1. screens := Array new: 0. focusRevision := 1'.
-DesktopModel compile: 'windows ^ windows'.
-DesktopModel compile: 'windows: aList windows := aList. self changed: #windows'.
-DesktopModel compile: 'activeWindow ^ activeWindow'.
-DesktopModel compile: 'activeWindow: aWindow activeWindow := aWindow. self changed: #activeWindow'.
-DesktopModel compile: 'nextID ^ nextID'.
-DesktopModel compile: 'nextID: anID nextID := anID'.
-DesktopModel compile: 'screens ^ screens'.
-DesktopModel compile: 'screens: aList screens := aList. self changed: #screens'.
-DesktopModel compile: 'focusRevision ^ focusRevision'.
-DesktopModel compile: 'requestFocus focusRevision := focusRevision + 1'.
+DesktopModel compile: 'windows
+    ^ windows'.
+DesktopModel compile: 'windows: aList
+    windows := aList.
+    self changed: #windows'.
+DesktopModel compile: 'activeWindow
+    ^ activeWindow'.
+DesktopModel compile: 'activeWindow: aWindow
+    activeWindow := aWindow.
+    self changed: #activeWindow'.
+DesktopModel compile: 'nextID
+    ^ nextID'.
+DesktopModel compile: 'nextID: anID
+    nextID := anID'.
+DesktopModel compile: 'screens
+    ^ screens'.
+DesktopModel compile: 'screens: aList
+    screens := aList.
+    self changed: #screens'.
+DesktopModel compile: 'focusRevision
+    ^ focusRevision'.
+DesktopModel compile: 'requestFocus
+    focusRevision := focusRevision + 1'.
 
 Object subclass: #DisplayScreen instanceVariableNames: 'id x y width height'.
-DisplayScreen compile: 'id ^ id'.
-DisplayScreen compile: 'x ^ x'.
-DisplayScreen compile: 'y ^ y'.
-DisplayScreen compile: 'width ^ width'.
-DisplayScreen compile: 'height ^ height'.
+DisplayScreen compile: 'id
+    ^ id'.
+DisplayScreen compile: 'x
+    ^ x'.
+DisplayScreen compile: 'y
+    ^ y'.
+DisplayScreen compile: 'width
+    ^ width'.
+DisplayScreen compile: 'height
+    ^ height'.
 DisplayScreen compile: 'overlapWith: aWindow
     | overlapWidth overlapHeight |
     overlapWidth := (((x + width) min: (aWindow x + aWindow width)) - (x max: aWindow x)) max: 0.
@@ -105,11 +152,17 @@ DisplayScreen compile: 'distanceTo: aWindow
     ^ dx squared + dy squared'.
 
 Controller subclass: #DesktopManager instanceVariableNames: ''.
-DesktopManager compile: 'initialize super initialize. model := DesktopModel new'.
-DesktopManager compile: 'windows ^ model windows'.
-DesktopManager compile: 'activeWindow ^ model activeWindow'.
-DesktopManager compile: 'nextID ^ model nextID'.
-DesktopManager compile: 'screens ^ model screens'.
+DesktopManager compile: 'initialize
+    super initialize.
+    model := DesktopModel new'.
+DesktopManager compile: 'windows
+    ^ model windows'.
+DesktopManager compile: 'activeWindow
+    ^ model activeWindow'.
+DesktopManager compile: 'nextID
+    ^ model nextID'.
+DesktopManager compile: 'screens
+    ^ model screens'.
 DesktopManager compile: 'windowAt: anID
     self windows do: [ :each | each id = anID ifTrue: [ ^ each ] ]. ^ nil'.
 DesktopManager compile: 'windowOfKind: aKind
@@ -143,8 +196,10 @@ DesktopManager compile: 'open: aWindow
     self constrain: aWindow.
     self append: aWindow.
     ^ self activate: aWindow'.
-DesktopManager compile: 'openWorkspace ^ self createKind: #workspace title: ''Workspace'''.
-DesktopManager compile: 'openWindow ^ self open: UIWindow new'.
+DesktopManager compile: 'openWorkspace
+    ^ self createKind: #workspace title: ''Workspace'''.
+DesktopManager compile: 'openWindow
+    ^ self open: UIWindow new'.
 DesktopManager compile: 'showWorkspace
     | existing | existing := nil.
     self windows do: [ :each | each kind = #workspace ifTrue: [ existing := each ] ].
@@ -198,7 +253,8 @@ DesktopManager compile: 'chooseActive
     model activeWindow: nil.
     self windows do: [ :each | each minimized ifFalse: [ model activeWindow: each ] ].
     model requestFocus. ^ model activeWindow'.
-DesktopManager compile: 'requestClose: aWindow ^ self close: aWindow'.
+DesktopManager compile: 'requestClose: aWindow
+    ^ self close: aWindow'.
 DesktopManager compile: 'close: aWindow
     aWindow canClose ifFalse: [ ^ false ].
     model windows: (self windows select: [ :each | (each == aWindow) not ]).
@@ -236,4 +292,5 @@ DesktopManager compile: 'constrain: aWindow
     aWindow placeX: newX y: newY width: newWidth height: newHeight'.
 DesktopManager compile: 'screensChanged: availableScreens
     model screens: availableScreens. self restoreWindows'.
-DesktopManager compile: 'restoreWindows self windows do: [ :each | self constrain: each ]'.
+DesktopManager compile: 'restoreWindows
+    self windows do: [ :each | self constrain: each ]'.

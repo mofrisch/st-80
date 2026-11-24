@@ -28,7 +28,7 @@ public struct UIElementInfo: Identifiable, Sendable {
     public let selection: String?
     public let command: String?
     public let selectionSource: String?
-    /// Older image editors may lack the Smalltalk slot for this auxiliary menu.
+    /// A native context menu projected from a Smalltalk control.
     public let contextMenuItems: [UIElementInfo]?
 }
 
@@ -111,6 +111,7 @@ extension SmalltalkRuntime {
             case .label: text = try string("text")
             case .button:
                 text = try string("title")
+                label = field("shortcutHint") ?? ""
                 switch object.fields["action"] {
                 case .nilValue?: break
                 case .block(let block)? where block.parameters.isEmpty: break
@@ -136,23 +137,6 @@ extension SmalltalkRuntime {
                     liveInput = true
                 default: throw SmalltalkError("Invalid text input controller.")
                 }
-                if kind == .codeEditor, let menu = object.fields["contextMenu"] {
-                    if case .nilValue = menu {
-                        contextMenuItems = []
-                    } else {
-                        guard case .object(let menuObject) = menu, isUIClass(menuObject.stClass, named: "UIMenu") else {
-                            throw SmalltalkError("An editor context menu must be a UIMenu or nil.")
-                        }
-                        let menuInfo = try project(menu, depth: depth + 1, parentEnabled: enabled)
-                        guard menuInfo.children.allSatisfy({ item in
-                            (item.kind == .button || item.kind == .divider) &&
-                            (item.selectionSource == nil || item.selectionSource == object.nativeID)
-                        }) else {
-                            throw SmalltalkError("An editor context menu accepts buttons and dividers. Selection actions must use its own editor.")
-                        }
-                        contextMenuItems = menuInfo.visible ? menuInfo.children.filter(\.visible) : []
-                    }
-                }
             case .list:
                 guard case .array(let values)? = object.fields["items"], values.elements.count <= 1024 else {
                     throw SmalltalkError("A list requires an array of at most 1,024 items.")
@@ -177,6 +161,23 @@ extension SmalltalkRuntime {
                 spacing = gap; padding = inset
                 children = try array.elements.map { try project($0, depth: depth + 1, parentEnabled: enabled) }
             case .spacer, .divider: break
+            }
+            if (kind == .codeEditor || kind == .scroll), let menu = object.fields["contextMenu"] {
+                if case .nilValue = menu {
+                    contextMenuItems = []
+                } else {
+                    guard case .object(let menuObject) = menu, isUIClass(menuObject.stClass, named: "UIMenu") else {
+                        throw SmalltalkError("A context menu must be a UIMenu or nil.")
+                    }
+                    let menuInfo = try project(menu, depth: depth + 1, parentEnabled: enabled)
+                    guard menuInfo.children.allSatisfy({ item in
+                        (item.kind == .button || item.kind == .divider) &&
+                        (item.selectionSource == nil || (kind == .codeEditor && item.selectionSource == object.nativeID))
+                    }) else {
+                        throw SmalltalkError("Context menus accept buttons and dividers. Selection actions require the owning editor.")
+                    }
+                    contextMenuItems = menuInfo.visible ? menuInfo.children.filter(\.visible) : []
+                }
             }
             controls[object.nativeID] = ProjectedControl(object: object, kind: kind, enabled: enabled)
             return UIElementInfo(id: object.nativeID, kind: kind, text: text, label: label, placeholder: placeholder,

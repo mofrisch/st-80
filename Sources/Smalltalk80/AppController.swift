@@ -53,6 +53,9 @@ final class AppController {
     var activeKind: ToolKind? { windowPresentation.activeWindow?.info.kind }
     var activeWindowID: Int64? { windowPresentation.activeID }
     var workspaceWindow: ToolWindowInfo? { windowPresentation.workspace?.info }
+    var workspaceAppMenus: [UIElementInfo] {
+        workspaceWindow?.content?.children.filter { $0.role == "applicationMenu" && $0.visible } ?? []
+    }
 
     func presentedWindow(_ id: Int64) -> PresentedWindow? { windowPresentation.window(id) }
 
@@ -64,10 +67,9 @@ final class AppController {
                 guard let self else { return AnyView(EmptyView()) }
                 return AnyView(ToolContentView(controller: self, windowID: id))
             },
-            workspaceToolbar: { [weak self] info in
-                guard let self, let content = info.content,
-                      WorkspaceToolbar(controller: self, windowID: info.id, content: content) != nil else { return nil }
-                return AnyView(WorkspaceTitlebarView(controller: self, windowID: info.id))
+            toolbar: { [weak self] info in
+                guard let self, info.content?.windowToolbar != nil else { return nil }
+                return AnyView(WindowToolbarView(controller: self, windowID: info.id))
             },
             onEvent: { [weak self] event in self?.received(event) }
         )
@@ -180,6 +182,12 @@ final class AppController {
                 Task { [weak self] in await self?.showChanges(className: className, selector: selector, side: side) }
             case .openInspector(let snapshot):
                 inspectorWindows.open(snapshot)
+            case .debugWorkspace(let id, let identity, let source):
+                Task { [weak self] in
+                    guard let self, let window = self.presentedWindow(id)?.info,
+                          window.identity == identity, let editor = self.workspaceEditor(in: window) else { return }
+                    await self.debugWorkspace(windowID: id, editorID: editor.id, preparedSource: source)
+                }
             }
         }
     }
@@ -250,6 +258,10 @@ final class AppController {
         return await synchronizeInputs() || allowInputFailure
     }
 
+    func sourceHighlights(_ source: String) async -> [SourceHighlight] {
+        await session.sourceHighlights(source)
+    }
+
     func editorSelection(windowID: Int64, elementID: String) -> NSRange {
         controlEdits.selection(at: ControlAddress(windowID: windowID, elementID: elementID))
     }
@@ -270,15 +282,6 @@ final class AppController {
     func performCommand(_ command: String) async {
         guard let target = activeButton(for: command) else { return }
         await clickControl(windowID: target.windowID, elementID: target.button.id)
-    }
-
-    func toggleBrowserBytecode(windowID: Int64) {
-        guard !isRunning else { return }
-        windowPresentation.toggleBytecode(for: windowID)
-    }
-
-    func browserBytecode(windowID: Int64, method: BrowserMethodSelection) async -> String? {
-        await session.browserBytecode(windowID: windowID, method: method)
     }
 
     func canPerform(_ element: UIElementInfo, in windowID: Int64) -> Bool {
@@ -352,7 +355,11 @@ final class AppController {
     func debugWorkspace() async {
         guard canDebugWorkspace, let window = windowPresentation.activeWindow?.info,
               let editor = workspaceEditor(in: window) else { return }
-        await debugWorkspace(windowID: window.id, editorID: editor.id)
+        if hasCommand("debugIt") {
+            await performCommand("debugIt")
+        } else {
+            await debugWorkspace(windowID: window.id, editorID: editor.id)
+        }
     }
 
     func stopDebugging() {
@@ -360,12 +367,13 @@ final class AppController {
         debugSession?.send(.stop)
     }
 
-    private func debugWorkspace(windowID: Int64, editorID: String, capturedSelection: String? = nil) async {
+    private func debugWorkspace(windowID: Int64, editorID: String, capturedSelection: String? = nil,
+                                preparedSource: String? = nil) async {
         guard !isRunning, let window = presentedWindow(windowID)?.info,
               let editor = workspaceEditor(in: window), editor.id == editorID else { return }
         let text = inputText(windowID: windowID, element: editor)
         let selected = capturedSelection ?? selectedText(in: editor, windowID: windowID, text: text)
-        let source = selected.isEmpty ? text : selected
+        let source = preparedSource ?? (selected.isEmpty ? text : selected)
         debuggerStopRequested = false
         isRunning = true
         defer {
@@ -482,8 +490,8 @@ final class AppController {
 
     private var transcriptClearControl: (windowID: Int64, buttonID: String)? {
         guard let transcript = windowPresentation.windows.last(where: { $0.info.kind == .transcript }),
-              let content = transcript.info.content, let button = TranscriptToolView.clearButton(in: content),
-              button.enabled else { return nil }
+              let button = transcript.info.content?.firstVisible(where: { $0.command == "clearTranscript" && $0.enabled })
+        else { return nil }
         return (transcript.info.id, button.id)
     }
 

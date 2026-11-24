@@ -2,7 +2,8 @@
 
 Object subclass: #STCompiler instanceVariableNames: 'scanner current lookahead expressionDepth'.
 
-STCompiler compile: 'initialize ^ self'.
+STCompiler compile: 'initialize
+    ^ self'.
 
 STCompiler compile: 'start: input
     expressionDepth := 0.

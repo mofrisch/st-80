@@ -24,6 +24,37 @@ struct CompilerTests {
         #expect(await restored.evaluate("Counter compile: 'answer ^ 1'. Counter new answer").value == "99")
     }
 
+    @Test func sourceHighlightingRecoversFromPartialInputAndReturnsUTF16Ranges() async {
+        let session = SmalltalkSession()
+        let comment = "\"💡\r\ncomment\""
+        let symbol = "#'e\u{301}'"
+        let unfinished = "'unterminated 💡"
+        let source = "\(comment) café := \(symbol). 💥 # 9223372036854775809 ^ self \(unfinished)"
+        let highlights = await session.sourceHighlights(source)
+        let nativeText = source as NSString
+
+        #expect(highlights.map(\.kind) == [.comment, .language, .literal, .language, .language, .language, .literal])
+        #expect(highlights.map { nativeText.substring(with: NSRange($0.range)) }
+                == [comment, ":=", symbol, "9223372036854775809", "^", "self", unfinished])
+
+        let openComment = "\"open comment 💡"
+        let commentHighlights = await session.sourceHighlights(openComment)
+        #expect(commentHighlights == [SourceHighlight(kind: .comment, range: 0..<openComment.utf16.count)])
+        #expect(await session.evaluate(openComment).executionError?.contains("Unterminated comment") == true)
+        #expect(await session.evaluate(unfinished).executionError?.contains("Unterminated string") == true)
+    }
+
+    @Test func sourceHighlightingFollowsTheLiveImageScanner() async {
+        let session = SmalltalkSession()
+        let initial = await session.sourceHighlights("42")
+        #expect(initial.map(\.kind) == [.language])
+        let change = await session.compile("token: kind value: value ^ self highlight: #comment", in: "STSourceScanner")
+        #expect(change.executionError == nil)
+        let updated = await session.sourceHighlights("42")
+        #expect(updated.map(\.kind) == [.comment])
+        #expect(await session.evaluate("6 * 7").value == "42")
+    }
+
     @Test func malformedCompilerOutputCannotReplaceAnInstalledMethod() async {
         let session = SmalltalkSession()
         #expect(await session.compile("answer ^ 42", in: "Counter").executionError == nil)

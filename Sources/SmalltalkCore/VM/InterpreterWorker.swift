@@ -23,12 +23,12 @@ final class InterpreterWorker: Sendable {
 
     private let queue: Queue
 
-    init() {
+    init(bootstrap: Bool = true) {
         let queue = Queue()
         self.queue = queue
         // Foundation retains a started Thread until its entry closure finishes.
         let thread = Thread {
-            var runtime = SmalltalkRuntime()
+            var runtime = SmalltalkRuntime(bootstrap: bootstrap)
             while true {
                 queue.condition.lock()
                 queue.activeCancellation = nil
@@ -43,7 +43,7 @@ final class InterpreterWorker: Sendable {
                 }
             }
         }
-        thread.name = "Smalltalk interpreter"
+        thread.name = bootstrap ? "Smalltalk interpreter" : "Smalltalk source scanner"
         thread.stackSize = 16 * 1_024 * 1_024
         thread.start()
     }

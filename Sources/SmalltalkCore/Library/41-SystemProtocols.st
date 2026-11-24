@@ -56,10 +56,11 @@ BrowserOrganization compile: 'shippedProtocols
             (''Input Setup'' (''initialize'' ''source:''))
             (''Character Stream'' (''peek'' ''peekAhead:'' ''advance''))
             (''Character Classification'' (''isBinary:'' ''isIdentifierStart:'' ''isIdentifierPart:''))
-            (''Tokenization'' (''nextToken'' ''token:value:'' ''skipTrivia''))
+            (''Tokenization'' (''nextToken'' ''readToken'' ''token:value:'' ''skipTrivia'' ''readComment''))
             (''Literal Scanning'' (''readNumber'' ''readString'' ''readSymbol''))
             (''Identifier Scanning'' (''readIdentifier'' ''readWord''))
             (''Error Reporting'' (''fail:''))))
+        (''STSourceScanner'' ((''Highlighting'' (''nextHighlight'' ''token:value:'' ''highlight:'' ''fail:''))))
         (''STCompiler'' (
             (''Compilation'' (''initialize'' ''start:'' ''workspace:'' ''method:''))
             (''Token Handling'' (''advance'' ''expect:'' ''kind'' ''tokenValue'' ''tokenLabel:'' ''identifier''))
@@ -118,7 +119,7 @@ BrowserOrganization compile: 'shippedProtocols
             (''Text'' (''text'' ''text:''))))
         (''UIButton'' (
             (''Initialization'' (''initialize''))
-            (''Labeling'' (''title'' ''title:''))
+            (''Labeling'' (''title'' ''title:'' ''shortcutHint:''))
             (''Action Configuration'' (''action:'' ''command:'' ''onClickSend:to:'' ''selectionFrom:action:''))
             (''Activation'' (''click'' ''clickWithSelection:''))))
         (''UITextField'' (
@@ -141,6 +142,7 @@ BrowserOrganization compile: 'shippedProtocols
         (''UIWindow'' (
             (''Initialization'' (''initialize''))
             (''Window Content'' (''content'' ''content:''))))
+        (''UIScroll'' ((''Context Menu'' (''contextMenu:''))))
         (''UIMenu'' (
             (''Initialization'' (''initialize''))
             (''Labeling'' (''title:''))))
@@ -162,23 +164,25 @@ BrowserOrganization compile: 'shippedProtocols
             (''Presenting Edits'' (''edit:name:do:'' ''move:choices:selected:do:''))
             (''Applying Edits'' (''chooseDestination:'' ''apply'' ''cancel''))))
         (''DevelopmentWindow'' (
-            (''Shared Layout'' (''heading:'' ''caption:'' ''imageBar'' ''resultPane''))
+            (''Shared Layout'' (''heading:'' ''caption:'' ''resultPane'' ''toggleResult'' ''resultExpanded:''))
             (''Result Display'' (''result:''))))
         (''WorkspaceWindow'' (
             (''Initialization'' (''initialize''))
-            (''Code Evaluation'' (''text:'' ''sourceForSelection:'' ''doIt:'' ''printIt:'' ''inspect:'' ''execute:printing:''))
-            (''Editor Menu'' (''editorMenu'' ''selectionButton:command:action:''))
+            (''Code Evaluation'' (''text:'' ''sourceForSelection:'' ''doIt:'' ''printIt:'' ''inspect:'' ''debugIt:'' ''execute:printing:''))
+            (''Editor Menu'' (''editorMenu'' ''actionsMenu'' ''selectionButton:command:action:''))
             (''Examples'' (''examplesMenu'' ''exampleButton:key:''))))
         (''BrowserWindow'' (
             (''Initialization'' (''initialize''))
-            (''Pane Layout'' (''list:selecting:'' ''organizationItem:id:send:'' ''pane:list:menu:'' ''withAll:''))
+            (''Pane Layout'' (''list:selecting:'' ''organizationItem:id:send:'' ''pane:list:action:'' ''withAll:''))
             (''Navigation'' (''chooseCategory:'' ''chooseClass:'' ''chooseProtocol:'' ''chooseMethod:''
                 ''filter:'' ''matchesCategory:'' ''selectedClass'' ''protocolOf:in:''
                 ''showInstanceMethods'' ''showClassMethods'' ''chooseMethodSide:''))
-            (''Catalog Updates'' (''refreshClasses'' ''refreshMethods'' ''refreshTools'' ''refreshInspector'' ''refreshOrganizationActions''))
+            (''Catalog Updates'' (''refreshClasses'' ''refreshMethods'' ''refreshTools'' ''refreshOrganizationActions''))
             (''Method Editing'' (''acceptMethod'' ''draftChanged:'' ''newMethod'' ''primitiveSelected''
                 ''refreshEditor'' ''showVersions''))
-            (''Class Definitions'' (''showDefinition'' ''acceptDefinition'' ''classForm'' ''showCreation'' ''hideCreation'' ''createClass''))
+            (''Class Definitions'' (''showDefinition'' ''acceptDefinition''))
+            (''Bytecode'' (''toggleBytecode'' ''refreshBytecode''))
+            (''Result Display'' (''result:''))
             (''Organization Editing'' (''editGroupIn:named:prompt:selecting:'' ''moveItem:in:from:prompt:selecting:''
                 ''newCategory'' ''renameCategory'' ''moveClass'' ''newProtocol'' ''renameProtocol'' ''moveMethod'' ''organizationEdited:''))))
         (''TranscriptModel'' (

@@ -54,11 +54,14 @@ STScanner compile: 'skipTrivia
       character notNil and: [ character isWhitespace or: [ character = ''"'' ] ] ] whileTrue: [
         character = ''"'' ifTrue: [
             tokenLine := line. tokenColumn := column.
-            self advance.
-            [ self peek notNil and: [ self peek ~= ''"'' ] ] whileTrue: [ self advance ].
-            self peek isNil ifTrue: [ self fail: ''Unterminated comment.'' ].
-            self advance
+            self readComment
         ] ifFalse: [ self advance ] ]'.
+
+STScanner compile: 'readComment
+    self advance.
+    [ self peek notNil and: [ self peek ~= ''"'' ] ] whileTrue: [ self advance ].
+    self peek isNil ifTrue: [ ^ self fail: ''Unterminated comment.'' ].
+    self advance'.
 
 STScanner compile: 'readIdentifier
     | start |
@@ -82,7 +85,7 @@ STScanner compile: 'readString
             self advance.
             start := offset
         ] ifFalse: [ self advance ] ].
-    self fail: ''Unterminated string.'''.
+    ^ self fail: ''Unterminated string.'''.
 
 STScanner compile: 'readNumber
     | start digits number |
@@ -119,11 +122,14 @@ STScanner compile: 'readSymbol
     (self isBinary: self peek) ifTrue: [
         [ self isBinary: self peek ] whileTrue: [ self advance ].
         ^ self token: #symbol value: (characters joinedStringFrom: start to: offset - 1) ].
-    self fail: ''Expected a symbol or ( after #.'''.
+    ^ self fail: ''Expected a symbol or ( after #.'''.
 
 STScanner compile: 'nextToken
-    | character start |
     self skipTrivia.
+    ^ self readToken'.
+
+STScanner compile: 'readToken
+    | character start |
     tokenLine := line. tokenColumn := column.
     character := self peek.
     character isNil ifTrue: [ ^ self token: #end value: nil ].
@@ -147,4 +153,36 @@ STScanner compile: 'nextToken
     (self isBinary: character) ifTrue: [
         [ self isBinary: self peek ] whileTrue: [ self advance ].
         ^ self token: #binary value: (characters joinedStringFrom: start to: offset - 1) ].
-    self fail: ''Unknown character: '' , character'.
+    ^ self fail: ''Unknown character: '' , character'.
+
+"Editor tokenization shares the compiler's lexical rules and tolerates partial input."
+STScanner subclass: #STSourceScanner instanceVariableNames: 'tokenStart'.
+
+STSourceScanner compile: 'nextHighlight
+    | span |
+    [ self peek notNil ] whileTrue: [
+        tokenStart := offset.
+        self peek isWhitespace
+            ifTrue: [ self advance ]
+            ifFalse: [
+                span := self peek = ''"''
+                    ifTrue: [ self readComment. self highlight: #comment ]
+                    ifFalse: [ self readToken ].
+                span notNil ifTrue: [ ^ span ] ] ].
+    ^ nil'.
+
+STSourceScanner compile: 'token: kind value: value
+    (#(string symbol arrayStart) includes: kind) ifTrue: [ ^ self highlight: #literal ].
+    (#(assign caret integer minimumMagnitude) includes: kind) ifTrue: [ ^ self highlight: #language ].
+    (kind = #identifier and: [ #(''self'' ''super'' ''nil'' ''true'' ''false'' ''thisContext'') includes: value ])
+        ifTrue: [ ^ self highlight: #language ].
+    ^ nil'.
+
+STSourceScanner compile: 'highlight: kind
+    | span |
+    span := Array new: 3.
+    span at: 1 put: kind; at: 2 put: tokenStart; at: 3 put: offset.
+    ^ span'.
+
+STSourceScanner compile: 'fail: message
+    ^ nil'.

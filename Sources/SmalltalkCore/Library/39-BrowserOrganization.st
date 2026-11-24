@@ -9,27 +9,37 @@ Array compile: 'copyWith: element
 
 Object subclass: #BrowserGroup instanceVariableNames: 'name defaultName items'.
 
-BrowserGroup compile: 'initialize items := #()'.
+BrowserGroup compile: 'initialize
+    items := #()'.
 
-BrowserGroup compile: 'name ^ name'.
+BrowserGroup compile: 'name
+    ^ name'.
 
-BrowserGroup compile: 'name: aString name := aString'.
+BrowserGroup compile: 'name: aString
+    name := aString'.
 
-BrowserGroup compile: 'defaultName ^ defaultName'.
+BrowserGroup compile: 'defaultName
+    ^ defaultName'.
 
-BrowserGroup compile: 'defaultName: aString defaultName := aString'.
+BrowserGroup compile: 'defaultName: aString
+    defaultName := aString'.
 
-BrowserGroup compile: 'isDeclared ^ name ~= defaultName'.
+BrowserGroup compile: 'isDeclared
+    ^ name ~= defaultName'.
 
-BrowserGroup compile: 'includes: item ^ items includes: item'.
+BrowserGroup compile: 'includes: item
+    ^ items includes: item'.
 
-BrowserGroup compile: 'items ^ items'.
+BrowserGroup compile: 'items
+    ^ items'.
 
-BrowserGroup compile: 'items: values items := values'.
+BrowserGroup compile: 'items: values
+    items := values'.
 
 Object subclass: #BrowserGrouping instanceVariableNames: 'groups'.
 
-BrowserGrouping compile: 'initialize groups := #()'.
+BrowserGrouping compile: 'initialize
+    groups := #()'.
 
 BrowserGrouping compile: 'defineDefaults: names
     names do: [ :name |
@@ -38,7 +48,8 @@ BrowserGrouping compile: 'defineDefaults: names
 BrowserGrouping compile: 'defineGroup: name items: selectors
     groups := groups copyWith: (BrowserGroup new name: name; items: selectors; yourself)'.
 
-BrowserGrouping compile: 'names ^ groups collect: [ :group | group name ]'.
+BrowserGrouping compile: 'names
+    ^ groups collect: [ :group | group name ]'.
 
 BrowserGrouping compile: 'namesWith: populated
     ^ (groups select: [ :group | group isDeclared or: [ populated includes: group name ] ])
@@ -104,14 +115,15 @@ BrowserOrganization compile: 'initialize
     systemProtocols := self shippedProtocols.
     catalogs := #()'.
 
-BrowserOrganization compile: 'classCategories ^ classCategories'.
+BrowserOrganization compile: 'classCategories
+    ^ classCategories'.
 
 BrowserOrganization compile: 'categoryOf: name
     ^ classCategories groupOf: name default: (self defaultCategoryOf: name)'.
 
 BrowserOrganization compile: 'defaultCategoryOf: name
     (#(''Object'' ''Class'' ''UndefinedObject'' ''Boolean'' ''True'' ''False'' ''Number'' ''Integer'' ''SmallInteger'' ''String'' ''Symbol'' ''Array'' ''BlockClosure'') includes: name) ifTrue: [ ^ ''Kernel'' ].
-    (#(''STCompilerList'' ''STScanner'' ''STCompiler'') includes: name) ifTrue: [ ^ ''Compiler'' ].
+    (#(''STCompilerList'' ''STScanner'' ''STSourceScanner'' ''STCompiler'') includes: name) ifTrue: [ ^ ''Compiler'' ].
     (#(''Transcript'' ''TranscriptModel'' ''ToolServices'' ''DevelopmentWindow'' ''WorkspaceWindow'' ''BrowserWindow'' ''TranscriptWindow''
        ''BrowserGroup'' ''BrowserGrouping'' ''BrowserOrganization'' ''BrowserOrganizationForm'') includes: name) ifTrue: [ ^ ''Tools'' ].
     (#(''Model'' ''Controller'' ''UIBinding'' ''SystemWindow'' ''DesktopModel'' ''DisplayScreen'' ''DesktopManager''

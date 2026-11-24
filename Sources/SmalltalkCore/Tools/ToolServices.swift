@@ -6,6 +6,7 @@ public enum NativeToolRequest: Sendable {
     case saveImage
     case showVersions(className: String, selector: String, side: MethodSide = .instance)
     case openInspector(InspectorSnapshot)
+    case debugWorkspace(windowID: Int64, identity: String, source: String)
 }
 
 extension SmalltalkRuntime {
@@ -114,6 +115,22 @@ extension SmalltalkRuntime {
             case "userInterface": return .string(SmalltalkExamples.userInterface)
             default: throw SmalltalkError("Unknown workspace example.")
             }
+        case "bytecodeOf:in:side:":
+            let stClass = try target(args[1])
+            guard let method = try stClass[side(args[2])][string(args[0])] else { return .string("Bytecode unavailable.") }
+            let listing = method.body.disassembly(parameters: method.parameters)
+            if listing.utf8.count <= 65_536 { return .string(listing) }
+            let prefix = String(decoding: listing.utf8.prefix(65_500), as: UTF8.self)
+            return .string(prefix + "\n… listing truncated")
+        case "requestDebugSource:for:":
+            let source = try string(args[0])
+            guard case .object(let window) = args[1], case .integer(let id)? = window.fields["id"],
+                  isUIClass(window.stClass, named: "WorkspaceWindow"), projectedWindow(withID: id) === window,
+                  source.utf8.count <= 65_536 else {
+                throw SmalltalkError("A debug request requires an open workspace and at most 64 KiB of source.")
+            }
+            toolRequests.append(.debugWorkspace(windowID: id, identity: window.nativeID, source: source))
+            return .nilValue
         case "requestSaveImage":
             toolRequests.append(.saveImage)
             return .nilValue

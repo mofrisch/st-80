@@ -7,7 +7,6 @@ struct PresentedWindow {
     var info: ToolWindowInfo
     var documentURL: URL?
     var inputError: String?
-    var showsBytecode = false
 }
 
 struct WindowPresentation {
@@ -31,7 +30,6 @@ struct WindowPresentation {
             guard var existing = previous[info.id], existing.info.identity == info.identity,
                   existing.info.kind == info.kind else { return PresentedWindow(info: info) }
             existing.info = info
-            if info.browserMethod == nil { existing.showsBytecode = false }
             return existing
         }
         activeID = evaluation.activeWindowID
@@ -43,11 +41,6 @@ struct WindowPresentation {
 
     mutating func setInputError(_ error: String?, for id: Int64) {
         if let index = index(of: id) { windows[index].inputError = error }
-    }
-
-    mutating func toggleBytecode(for id: Int64) {
-        guard let index = index(of: id), windows[index].info.browserMethod != nil else { return }
-        windows[index].showsBytecode.toggle()
     }
 
     private func index(of id: Int64) -> Int? {

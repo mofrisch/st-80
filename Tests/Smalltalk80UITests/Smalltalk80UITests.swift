@@ -152,7 +152,7 @@ final class Smalltalk80UITests: XCTestCase {
         let counterDefinition = expectation(for: NSPredicate(format: "value == %@", "Object subclass: #Counter\n    instanceVariableNames: 'count'"), evaluatedWith: editor)
         wait(for: [counterDefinition], timeout: 5)
         browser.staticTexts["value"].firstMatch.click()
-        XCTAssertEqual(editor.value as? String, "value ^ count")
+        XCTAssertEqual(editor.value as? String, "value\n    ^ count")
         browser.buttons["classDefinition"].click()
         let definition = "Object subclass: #Counter\n    instanceVariableNames: 'count label'"
         replaceText(in: editor, with: definition)
@@ -183,7 +183,7 @@ final class Smalltalk80UITests: XCTestCase {
 
         browser.buttons["instanceMethodSide"].click()
         browser.staticTexts["value"].firstMatch.click()
-        XCTAssertEqual(source.value as? String, "value ^ count")
+        XCTAssertEqual(source.value as? String, "value\n    ^ count")
         browser.buttons["classMethodSide"].click()
         XCTAssertEqual(source.value as? String, "value\n    ^ 70")
         replaceText(in: source, with: "value\n    ^ 73")
@@ -210,7 +210,7 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertFalse(bytecode.exists)
         value.click()
 
-        let acceptedSource = "value ^ count"
+        let acceptedSource = "value\n    ^ count"
         let originalValue = NSPredicate(format: "value == %@", acceptedSource)
         wait(for: [expectation(for: originalValue, evaluatedWith: source)], timeout: 5)
         let accept = browser.buttons["executeButton"]

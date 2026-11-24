@@ -14,8 +14,8 @@ struct ToolWindowTests {
         let workspace = try #require(snapshot.windows.first { $0.kind == .workspace })
         let editor = try #require(element("workspaceEditor", in: workspace.content))
         let menu = try #require(editor.contextMenuItems)
-        #expect(menu.map(\.text) == ["Do it", "Print it", "Inspect it"])
-        #expect(menu.map(\.command) == ["doIt", "printIt", "inspectIt"])
+        #expect(menu.map(\.text) == ["Do it", "Print it", "Inspect it", "Debug it"])
+        #expect(menu.map(\.command) == ["doIt", "printIt", "inspectIt", "debugIt"])
         #expect(menu.allSatisfy { $0.enabled && $0.selectionSource == editor.id })
 
         func click(_ command: String, selection: String) async throws -> EvaluationResult {
@@ -25,7 +25,7 @@ struct ToolWindowTests {
             return result
         }
 
-        // Evaluating the full buffer would fail. All three items must use just
+        // Evaluating the full buffer would fail. Each item must use just
         // the source passed along with the context-menu event.
         _ = await session.uiAction(.text(windowID: workspace.id, elementID: editor.id, value: "1 / 0"))
         let executed = try await click("doIt", selection: "6 * 7")
@@ -33,6 +33,13 @@ struct ToolWindowTests {
         #expect(element("evaluationResult", in: updatedWorkspace?.content)?.text == "42")
         let printed = try await click("printIt", selection: "3 + 4")
         #expect(printed.transcript == "→ 7\n")
+        let debug = try await click("debugIt", selection: "20 + 22")
+        #expect(debug.toolRequests.contains { request in
+            if case .debugWorkspace(let id, let identity, let source) = request {
+                return id == workspace.id && identity == workspace.identity && source == "20 + 22"
+            }
+            return false
+        })
 
         _ = await session.evaluate("inspectionRuns := 0")
         let inspected = try await click("inspectIt", selection: "inspectionRuns := inspectionRuns + 1. Counter new add: inspectionRuns")
@@ -140,7 +147,7 @@ struct ToolWindowTests {
         let counting = await select(protocols, "Counting")
         #expect(element("methodList", in: counting)?.items == ["add:", "increment"])
         let increment = await select(methods, "increment")
-        #expect(element("methodEditor", in: increment)?.text == "increment count := count + 1")
+        #expect(element("methodEditor", in: increment)?.text == "increment\n    count := count + 1")
 
         _ = await session.uiAction(.text(windowID: browser.id, elementID: editor.id, value: "adjusted: amount ^ count + amount"))
         let accepted = await session.uiAction(.click(windowID: browser.id, elementID: accept.id))
@@ -231,6 +238,12 @@ struct ToolWindowTests {
         #expect(instanceMethod.selector == "value")
         #expect(instanceMethod.side == .instance)
         #expect(await session.browserBytecode(windowID: browser.id, method: instanceMethod)?.contains("LOAD count") == true)
+        let toggle = try #require(element("methodBytecodeToggle", in: browser.content))
+        let opened = await session.uiAction(.click(windowID: browser.id, elementID: toggle.id))
+        let listing = try #require(element("bytecodeEditor", in: opened.windows.first { $0.id == browser.id }?.content))
+        #expect(listing.visible && listing.readOnly)
+        #expect(listing.text.contains("LOAD count"))
+
 
         _ = await session.uiAction(.click(windowID: browser.id, elementID: classSideButton.id))
         #expect(await session.browserBytecode(windowID: browser.id, method: instanceMethod) == nil)

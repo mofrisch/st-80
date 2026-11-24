@@ -34,6 +34,7 @@ struct CodeEditor: NSViewRepresentable {
     var label: String
     var allowsUndo = true
     var usesSmalltalkSourceStyle = false
+    var highlightsForSource: @MainActor (String) async -> [SourceHighlight] = { _ in [] }
     var contextMenuItems: [EditorContextItem] = []
     var contextCommandsEnabled = true
     var onContextCommand: (EditorContextAction, String) -> Void = { _, _ in }
@@ -80,28 +81,34 @@ struct CodeEditor: NSViewRepresentable {
         textView.setAccessibilityIdentifier(identifier)
         textView.setAccessibilityLabel(label)
         scrollView.documentView = textView
-        if usesSmalltalkSourceStyle {
-            textView.installSourceStyle(in: scrollView)
+        if textView.setSourceStyle(usesSmalltalkSourceStyle, in: scrollView) {
+            textView.refreshSourceStyle(with: highlightsForSource)
         }
         return scrollView
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        guard let textView = scrollView.documentView as? NSTextView else { return }
+        guard let textView = scrollView.documentView as? CodeEditorTextView else { return }
         context.coordinator.parent = self
         // AppKit sends selection notifications synchronously while applying model updates.
         // These updates must not write back into SwiftUI bindings.
         context.coordinator.isUpdatingView = true
         defer { context.coordinator.isUpdatingView = false }
         if textView.isEditable != isEditable { textView.isEditable = isEditable }
-        if textView.string != text {
+        let styleChanged = textView.setSourceStyle(usesSmalltalkSourceStyle, in: scrollView)
+        let textChanged = !textView.string.utf16.elementsEqual(text.utf16)
+        if textChanged {
             textView.string = text
             if allowsUndo { textView.undoManager?.removeAllActions() }
-            (textView as? CodeEditorTextView)?.refreshSourceStyle()
         }
+        if textChanged || styleChanged { textView.refreshSourceStyle(with: highlightsForSource) }
         let length = (text as NSString).length
         let range = NSRange(location: min(selection.location, length), length: min(selection.length, max(0, length - min(selection.location, length))))
         if textView.selectedRange() != range { textView.setSelectedRange(range) }
+    }
+
+    static func dismantleNSView(_ scrollView: NSScrollView, coordinator: Coordinator) {
+        (scrollView.documentView as? CodeEditorTextView)?.cancelSourceHighlighting()
     }
 
     @MainActor
@@ -151,7 +158,7 @@ struct CodeEditor: NSViewRepresentable {
 
         func textDidChange(_ notification: Notification) {
             guard !isUpdatingView, let textView = notification.object as? NSTextView else { return }
-            (textView as? CodeEditorTextView)?.refreshSourceStyle()
+            (textView as? CodeEditorTextView)?.refreshSourceStyle(with: parent.highlightsForSource)
             parent.text = textView.string
             parent.selection = textView.selectedRange()
         }
@@ -167,49 +174,65 @@ struct CodeEditor: NSViewRepresentable {
 @MainActor
 private final class CodeEditorTextView: NSTextView {
     private weak var lineNumbers: SourceLineNumberRuler?
+    private var highlightTask: Task<Void, Never>?
 
-    func installSourceStyle(in scrollView: NSScrollView) {
-        let ruler = SourceLineNumberRuler(scrollView: scrollView, editor: self)
-        lineNumbers = ruler
-        scrollView.verticalRulerView = ruler
-        scrollView.hasVerticalRuler = true
-        scrollView.rulersVisible = true
-        refreshSourceStyle()
+    /// Returns true when the source presentation was enabled or disabled.
+    func setSourceStyle(_ enabled: Bool, in scrollView: NSScrollView) -> Bool {
+        guard enabled != (lineNumbers != nil) else { return false }
+        if enabled {
+            let ruler = SourceLineNumberRuler(scrollView: scrollView, editor: self)
+            lineNumbers = ruler
+            scrollView.verticalRulerView = ruler
+            scrollView.hasVerticalRuler = true
+            scrollView.rulersVisible = true
+        } else {
+            cancelSourceHighlighting()
+            scrollView.rulersVisible = false
+            scrollView.hasVerticalRuler = false
+            scrollView.verticalRulerView = nil
+            lineNumbers = nil
+            applySourceHighlights([])
+        }
+        return true
     }
 
-    func refreshSourceStyle() {
-        guard let lineNumbers, let layoutManager else { return }
-        let source = string as NSString
-        lineNumbers.updateLineStarts(in: source)
-        let range = NSRange(location: 0, length: source.length)
-        guard range.length > 0 else { return }
+    func cancelSourceHighlighting() {
+        highlightTask?.cancel()
+        highlightTask = nil
+    }
 
-        // Paint the editor only. Keep syntax colors out of text storage,
-        // pasteboard contents, drafts, and the undo history.
-        layoutManager.removeTemporaryAttribute(.foregroundColor, forCharacterRange: range)
-        Self.sourceTokens.enumerateMatches(in: string, range: range) { match, _, _ in
-            guard let match else { return }
-            let color: NSColor
-            if match.range(withName: "comment").location != NSNotFound {
-                color = .secondaryLabelColor
-            } else if match.range(withName: "literal").location != NSNotFound {
-                color = .linkColor
-            } else {
-                color = .systemPurple
+    func refreshSourceStyle(with scan: @escaping @MainActor (String) async -> [SourceHighlight]) {
+        cancelSourceHighlighting()
+        guard let lineNumbers else { return }
+        let source = string
+        lineNumbers.updateLineStarts(in: source as NSString)
+        guard !source.isEmpty else { return }
+        highlightTask = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(90)) } catch { return }
+            let highlights = await scan(source)
+            guard !Task.isCancelled, let self,
+                  self.string.utf16.elementsEqual(source.utf16) else { return }
+            applySourceHighlights(highlights)
+        }
+    }
+
+    private func applySourceHighlights(_ highlights: [SourceHighlight]) {
+        guard let layoutManager else { return }
+        let length = (string as NSString).length
+        guard length > 0 else { return }
+        // TextKit temporary attributes stay out of clipboard data and undo.
+        layoutManager.removeTemporaryAttribute(.foregroundColor, forCharacterRange: NSRange(location: 0, length: length))
+        for highlight in highlights where highlight.range.upperBound <= length {
+            let color: NSColor = switch highlight.kind {
+            case .comment: .secondaryLabelColor
+            case .literal: .linkColor
+            case .language: .systemPurple
             }
-            layoutManager.addTemporaryAttribute(.foregroundColor, value: color, forCharacterRange: match.range)
+            layoutManager.addTemporaryAttribute(.foregroundColor, value: color,
+                                                forCharacterRange: NSRange(highlight.range))
         }
         needsDisplay = true
     }
-
-    /// This tolerant matcher only colors literals and a few language marks.
-    /// The image compiler still owns tokenization, diagnostics and execution.
-    private static let sourceTokens: NSRegularExpression = {
-        let comment = #"(?<comment>"[^"]*"?)"#
-        let literal = #"(?<literal>#?'(?:''|[^'])*'?|#(?:\(|[\p{L}_][\p{L}\p{M}\p{N}_]*(?::[\p{L}\p{M}\p{N}_]*)*|[+\-*/\\~<>=@%,&?!]+))"#
-        let marks = #":=|\^|(?<![\p{L}\p{M}\p{N}_])(?:[0-9]+|self|super|nil|true|false)(?![\p{L}\p{M}\p{N}_])"#
-        return try! NSRegularExpression(pattern: [comment, literal, marks].joined(separator: "|"))
-    }()
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         handleUndoShortcut(event) || super.performKeyEquivalent(with: event)

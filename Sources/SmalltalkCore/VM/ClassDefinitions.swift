@@ -53,6 +53,9 @@ extension SmalltalkRuntime {
 
         try plan(target, own: fields, inherited: superclass.fields)
         try validateRetainedCode(target: target, superclass: superclass, removedFields: removedFields)
+        // The allocation registry also holds unreachable instances. Their old
+        // field values must not veto an edit to the reachable object space.
+        collectGarbage()
         let updates = try objects.compactMap { object -> (object: STObject, previous: [String: Value], next: [String: Value])? in
             guard let layout = layouts[ObjectIdentifier(object.stClass)] else { return nil }
             let next = Dictionary(uniqueKeysWithValues: layout.map { ($0, object.fields[$0] ?? .nilValue) })

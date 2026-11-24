@@ -56,8 +56,8 @@ extension SmalltalkRuntime {
         case "class": return .classObject(classOf(receiver))
         case "yourself": return receiver
         case "printString": return .string(printValue(receiver))
-        case "=", "==": return .boolean(equal(receiver, args[0], identity: selector == "=="))
-        case "~=": return .boolean(!equal(receiver, args[0]))
+        case "=", "==": return .boolean(try equal(receiver, args[0], identity: selector == "=="))
+        case "~=": return .boolean(try !equal(receiver, args[0]))
         case "isNil": return .boolean(isNil(receiver))
         case "notNil": return .boolean(!isNil(receiver))
         case "ifNil:": return isNil(receiver) ? try invokeBlock(args[0]) : receiver
@@ -133,7 +133,7 @@ extension SmalltalkRuntime {
             switch selector {
             case "size": return .integer(Int64(array.elements.count))
             case "isEmpty": return .boolean(array.elements.isEmpty)
-            case "includes:": return .boolean(array.elements.contains { equal($0, args[0]) })
+            case "includes:": return .boolean(try array.elements.contains { try equal($0, args[0]) })
             case "joinedStringFrom:to:":
                 let first = try integer(args[0]), last = try integer(args[1])
                 guard first >= 1, first <= array.elements.count + 1, last >= first - 1, last <= array.elements.count else {
@@ -341,21 +341,48 @@ extension SmalltalkRuntime {
 
     func isNil(_ value: Value) -> Bool { if case .nilValue = value { return true }; return false }
 
-    func equal(_ a: Value, _ b: Value, identity: Bool = false, depth: Int = 0) -> Bool {
-        switch (a, b) {
-        case (.integer(let a), .integer(let b)): return a == b
-        case (.string(let a), .string(let b)), (.symbol(let a), .symbol(let b)): return a == b
-        case (.boolean(let a), .boolean(let b)): return a == b
-        case (.nilValue, .nilValue), (.transcript, .transcript): return true
-        case (.object(let a), .object(let b)): return a === b
-        case (.classObject(let a), .classObject(let b)): return a === b
-        case (.block(let a), .block(let b)): return a === b
-        case (.array(let a), .array(let b)):
-            if a === b { return true }
-            guard !identity, depth < 32, a.elements.count == b.elements.count else { return false }
-            return zip(a.elements, b.elements).allSatisfy { equal($0, $1, depth: depth + 1) }
-        default: return false
+    func equal(_ a: Value, _ b: Value, identity: Bool = false) throws -> Bool {
+        struct ArrayPair: Hashable {
+            let left: ObjectIdentifier
+            let right: ObjectIdentifier
         }
+        enum Comparison {
+            case values(Value, Value)
+            case elements(STArray, STArray, Int)
+        }
+
+        var pending: [Comparison] = [.values(a, b)]
+        var compared: Set<ArrayPair> = []
+        while let comparison = pending.popLast() {
+            switch comparison {
+            case .elements(let left, let right, let index):
+                guard index < left.elements.count else { continue }
+                // Keep one continuation per array rather than enqueueing every
+                // element of a wide or deeply nested graph at once.
+                pending.append(.elements(left, right, index + 1))
+                pending.append(.values(left.elements[index], right.elements[index]))
+            case .values(let left, let right):
+                try tick()
+                switch (left, right) {
+                case (.integer(let a), .integer(let b)): if a != b { return false }
+                case (.string(let a), .string(let b)), (.symbol(let a), .symbol(let b)): if a != b { return false }
+                case (.boolean(let a), .boolean(let b)): if a != b { return false }
+                case (.nilValue, .nilValue), (.transcript, .transcript): break
+                case (.object(let a), .object(let b)): if a !== b { return false }
+                case (.classObject(let a), .classObject(let b)): if a !== b { return false }
+                case (.block(let a), .block(let b)): if a !== b { return false }
+                case (.array(let a), .array(let b)):
+                    if a === b { continue }
+                    guard !identity, a.elements.count == b.elements.count else { return false }
+                    let pair = ArrayPair(left: ObjectIdentifier(a), right: ObjectIdentifier(b))
+                    // Shared branches are compared once; revisiting a cycle
+                    // does not make otherwise equal contents unequal.
+                    if compared.insert(pair).inserted { pending.append(.elements(a, b, 0)) }
+                default: return false
+                }
+            }
+        }
+        return true
     }
 
     func primitiveSelectors(_ stClass: STClass) -> Set<String> {

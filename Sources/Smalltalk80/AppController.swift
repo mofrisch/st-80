@@ -8,7 +8,15 @@ import UniformTypeIdentifiers
 final class AppController {
     private var windowPresentation = WindowPresentation()
     private var controlEdits = ControlEdits()
-    var error: String?
+    private var operationError: String?
+    private var persistenceError: String?
+    var error: String? {
+        get {
+            if let operationError, let persistenceError { return operationError + "\n" + persistenceError }
+            return operationError ?? persistenceError
+        }
+        set { operationError = newValue }
+    }
     var isRunning = false {
         didSet {
             if !isRunning {
@@ -67,11 +75,10 @@ final class AppController {
         )
         isRunning = true
         defer { isRunning = false }
-        do { try await startUnsavedChangeLog() } catch { self.error = error.localizedDescription }
-        let failure = error
+        do { try await startUnsavedChangeLog() }
+        catch { persistenceError = "Changes cannot be recorded on disk: \(error.localizedDescription)" }
         apply(await session.snapshot(), replacingWindows: true)
         await arrangeInitialTools()
-        error = failure
     }
 
     private func arrangeInitialTools() async {
@@ -553,12 +560,19 @@ final class AppController {
         guard !isRunning else { return }
         isRunning = true
         defer { isRunning = false }
-        clearPending()
-        _ = await session.reset()
-        do { try await startUnsavedChangeLog() } catch { self.error = error.localizedDescription }
-        apply(await session.snapshot(), replacingWindows: true)
-        await arrangeInitialTools()
-        imageURL = nil; imageHasChanges = false
+        guard await confirmSessionReplacement(.reset) else { return }
+        // Join outstanding native input before replacing its interpreter world.
+        await flushWindowState(allowInputFailure: true)
+        do {
+            let replacement = try await session.reset(startingChangeLogAt: unsavedChangeLogURL())
+            clearPending()
+            persistenceError = nil
+            apply(replacement, replacingWindows: true)
+            await arrangeInitialTools()
+            imageURL = nil; imageHasChanges = false
+        } catch {
+            persistenceError = "Could not reset the session: \(error.localizedDescription)"
+        }
     }
 
     func openWorkspace() async {
@@ -615,6 +629,8 @@ final class AppController {
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard await confirmSessionReplacement(.openImage) else { return }
+        await flushWindowState(allowInputFailure: true)
         do {
             try await restoreImage(from: url)
         } catch {
@@ -634,6 +650,10 @@ final class AppController {
         guard !isRunning else { return .cancelled }
         isRunning = true
         defer { isRunning = false }
+        return await saveImageWhileRunning(asNewFile: asNewFile)
+    }
+
+    private func saveImageWhileRunning(asNewFile: Bool = false) async -> ImageSaveResult {
         let url: URL
         if let imageURL, !asNewFile { url = imageURL }
         else {
@@ -654,6 +674,7 @@ final class AppController {
             apply(await session.snapshot())
             imageURL = url
             imageHasChanges = controlEdits.hasPendingEdits || !pendingWindowEvents.isEmpty
+            persistenceError = nil
             error = nil
             return .saved
         } catch {
@@ -673,15 +694,68 @@ final class AppController {
         controlEdits = ControlEdits()
     }
 
+    private enum SessionReplacement {
+        case quit, reset, openImage
+
+        var consequence: String {
+            switch self {
+            case .quit: "quit"
+            case .reset: "reset the session"
+            case .openImage: "open another image"
+            }
+        }
+    }
+
+    func confirmQuit() async -> Bool {
+        guard !isRunning else { return false }
+        isRunning = true
+        defer { isRunning = false }
+        return await confirmSessionReplacement(.quit)
+    }
+
+    /// All callers hold isRunning, including while native save panels are open.
+    private func confirmSessionReplacement(_ action: SessionReplacement) async -> Bool {
+        guard imageNeedsSaving() else { return true }
+        let alert = NSAlert()
+        alert.messageText = "Save changes to the Smalltalk image?"
+        alert.informativeText = "Your changes since the last save will be lost if you \(action.consequence) without saving."
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel").keyEquivalent = "\u{1b}"
+        alert.addButton(withTitle: "Don't Save")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            switch await saveImageWhileRunning() {
+            case .saved: return !imageNeedsSaving()
+            case .cancelled: return false
+            case .failed(let reason):
+                let failure = NSAlert()
+                failure.messageText = "Could not save the image"
+                failure.informativeText = reason
+                failure.runModal()
+                return false
+            }
+        case .alertThirdButtonReturn: return true
+        default: return false
+        }
+    }
+
     private func startUnsavedChangeLog() async throws {
+        try await session.startChangeLog(at: unsavedChangeLogURL())
+    }
+
+    private func unsavedChangeLogURL() throws -> URL {
         let base: URL
         if let suite = ProcessInfo.processInfo.environment["ST80_PREFERENCES_SUITE"] {
-            base = FileManager.default.temporaryDirectory.appendingPathComponent("st80-changes-" + suite)
+            // UI tests run in a different sandbox from the app. An explicit
+            // directory lets them exercise actual journal I/O failures.
+            base = ProcessInfo.processInfo.environment["ST80_CHANGES_DIRECTORY"].map {
+                URL(fileURLWithPath: $0, isDirectory: true)
+            } ?? FileManager.default.temporaryDirectory.appendingPathComponent("st80-changes-" + suite)
         } else {
             base = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true).appendingPathComponent("Smalltalk80/Changes")
         }
         try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        try await session.startChangeLog(at: base.appendingPathComponent(UUID().uuidString + ".changes"))
+        return base.appendingPathComponent(UUID().uuidString + ".changes")
     }
 
     func showChanges(className: String? = nil, selector: String? = nil, side: MethodSide = .instance) async {
@@ -704,6 +778,7 @@ final class AppController {
     private func restoreImage(from url: URL) async throws {
         let image = try await session.loadImage(from: url)
         clearPending()
+        persistenceError = nil
         apply(image.evaluation, replacingWindows: true)
         imageURL = url; imageHasChanges = false
         error = nil

@@ -102,6 +102,22 @@ extension SmalltalkRuntime {
             let stClass = try target(args[1])
             let methodSide = args.count == 3 ? try side(args[2]) : .instance
             return try outcome { try compile(string(args[0]), in: stClass, side: methodSide) }
+        case "acceptMethod:in:side:selector:basedOn:":
+            let stClass = try target(args[1])
+            let methodSide = try side(args[2])
+            let originalSelector = isNil(args[3]) ? nil : try string(args[3])
+            let originalSource = try string(args[4])
+            return try outcome {
+                try compile(string(args[0]), in: stClass, side: methodSide) { method in
+                    if let originalSelector,
+                       stClass[methodSide][originalSelector]?.source != originalSource {
+                        throw SmalltalkError("The method changed. Reopen it before accepting your edits.")
+                    }
+                    if method.selector != originalSelector, stClass[methodSide][method.selector] != nil {
+                        throw SmalltalkError("A method named \(method.selector) already exists. Reopen it before accepting your edits.")
+                    }
+                }
+            }
         case "createSubclass:fields:":
             return try outcome {
                 guard let root = classes["Object"] else { throw SmalltalkError("The base class Object is missing.") }

@@ -409,7 +409,7 @@ BrowserWindow compile: 'acceptMethod
     target := self selectedClass.
     (target isNil or: [ self primitiveSelected or: [ editor text size = 0 ] ]) ifTrue: [ ^ self ].
     editingDefinition ifTrue: [ ^ self acceptDefinition ].
-    outcome := ToolVM compileSource: editor text in: target side: methodSide.
+    outcome := ToolVM acceptMethod: editor text in: target side: methodSide selector: selector basedOn: originalSource.
     (outcome at: 1) ifTrue: [
         selector := outcome at: 2.
         originalSource := editor text.

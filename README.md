@@ -25,6 +25,7 @@ Local builds use ad hoc signing, so you can run the app without a development te
 - The ellipsis next to **Do it** and the editor's context menu offer **Print it** (**⌘P**), **Inspect it** (**⌘I**) and **Debug it** (**⌘⇧D**). **Print it** adds the result to the Transcript. **Inspect it** opens the value in the Object Inspector, and **Debug it** pauses at entry.
 - The result row below the Workspace editor shows the latest result. Click **Result** or **Error** to expand it. Choose **Smalltalk → Clear Transcript** or use the Transcript's context menu to clear the output.
 - The **System Browser** has four lists for class categories, classes, protocols, and methods. Switch between **Instance** and **Class** above the lists. Each side has its own protocols, methods, and editor draft. Start with **New Method**, and use **Accept** or **⌘S** to compile a changed method. Its history is under **Method Actions → Versions**.
+  If the selected method changed elsewhere while you were editing, Accept keeps your draft and reports the conflict. Reopen the method to work from its current version.
 - The Workspace and method editors show line numbers and highlight Smalltalk syntax. The image’s `STSourceScanner` shares the compiler’s lexical rules and tolerates unfinished input. It supplies text ranges to the native editor.
 - With a method selected, click **Bytecode** below the source editor to expand a read-only listing of the compiled method, including the instructions inside blocks. The listing updates when you accept a source edit. The browser identifies VM primitives that have no bytecode.
 - Selecting a class shows its definition in the source editor. **Definition** returns to it from a method. Edit the superclass or instance variable names in `subclass:instanceVariableNames:` and press **⌘S**. Use **Move Class …** to change the category.
@@ -48,6 +49,7 @@ The app starts from the bundled image on every launch. Open a saved image with *
 - **⌘⇧S — Save Image** saves the running session as a `.stimage` file. The first save opens the native file dialog. Subsequent saves replace the same file atomically.
 - **⌘⌥⇧S — Save Image As …** saves to another image file.
 - When you quit with unsaved changes, choose **Save**, **Don’t Save**, or **Cancel**. The app stays open if you cancel the save or if saving fails.
+- Opening another image or resetting the session uses the same choice. A cancelled or failed save leaves the current session available. Reset also keeps the current session if its new changes log cannot be created.
 - Accept browser edits with **⌘S** before saving an image. The image stores accepted methods.
 
 An image preserves classes and their hierarchy, accepted methods (including changes to built-in classes), workspace variables, instance variables, arrays, and saved blocks with their lexical contexts. It preserves shared references and cyclic object graphs. It also saves all workspace buffers, open windows with their size, position, order, and minimized state, and the Transcript. Unreachable objects are omitted.
@@ -77,6 +79,7 @@ Accepting code writes and syncs the changes entry before installing the method i
 Keep the image, its matching `.changes` file, and its referenced sources archive together when copying them. Avoid editing the companion files in a text editor. Missing, corrupt, or mismatched companion files leave the active session intact. After a crash, the loader ignores a truncated final log record. The next append removes it. A corrupt complete record is reported as an error. A changes log can contain up to 64 MiB and 100,000 records. The window shows the latest 2,000.
 
 **Save Image As …** branches the existing history into a separate changes file. The app preserves any existing log that belongs to another image. It writes the companion files before replacing the image atomically, so a failed save leaves the previous image and its source references usable.
+If the image write fails, the save removes its newly created, unchanged changes file so you can retry the same name. A changes-log failure remains visible until durable logging is available again.
 
 ## Smalltalk compiler and boot image
 

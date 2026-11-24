@@ -554,9 +554,11 @@ final class SmalltalkRuntime {
     }
 
     @discardableResult
-    func compile(_ source: String, in stClass: STClass, side: MethodSide = .instance) throws -> String {
+    func compile(_ source: String, in stClass: STClass, side: MethodSide = .instance,
+                 validating validate: ((Method) throws -> Void)? = nil) throws -> String {
         guard !compilationMode else { throw SmalltalkError("Compilation is already in progress.") }
         let method = try compileMethod(source, fields: stClass.fields(for: side))
+        try validate?(method)
         guard stClass[side].count < 512 || stClass[side][method.selector] != nil else { throw SmalltalkError("Too many methods in \(side.displayName(for: stClass.name)).") }
         if recordingChanges {
             try journal.append(kind: .method, className: stClass.name, selector: method.selector, side: side, source: source)

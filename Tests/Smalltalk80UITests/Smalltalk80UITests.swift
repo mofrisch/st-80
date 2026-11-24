@@ -55,6 +55,190 @@ final class Smalltalk80UITests: XCTestCase {
         add(attachment)
     }
 
+    func testResetProtectsPendingDraftThroughCancelSaveFailureAndSuccessfulSave() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let app = launchFreshApp()
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        let initialSource = try XCTUnwrap(editor.value as? String)
+        replaceText(in: editor, with: "kept := 42. kept")
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(workspace.staticTexts["42"].waitForExistence(timeout: 5))
+        let draft = "kept + 1"
+        replaceText(in: editor, with: draft)
+
+        requestReset(in: app)
+        XCTAssertTrue(app.buttons["Save"].waitForExistence(timeout: 5))
+        app.buttons["Cancel"].click()
+        XCTAssertTrue(editor.isHittable)
+        XCTAssertEqual(editor.value as? String, draft)
+
+        requestReset(in: app)
+        XCTAssertTrue(app.buttons["Save"].waitForExistence(timeout: 5))
+        app.buttons["Save"].click()
+        XCTAssertTrue(app.buttons["OKButton"].waitForExistence(timeout: 5))
+        app.buttons["Cancel"].click()
+        XCTAssertTrue(editor.isHittable)
+        XCTAssertEqual(editor.value as? String, draft)
+
+        let image = directory.appendingPathComponent("Smalltalk.stimage")
+        let conflictingLog = directory.appendingPathComponent("Smalltalk.changes")
+        try Data("another session's journal".utf8).write(to: conflictingLog)
+        requestReset(in: app)
+        XCTAssertTrue(app.buttons["Save"].waitForExistence(timeout: 5))
+        app.buttons["Save"].click()
+        XCTAssertTrue(app.buttons["OKButton"].waitForExistence(timeout: 5))
+        navigateFilePanel(in: app, to: directory.path)
+        app.buttons["OKButton"].click()
+        XCTAssertTrue(app.staticTexts["Could not save the image"].waitForExistence(timeout: 5))
+        app.buttons["OK"].click()
+        XCTAssertEqual(editor.value as? String, draft)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: image.path))
+        try FileManager.default.removeItem(at: conflictingLog)
+
+        requestReset(in: app)
+        XCTAssertTrue(app.buttons["Save"].waitForExistence(timeout: 5))
+        app.buttons["Save"].click()
+        XCTAssertTrue(app.buttons["OKButton"].waitForExistence(timeout: 5))
+        navigateFilePanel(in: app, to: directory.path)
+        app.buttons["OKButton"].click()
+        let fresh = expectation(for: NSPredicate(format: "value == %@", initialSource), evaluatedWith: editor)
+        wait(for: [fresh], timeout: 10)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: image.path))
+
+        openImage(image, in: app)
+        let restored = expectation(for: NSPredicate(format: "value == %@", draft), evaluatedWith: editor)
+        wait(for: [restored], timeout: 10)
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(workspace.staticTexts["43"].waitForExistence(timeout: 5))
+    }
+
+    func testImageSwitchCanCancelSaveAndDiscardTheCurrentSession() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let sourceDirectory = directory.appendingPathComponent("Source")
+        try FileManager.default.createDirectory(at: sourceDirectory, withIntermediateDirectories: true)
+        let target = directory.appendingPathComponent("Smalltalk.stimage")
+        let source = sourceDirectory.appendingPathComponent("Smalltalk.stimage")
+        let app = launchFreshApp()
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        replaceText(in: editor, with: "switchValue := 7. switchValue")
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(workspace.staticTexts["7"].waitForExistence(timeout: 5))
+        saveImage(in: app, editor: editor, directory: directory)
+        editor.typeKey("s", modifierFlags: [.command, .option, .shift])
+        XCTAssertTrue(app.buttons["OKButton"].waitForExistence(timeout: 5))
+        navigateFilePanel(in: app, to: sourceDirectory.path)
+        app.buttons["OKButton"].click()
+        let saved = expectation(for: NSPredicate { _, _ in FileManager.default.fileExists(atPath: source.path) }, evaluatedWith: nil)
+        wait(for: [saved], timeout: 10)
+        replaceText(in: editor, with: "switchValue := 42. switchValue")
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(workspace.staticTexts["42"].waitForExistence(timeout: 5))
+        let draft = "switchValue + 1"
+        replaceText(in: editor, with: draft)
+
+        openImage(target, in: app, decision: nil)
+        XCTAssertTrue(app.buttons["Save"].waitForExistence(timeout: 5))
+        app.buttons["Cancel"].click()
+        XCTAssertEqual(editor.value as? String, draft)
+        XCTAssertTrue(editor.isHittable)
+
+        openImage(target, in: app, decision: "Save")
+        let targetSource = expectation(for: NSPredicate(format: "value == %@", "switchValue := 7. switchValue"), evaluatedWith: editor)
+        wait(for: [targetSource], timeout: 10)
+        replaceText(in: editor, with: "switchValue")
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(workspace.staticTexts["7"].waitForExistence(timeout: 5))
+
+        openImage(source, in: app)
+        let savedDraft = expectation(for: NSPredicate(format: "value == %@", draft), evaluatedWith: editor)
+        wait(for: [savedDraft], timeout: 10)
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(workspace.staticTexts["43"].waitForExistence(timeout: 5))
+        replaceText(in: editor, with: "switchValue := 99. switchValue")
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(workspace.staticTexts["99"].waitForExistence(timeout: 5))
+        openImage(target, in: app)
+        wait(for: [expectation(for: NSPredicate(format: "value == %@", "switchValue := 7. switchValue"), evaluatedWith: editor)], timeout: 10)
+        openImage(source, in: app)
+        wait(for: [expectation(for: NSPredicate(format: "value == %@", draft), evaluatedWith: editor)], timeout: 10)
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(workspace.staticTexts["43"].waitForExistence(timeout: 5))
+    }
+
+    func testResetJournalFailureKeepsTheLiveWorldAndReportsTheFailure() throws {
+        continueAfterFailure = false
+        let suite = "dev.moritz.Smalltalk80UITests.\(UUID().uuidString)"
+        let logs = FileManager.default.temporaryDirectory.appendingPathComponent("st80-changes-" + suite)
+        let app = XCUIApplication()
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: logs.path)
+            app.terminate()
+            try? FileManager.default.removeItem(at: logs)
+        }
+        app.launchEnvironment["ST80_PREFERENCES_SUITE"] = suite
+        app.launchEnvironment["ST80_CHANGES_DIRECTORY"] = logs.path
+        app.launch()
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        replaceText(in: editor, with: "kept := 42. kept")
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(workspace.staticTexts["42"].waitForExistence(timeout: 5))
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: logs.path)
+
+        requestReset(in: app)
+        XCTAssertTrue(app.buttons["Don't Save"].waitForExistence(timeout: 5))
+        app.buttons["Don't Save"].click()
+        let failure = workspace.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Could not reset the session", "Could not reset the session")).firstMatch
+        XCTAssertTrue(failure.waitForExistence(timeout: 5), workspace.debugDescription)
+        XCTAssertEqual(editor.value as? String, "kept := 42. kept")
+        replaceText(in: editor, with: "kept + 1")
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(workspace.staticTexts["43"].waitForExistence(timeout: 5))
+        XCTAssertTrue(failure.exists)
+    }
+
+    func testJournalFailureStaysVisibleAcrossEvaluationAndResetCanRecover() throws {
+        continueAfterFailure = false
+        let suite = "dev.moritz.Smalltalk80UITests.\(UUID().uuidString)"
+        let logs = FileManager.default.temporaryDirectory.appendingPathComponent("st80-changes-" + suite)
+        try Data("blocked journal directory".utf8).write(to: logs)
+        let app = XCUIApplication()
+        defer {
+            app.terminate()
+            try? FileManager.default.removeItem(at: logs)
+        }
+        app.launchEnvironment["ST80_PREFERENCES_SUITE"] = suite
+        app.launchEnvironment["ST80_CHANGES_DIRECTORY"] = logs.path
+        app.launch()
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        let message = "Changes cannot be recorded on disk"
+        let failure = workspace.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", message, message)).firstMatch
+        XCTAssertTrue(failure.waitForExistence(timeout: 10))
+        replaceText(in: editor, with: "Counter compile: 'answer ^ 42'. Counter new answer")
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(workspace.staticTexts["42"].waitForExistence(timeout: 5))
+        XCTAssertTrue(failure.exists)
+
+        try FileManager.default.removeItem(at: logs)
+        requestReset(in: app)
+        XCTAssertTrue(app.buttons["Don't Save"].waitForExistence(timeout: 5))
+        app.buttons["Don't Save"].click()
+        let recovered = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: failure)
+        wait(for: [recovered], timeout: 10)
+        replaceText(in: editor, with: "Counter compile: 'answer ^ 43'. Counter new answer")
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(workspace.staticTexts["43"].waitForExistence(timeout: 5))
+        let files = try FileManager.default.contentsOfDirectory(at: logs, includingPropertiesForKeys: nil)
+        XCTAssertEqual(files.filter { $0.pathExtension == "changes" }.count, 1)
+        XCTAssertFalse(failure.exists)
+    }
+
     func testQuitSavesPendingWorkspaceDraftAndReopensCleanly() throws {
         continueAfterFailure = false
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("st80-quit-\(UUID().uuidString)", isDirectory: true)
@@ -915,6 +1099,8 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertTrue(inspector.waitForExistence(timeout: 5))
         app.menuBars.menuBarItems["Smalltalk"].click()
         app.menuItems["Reset Session"].click()
+        XCTAssertTrue(app.buttons["Don't Save"].waitForExistence(timeout: 5))
+        app.buttons["Don't Save"].click()
         let fresh = expectation(for: NSPredicate(format: "value == %@", initialDraft), evaluatedWith: editor)
         let closed = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: inspector)
         wait(for: [fresh, closed], timeout: 10)
@@ -1300,7 +1486,22 @@ final class Smalltalk80UITests: XCTestCase {
         action(pasteboard)
     }
 
-    private func openImage(_ image: URL, in app: XCUIApplication) {
+    private func requestReset(in app: XCUIApplication) {
+        app.menuBars.menuBarItems["Smalltalk"].click()
+        app.menuItems["Reset Session"].click()
+    }
+
+    private func saveImage(in app: XCUIApplication, editor: XCUIElement, directory: URL) {
+        editor.typeKey("s", modifierFlags: [.command, .shift])
+        XCTAssertTrue(app.buttons["OKButton"].waitForExistence(timeout: 5))
+        navigateFilePanel(in: app, to: directory.path)
+        app.buttons["OKButton"].click()
+        let image = directory.appendingPathComponent("Smalltalk.stimage")
+        let saved = expectation(for: NSPredicate { _, _ in FileManager.default.fileExists(atPath: image.path) }, evaluatedWith: nil)
+        wait(for: [saved], timeout: 10)
+    }
+
+    private func openImage(_ image: URL, in app: XCUIApplication, decision: String? = "Don't Save") {
         let workspace = app.windows["toolWindow-1"]
         let editor = workspace.textViews["workspaceEditor"]
         XCTAssertTrue(editor.waitForExistence(timeout: 10))
@@ -1311,6 +1512,9 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertTrue(open.waitForExistence(timeout: 5))
         navigateFilePanel(in: app, to: image.path)
         open.click()
+        if let decision, app.buttons[decision].waitForExistence(timeout: 2) {
+            app.buttons[decision].click()
+        }
     }
 
     private func navigateFilePanel(in app: XCUIApplication, to path: String) {

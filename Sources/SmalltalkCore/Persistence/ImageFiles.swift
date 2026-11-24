@@ -90,11 +90,25 @@ enum ImageFiles {
         if FileManager.default.fileExists(atPath: sourcesURL.path) {
             guard try SourceJournal.readBounded(sourcesURL, maximum: 262_144) == library.data else { throw SmalltalkError("Sources archive \(sourcesName) contains different data.") }
         } else { try SourceJournal.createFile(library.data, at: sourcesURL) }
-        if candidate !== journal { try candidate.attach(to: changesURL) }
-        else if candidate.url == nil { try candidate.attach(to: changesURL) }
+        let createdChangesFile = candidate !== journal
+        if createdChangesFile { try candidate.attach(to: changesURL) }
         // The log is durable first; a failed snapshot leaves the previous image
         // and its checkpoint usable. Extra log records remain recoverable.
-        try bytes.write(to: url, options: .atomic)
+        do {
+            try bytes.write(to: url, options: .atomic)
+        } catch {
+            // A first save or Save As owns this newly created branch only after
+            // the image commits. Remove an unchanged branch on failure so a
+            // retry can use the same name, without disturbing the active log or
+            // any companion that another writer has since changed.
+            if createdChangesFile,
+               let expected = try? candidate.data(),
+               let actual = try? SourceJournal.readBounded(changesURL, maximum: SourceJournal.maxBytes),
+               actual == expected {
+                try? FileManager.default.removeItem(at: changesURL)
+            }
+            throw error
+        }
         candidate.savedSequence = candidate.sequence
         runtime.journal = candidate
     }

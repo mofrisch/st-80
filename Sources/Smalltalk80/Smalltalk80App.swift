@@ -28,39 +28,11 @@ final class ApplicationDelegate: NSObject, NSApplicationDelegate {
         controller.stopDebugging()
         Task {
             await controller.waitForCurrentOperation()
-            let shouldQuit = controller.imageNeedsSaving() ? await confirmQuit() : true
+            let shouldQuit = await controller.confirmQuit()
             quitPending = false
             sender.reply(toApplicationShouldTerminate: shouldQuit)
         }
         return .terminateLater
-    }
-
-    private func confirmQuit() async -> Bool {
-        let alert = NSAlert()
-        alert.messageText = "Save changes to the Smalltalk image?"
-        alert.informativeText = "Your changes since the last save will be lost if you quit without saving."
-        alert.addButton(withTitle: "Save")
-        alert.addButton(withTitle: "Cancel").keyEquivalent = "\u{1b}"
-        alert.addButton(withTitle: "Don't Save")
-        switch alert.runModal() {
-        case .alertFirstButtonReturn:
-            switch await controller.saveImage() {
-            case .saved:
-                return !controller.imageNeedsSaving()
-            case .cancelled:
-                return false
-            case .failed(let reason):
-                let failure = NSAlert()
-                failure.messageText = "Could not save the image"
-                failure.informativeText = reason
-                failure.runModal()
-                return false
-            }
-        case .alertThirdButtonReturn:
-            return true
-        default:
-            return false
-        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

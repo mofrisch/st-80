@@ -195,7 +195,7 @@ BrowserOrganization compile: 'shippedProtocols
         (''WorkspaceWindow'' (
             (''Initialization'' (''initialize''))
             (''Code Evaluation'' (''text:'' ''sourceForSelection:'' ''doIt:'' ''printIt:'' ''inspect:'' ''debugIt:'' ''execute:printing:''))
-            (''Editor Menu'' (''editorMenu'' ''actionsMenu'' ''selectionButton:command:action:''))
+            (''Menus'' (''editorMenu'' ''applicationCommands'' ''evaluationMenu'' ''actionsMenu'' ''selectionButton:command:action:''))
             (''Examples'' (''examplesMenu'' ''exampleButton:key:''))))
         (''BrowserWindow'' (
             (''Initialization'' (''initialize''))

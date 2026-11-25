@@ -62,7 +62,7 @@ DevelopmentWindow compile: 'result: outcome
 DevelopmentWindow subclass: #WorkspaceWindow instanceVariableNames: 'editor'.
 
 WorkspaceWindow compile: 'initialize
-    | root bar doIt |
+    | root bar doIt commands |
     super initialize.
     self kind: #workspace.
     self title: ''Workspace''.
@@ -74,6 +74,8 @@ WorkspaceWindow compile: 'initialize
         identifier: ''executeButton''; role: #primary; shortcutHint: ''⌘D''; yourself.
     bar := UIRow new role: #windowToolbar; spacing: 5; add: doIt; add: self actionsMenu; yourself.
     root := UIColumn new spacing: 0; add: bar; add: self examplesMenu; add: editor; add: self resultPane; yourself.
+    commands := self applicationCommands.
+    commands notNil ifTrue: [ root add: commands ].
     self content: root'.
 
 WorkspaceWindow compile: 'text: aString
@@ -110,6 +112,12 @@ WorkspaceWindow compile: 'selectionButton: aTitle command: aCommand action: aSel
         yourself'.
 
 WorkspaceWindow compile: 'editorMenu
+    ^ self evaluationMenu'.
+
+WorkspaceWindow compile: 'applicationCommands
+    ^ self evaluationMenu role: #applicationCommands; yourself'.
+
+WorkspaceWindow compile: 'evaluationMenu
     | menu |
     menu := UIMenu new title: ''Workspace''; yourself.
     menu add: (self selectionButton: ''Do it'' command: #doIt action: #doIt:).

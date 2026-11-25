@@ -8,6 +8,23 @@ struct ToolWindowTests {
         return root.children.lazy.compactMap { element(id, in: $0) }.first
     }
 
+    @Test func workspacePublishesApplicationCommandsIndependentlyOfTheEditorMenu() async throws {
+        let session = SmalltalkSession()
+        let snapshot = await session.snapshot()
+        let workspace = try #require(snapshot.windows.first { $0.kind == .workspace })
+        let editor = try #require(element("workspaceEditor", in: workspace.content))
+        let menu = try #require(workspace.content?.children.first { $0.role == "applicationCommands" })
+        #expect(menu.children.map(\.command) == ["doIt", "printIt", "inspectIt", "debugIt"])
+        #expect(menu.children.allSatisfy { $0.enabled && $0.selectionSource == editor.id })
+        let print = try #require(menu.children.first { $0.command == "printIt" })
+        #expect(print.id != editor.contextMenuItems?.first { $0.command == "printIt" }?.id)
+
+        _ = await session.uiAction(.text(windowID: workspace.id, elementID: editor.id, value: "1 / 0"))
+        let printed = await session.uiAction(.click(windowID: workspace.id, elementID: print.id, selection: "3 + 4"))
+        #expect(printed.error == nil)
+        #expect(printed.transcript == "→ 7\n")
+    }
+
     @Test func workspaceContextMenuDispatchesTheSelectedSourceAndSurvivesImageLoad() async throws {
         let session = SmalltalkSession()
         let snapshot = await session.snapshot()

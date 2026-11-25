@@ -958,6 +958,49 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertTrue(workspace.staticTexts["42"].waitForExistence(timeout: 5))
     }
 
+    func testApplicationMenuAndShortcutsFollowTheFocusedWorkspacesCommands() {
+        let app = launchFreshApp()
+        let workspace = app.windows["toolWindow-1"]
+        let originalEditor = workspace.textViews["workspaceEditor"]
+        replaceText(in: originalEditor, with: """
+        WorkspaceWindow compile: 'applicationCommands
+            | menu |
+            menu := UIMenu new role: #applicationCommands; yourself.
+            menu add: (self selectionButton: ''Print Selection'' command: #doIt action: #printIt:).
+            menu add: ((self selectionButton: ''Inspect Selection'' command: #inspectIt action: #inspect:) enabled: false; yourself).
+            ^ menu'.
+        Desktop openWorkspace
+        """)
+        workspace.buttons["executeButton"].click()
+        let editor = app.windows["toolWindow-4"].textViews["workspaceEditor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.click()
+
+        let menu = app.menuBars.menuBarItems["Smalltalk"]
+        menu.click()
+        XCTAssertTrue(app.menuItems["Print Selection"].firstMatch.waitForExistence(timeout: 5))
+        let inspect = app.menuItems["Inspect Selection"].firstMatch
+        XCTAssertTrue(inspect.exists)
+        XCTAssertFalse(inspect.isEnabled)
+        XCTAssertFalse(app.menuItems["Debug it"].exists)
+        app.typeKey(.escape, modifierFlags: [])
+
+        replaceText(in: editor, with: "1 / 0.\n6 * 7")
+        editor.typeKey(.leftArrow, modifierFlags: [.command, .shift])
+        editor.typeKey("d", modifierFlags: [.command, .shift])
+        XCTAssertFalse(app.windows["debugger"].firstMatch.waitForExistence(timeout: 2))
+        editor.typeKey("d", modifierFlags: .command)
+        let transcript = app.windows["toolWindow-3"].staticTexts["transcriptOutput"]
+        let printed = NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "→ 42", "→ 42")
+        wait(for: [expectation(for: printed, evaluatedWith: transcript)], timeout: 5)
+
+        originalEditor.click()
+        menu.click()
+        XCTAssertTrue(app.menuItems["Do it"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.menuItems["Print Selection"].exists)
+        app.typeKey(.escape, modifierFlags: [])
+    }
+
     func testWorkspaceRecoveryMenuWorksWithoutProjectedCommands() {
         let app = launchFreshApp()
         let workspace = app.windows["toolWindow-1"]
@@ -967,6 +1010,7 @@ final class Smalltalk80UITests: XCTestCase {
         menuRoot := (Desktop windowAt: 1) content.
         (menuRoot children at: 3) contextMenu: nil.
         ((menuRoot children at: 1) children at: 2) visible: false.
+        (menuRoot children at: 5) visible: false.
         #commandsHidden
         """)
         execute.click()
@@ -993,6 +1037,11 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertTrue(result.waitForExistence(timeout: 5))
         XCTAssertEqual(result.value as? String ?? result.label, "42")
         XCTAssertTrue(failure.exists)
+
+        replaceText(in: editor, with: "7 * 8")
+        editor.typeKey("d", modifierFlags: .command)
+        let shortcutResult = NSPredicate(format: "label == %@ OR value == %@", "56", "56")
+        wait(for: [expectation(for: shortcutResult, evaluatedWith: result)], timeout: 5)
     }
 
     func testWorkspaceDebuggerStepsIntoSelectedCodeAndContinues() {
@@ -1002,7 +1051,9 @@ final class Smalltalk80UITests: XCTestCase {
         replaceText(in: editor, with: "1 / 0.\nCounter new value + 42")
         editor.typeKey(.leftArrow, modifierFlags: [.command, .shift])
 
-        let debugger = openWorkspaceDebugger(in: app, editor: editor)
+        editor.typeKey("d", modifierFlags: [.command, .shift])
+        let debugger = app.windows["debugger"].firstMatch
+        XCTAssertTrue(debugger.waitForExistence(timeout: 5))
         let title = debugger.staticTexts["debuggerFrameTitle"]
         let workspaceFrame = NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Workspace", "Workspace")
         wait(for: [expectation(for: workspaceFrame, evaluatedWith: title)], timeout: 5)

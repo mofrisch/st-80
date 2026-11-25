@@ -28,15 +28,7 @@ struct Smalltalk80App: App {
                     .keyboardShortcut("s", modifiers: [.command, .option, .shift]).disabled(controller.isRunning)
             }
             CommandMenu("Smalltalk") {
-                Button("Do it") { Task { await controller.performCommand("doIt") } }.keyboardShortcut("d")
-                    .disabled(controller.isRunning || !controller.hasCommand("doIt"))
-                Button("Print it") { Task { await controller.performCommand("printIt") } }.keyboardShortcut("p")
-                    .disabled(controller.isRunning || !controller.hasCommand("printIt"))
-                Button("Inspect it") { Task { await controller.inspectWorkspace() } }.keyboardShortcut("i")
-                    .disabled(controller.isRunning || !controller.canInspectWorkspace)
-                Button("Debug it") { Task { await controller.debugWorkspace() } }
-                    .keyboardShortcut("d", modifiers: [.command, .shift]).disabled(!controller.canDebugWorkspace)
-                Divider()
+                toolCommands
                 ForEach(controller.workspaceAppMenus) { menu in
                     if let id = controller.workspaceWindow?.id {
                         UIElementView(controller: controller, windowID: id, element: menu)
@@ -53,6 +45,43 @@ struct Smalltalk80App: App {
                 Divider()
                 Button("Reset Session") { Task { await controller.reset() } }.disabled(controller.isRunning)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var toolCommands: some View {
+        if controller.windowPresentation.isRecovering {
+            Group {
+                Button("Do it") { Task { await controller.performRecoveryCommand(.evaluate) } }.keyboardShortcut("d")
+                Button("Print it") { Task { await controller.performRecoveryCommand(.print) } }.keyboardShortcut("p")
+                Button("Inspect it") { Task { await controller.performRecoveryCommand(.inspect) } }.keyboardShortcut("i")
+            }
+            .disabled(!controller.canRunRecoveryCommands)
+            Divider()
+        } else if let window = controller.applicationCommandWindow,
+                  let commands = window.content?.applicationCommands, !commands.isEmpty {
+            ForEach(commands) { item in
+                if item.kind == .divider {
+                    Divider()
+                } else {
+                    Button(item.text) {
+                        Task { await controller.performApplicationCommand(item.id, in: window) }
+                    }
+                    .keyboardShortcut(shortcut(for: item.command))
+                    .disabled(controller.isRunning || !item.enabled)
+                }
+            }
+            Divider()
+        }
+    }
+
+    private func shortcut(for command: String?) -> KeyboardShortcut? {
+        switch command {
+        case "doIt": KeyboardShortcut("d")
+        case "printIt": KeyboardShortcut("p")
+        case "inspectIt": KeyboardShortcut("i")
+        case "debugIt": KeyboardShortcut("d", modifiers: [.command, .shift])
+        default: nil
         }
     }
 }

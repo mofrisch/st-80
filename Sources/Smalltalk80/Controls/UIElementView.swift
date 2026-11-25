@@ -329,7 +329,13 @@ struct UIElementView: View {
 }
 
 extension UIElementInfo {
-    var isWindowChrome: Bool { role == "windowToolbar" || role == "applicationMenu" }
+    var isWindowChrome: Bool { role == "windowToolbar" || role == "applicationMenu" || role == "applicationCommands" }
+
+    var applicationCommands: [UIElementInfo] {
+        guard visible else { return [] }
+        return children.filter { $0.kind == .menu && $0.role == "applicationCommands" && $0.visible }
+            .flatMap { $0.children.filter { $0.visible && ($0.kind == .button || $0.kind == .divider) } }
+    }
 
     var windowToolbar: UIElementInfo? {
         children.first { $0.role == "windowToolbar" && $0.visible }

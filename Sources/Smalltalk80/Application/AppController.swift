@@ -195,7 +195,7 @@ final class AppController {
                 Task { [weak self] in
                     guard let self, let window = self.presentedWindow(id)?.info,
                           window.identity == identity, let editor = self.workspaceEditor(in: window) else { return }
-                    await self.debugWorkspace(windowID: id, editorID: editor.id, preparedSource: source)
+                    await self.debugWorkspace(windowID: id, editorID: editor.id, source: source)
                 }
             }
         }

@@ -1,4 +1,36 @@
 extension SmalltalkRuntime {
+    func subclass(of superclass: STClass, name: String, fields source: String) throws -> STClass {
+        try validateSuperclass(superclass)
+        guard name.first?.isUppercase == true && name.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" }) else {
+            throw SmalltalkError("Class names must begin with an uppercase letter.")
+        }
+        guard globals[name] == nil else { throw SmalltalkError("\(name) already exists.") }
+        guard classes.count < 128 else { throw SmalltalkError("A session can contain at most 128 classes.") }
+        let fields = source.split(whereSeparator: \.isWhitespace).map(String.init)
+        try validateFields(fields, inherited: superclass.fields)
+        if recordingChanges {
+            let escaped = source.replacingOccurrences(of: "'", with: "''")
+            try journal.append(kind: .classDefinition, className: name, superclass: superclass.name, fields: fields, source: "\(superclass.name) subclass: #\(name) instanceVariableNames: '\(escaped)'")
+        }
+        let stClass = STClass(name, superclass: superclass, fields: fields)
+        classes[name] = stClass
+        catalogDirty = true
+        globals[name] = .classObject(stClass)
+        return stClass
+    }
+
+    func validateSuperclass(_ superclass: STClass) throws {
+        guard superclass.name == "Object" || !Self.builtinNames.contains(superclass.name) else {
+            throw SmalltalkError("Subclassing primitive classes is not implemented.")
+        }
+    }
+
+    func validateFields(_ fields: [String], inherited: [String]) throws {
+        guard CodeValidator.validNames(fields), Set(fields).isDisjoint(with: inherited), fields.count + inherited.count <= 64 else {
+            throw SmalltalkError("Instance variable names must be valid and unique, with at most 64 variables.")
+        }
+    }
+
     func definitionSource(for target: STClass) -> String {
         let parent = target.superclass?.name ?? "nil"
         return "\(parent) subclass: #\(target.name)\n    instanceVariableNames: '\(target.ownFields.joined(separator: " "))'"

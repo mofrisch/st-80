@@ -178,6 +178,24 @@ extension SmalltalkRuntime {
         }
     }
 
+    func finishWorkspaceEvaluation(value: String?, error: String?, target: (id: Int64, identity: String)?) -> EvaluationResult {
+        // Reporting a step-limit error needs a fresh presentation budget.
+        resetExecutionBudget()
+        var failure = error
+        if let target, let workspace = projectedWindow(withID: target.id), workspace.nativeID == target.identity,
+           isUIClass(workspace.stClass, named: "WorkspaceWindow") {
+            do {
+                try withRoots([.object(workspace)]) { _ in
+                    let outcome = try array([.boolean(failure == nil), .string(value ?? failure ?? "")])
+                    _ = try send(.object(workspace), "result:", [outcome])
+                }
+            } catch {
+                failure = failure ?? error.localizedDescription
+            }
+        }
+        return finishEvaluation(value: value, error: failure)
+    }
+
     func refreshToolWindowsIfNeeded() throws {
         guard catalogDirty else { return }
         catalogDirty = false

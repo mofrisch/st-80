@@ -1,108 +1,5 @@
 import Foundation
 
-public enum UIElementKind: String, Sendable {
-    case label, button, textField, codeEditor, sourceView, list, historyList, valueTable, column, row, split, scroll, menu, spacer, divider
-}
-
-public struct UIValueRow: Identifiable, Sendable {
-    public let id: String
-    public let name: String
-    public let value: String
-    public let className: String
-}
-
-public struct UIValueTableInfo: Sendable {
-    public let headings: (name: String, value: String, className: String)
-    public let rowIdentifierPrefix: String
-    public let rows: [UIValueRow]
-    package let nameWidth: Int
-    package let classWidth: Int
-    package let columnSpacing: Int
-    package let horizontalPadding: Int
-    package let valueLines: Int
-}
-
-package enum UIEditorAction: String, Sendable {
-    case cut, copy, paste, selectAll
-}
-
-package struct UIEditorMenuItem: Sendable {
-    package let action: UIEditorAction
-    package let title: String
-}
-
-package struct UIEditorInfo: Sendable {
-    package let lineNumbers: Bool
-    package let syntaxHighlighting: Bool
-    package let undoEnabled: Bool
-    package let editingMenu: [UIEditorMenuItem]
-}
-
-public struct UIHistoryEntry: Identifiable, Sendable {
-    public let id: String
-    public let title: String
-    public let subtitle: String
-    public let badge: String
-}
-
-/// Immutable native projection. Smalltalk objects and blocks stay on the worker.
-public struct UIElementInfo: Identifiable, Sendable {
-    public let id: String
-    public let kind: UIElementKind
-    public let text: String
-    public let label: String
-    public let placeholder: String
-    public let enabled: Bool
-    public let liveInput: Bool
-    public let spacing: Int64
-    public let padding: Int64
-    public let children: [UIElementInfo]
-    public let accessibilityID: String?
-    public let role: String?
-    public let visible: Bool
-    public let minimumWidth: Int64?
-    public let maximumWidth: Int64?
-    public let minimumHeight: Int64?
-    public let maximumHeight: Int64?
-    public let readOnly: Bool
-    public let items: [String]
-    public let historyEntries: [UIHistoryEntry]
-    public let historyRowIdentifierPrefix: String?
-    public let sourcePosition: (line: Int, column: Int)?
-    public let selection: String?
-    public let command: String?
-    public let icon: String?
-    public let table: UIValueTableInfo?
-    package let editor: UIEditorInfo?
-    public let selectionSource: String?
-    /// A native context menu projected from a Smalltalk control.
-    public let contextMenuItems: [UIElementInfo]?
-
-    package func firstVisible(where matches: (UIElementInfo) -> Bool) -> UIElementInfo? {
-        guard visible else { return nil }
-        if matches(self) { return self }
-        for child in children {
-            if let found = child.firstVisible(where: matches) { return found }
-        }
-        for item in contextMenuItems ?? [] {
-            if let found = item.firstVisible(where: matches) { return found }
-        }
-        return nil
-    }
-}
-
-public enum UIAction: Sendable {
-    case click(windowID: Int64, elementID: String, selection: String = "")
-    case select(windowID: Int64, elementID: String, value: String?)
-    case text(windowID: Int64, elementID: String, value: String)
-}
-
-extension SmalltalkSession {
-    public func uiAction(_ action: UIAction) async -> EvaluationResult {
-        await worker.submit { $0.performUIAction(action) }
-    }
-}
-
 extension SmalltalkRuntime {
     func isUIClass(_ stClass: STClass, named name: String) -> Bool {
         guard let base = classes[name] else { return false }
@@ -380,37 +277,12 @@ extension SmalltalkRuntime {
         try projectInterface(content).root
     }
 
-    func performUIAction(_ action: UIAction) -> EvaluationResult {
-        transcript = ""; steps = 0; depth = 0
-        do {
-            let windowID: Int64, elementID: String
-            switch action {
-            case .click(let window, let element, _), .text(let window, let element, _), .select(let window, let element, _):
-                windowID = window; elementID = element
-            }
-            // A callback from a removed control/window or a previous image must
-            // never be retargeted to a different object at the same tree position.
-            guard let window = projectedWindow(withID: windowID),
-                  let content = changesBrowserContent(for: window) ?? window.fields["content"] else { return snapshot() }
-            let projection = try projectInterface(content)
-            guard let control = projection.controls[elementID], control.enabled else { return snapshot() }
-            let result: Value
-            switch action {
-            case .click(_, _, let selection):
-                guard control.kind == .button else { throw SmalltalkError("The element is not a button.") }
-                guard selection.utf8.count <= 65_536 else { throw SmalltalkError("The selection is too large.") }
-                result = try send(.object(control.object), "clickWithSelection:", [.string(selection)])
-            case .select(_, _, let value):
-                guard control.kind == .list || control.kind == .historyList || control.kind == .valueTable else { throw SmalltalkError("The element does not support selection.") }
-                if control.kind == .valueTable, case .boolean(true)? = control.object.fields["readOnly"] { return snapshot() }
-                result = try send(.object(control.object), "select:", [value.map(Value.string) ?? .nilValue])
-            case .text(_, _, let text):
-                guard control.kind == .textField || control.kind == .codeEditor,
-                      text.utf8.count <= 65_536 else { throw SmalltalkError("Invalid text input. The limit is 64 KiB.") }
-                if case .boolean(true)? = control.object.fields["readOnly"] { return snapshot() }
-                result = try send(.object(control.object), "editText:", [.string(text)])
-            }
-            return finishEvaluation(value: printValue(result))
-        } catch { return finishEvaluation(error: error.localizedDescription) }
+    // Revalidate against the current tree so a stale callback cannot target
+    // a different control at the same position.
+    func projectedActionTarget(windowID: Int64, elementID: String) throws -> (object: STObject, kind: UIElementKind)? {
+        guard let window = projectedWindow(withID: windowID),
+              let content = changesBrowserContent(for: window) ?? window.fields["content"],
+              let control = try projectInterface(content).controls[elementID], control.enabled else { return nil }
+        return (control.object, control.kind)
     }
 }

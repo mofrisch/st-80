@@ -37,9 +37,7 @@ extension SmalltalkRuntime {
                   isUIClass(workspace.stClass, named: "WorkspaceWindow") else { return snapshot() }
         }
 
-        transcript = ""
-        steps = 0
-        depth = 0
+        beginEvaluation()
         catalogDirty = true
         var value: String?
         var failure: String?
@@ -71,23 +69,8 @@ extension SmalltalkRuntime {
             failure = error.localizedDescription
         }
 
-        // Reporting a step-limit error needs a fresh presentation budget. The
-        // source above still ran under the ordinary execution and depth limits.
-        steps = 0
-        depth = 0
-        if let workspace = projectedWindow(withID: windowID), workspace.nativeID == identity,
-           isUIClass(workspace.stClass, named: "WorkspaceWindow") {
-            do {
-                try withRoots([.object(workspace)]) { _ in
-                    let outcome = try array([.boolean(failure == nil), .string(value ?? failure ?? "")])
-                    _ = try send(.object(workspace), "result:", [outcome])
-                }
-            } catch {
-                failure = failure ?? error.localizedDescription
-            }
-        }
         // Drain tool requests only here; an inspector opened above must reach
         // the app even when Desktop still cannot produce a valid projection.
-        return finishEvaluation(value: value, error: failure)
+        return finishWorkspaceEvaluation(value: value, error: failure, target: (windowID, identity))
     }
 }

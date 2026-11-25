@@ -104,7 +104,7 @@ extension SmalltalkSession {
 
 extension SmalltalkRuntime {
     func performWindowAction(_ action: WindowAction) -> EvaluationResult {
-        transcript = ""; steps = 0; depth = 0
+        beginEvaluation()
         do {
             guard let desktop = globals["Desktop"] else { throw SmalltalkError("Desktop is missing.") }
             func window(_ id: Int64) throws -> Value {
@@ -142,7 +142,7 @@ extension SmalltalkRuntime {
     }
 
     func performWindowEvents(_ events: [NativeWindowEvent]) -> EvaluationResult {
-        transcript = ""; steps = 0; depth = 0
+        beginEvaluation()
         var failure: String?
         for event in events where event.epoch == windowEpoch && event.sequence > acknowledgedWindowEvent {
             // A failed user policy must not poison subsequent native facts.

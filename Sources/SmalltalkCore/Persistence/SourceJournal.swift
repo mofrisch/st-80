@@ -259,7 +259,7 @@ extension SmalltalkSession {
     }
     public func restoreChange(_ id: String) async -> EvaluationResult {
         await worker.submit { runtime in
-            runtime.transcript = ""; runtime.steps = 0; runtime.depth = 0
+            runtime.beginEvaluation()
             do { return try runtime.finishEvaluation(value: runtime.restoreVersion(id)) }
             catch { return runtime.finishEvaluation(error: error.localizedDescription) }
         }

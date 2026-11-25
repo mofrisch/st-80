@@ -1,46 +1,5 @@
 import Foundation
 
-/// Executable bytecode belongs to the image. Original spelling, comments and method
-/// history belong to the immutable .sources archive or the append-only .changes.
-struct MethodCode: Codable, Sendable {
-    let selector: String
-    let parameters: [String]
-    let body: BytecodeBody
-    let sourceHash: String
-    init(_ method: Method) {
-        selector = method.selector; parameters = method.parameters; body = method.body
-        sourceHash = SystemLibrary.digest(Data(method.source.utf8))
-    }
-    func validatedMethod(selector expected: String, source: String, fields: [String]) throws -> Method {
-        guard expected == selector, source.utf8.count <= 262_144, SystemLibrary.digest(Data(source.utf8)) == sourceHash else {
-            throw SmalltalkError("The method source and executable code do not match.")
-        }
-        let method = Method(selector: selector, parameters: parameters, body: body, source: source)
-        try CodeValidator.check(method, fields: fields)
-        return method
-    }
-}
-
-struct ImageFileArchive: Codable {
-    struct CodeRecord: Codable {
-        let className: String
-        let code: MethodCode
-        /// nil denotes the matching class/selector in the base sources archive.
-        let changeID: String?
-        var methodSide: MethodSide?
-        var side: MethodSide { methodSide ?? .instance }
-    }
-    var format = "st80-image"
-    var version = ImageCodec.version
-    let memory: ImageArchive
-    let methods: [CodeRecord]
-    let sourcesFile: String
-    let sourcesID: String
-    let changesFile: String
-    let changesID: String
-    let checkpoint: Int64
-}
-
 enum ImageFiles {
     static func save(_ runtime: SmalltalkRuntime, to url: URL, workspace: String, transcript: String) throws {
         guard url.isFileURL else { throw SmalltalkError("An image must be saved to a local file.") }
@@ -165,13 +124,8 @@ enum ImageFiles {
 
     static func load(_ url: URL) throws -> (SmalltalkRuntime, LoadedImage) {
         let bytes = try SourceJournal.readBounded(url, maximum: ImageCodec.maxBytes)
-        struct Header: Decodable { let format: String; let version: Int }
-        let header: Header
-        do { header = try JSONDecoder().decode(Header.self, from: bytes) }
-        catch { throw SmalltalkError("The file is not a valid Smalltalk/80 image.") }
-        guard header.format == "st80-image" else { throw SmalltalkError("Unknown image format.") }
-        guard header.version == ImageCodec.version else { throw SmalltalkError("Image version \(header.version) is unsupported. Expected version \(ImageCodec.version).") }
-        let archive = try JSONDecoder().decode(ImageFileArchive.self, from: bytes)
+        let decoder = try ImageCodec.checkedDecoder(for: bytes)
+        let archive = try decoder.decode(ImageFileArchive.self, from: bytes)
         guard archive.methods.count <= 131_072, archive.checkpoint >= 0,
               archive.sourcesFile == URL(fileURLWithPath: archive.sourcesFile).lastPathComponent,
               archive.changesFile == url.deletingPathExtension().appendingPathExtension("changes").lastPathComponent else { throw SmalltalkError("Invalid source references in the image. Keep the image and changes file together.") }
@@ -205,8 +159,7 @@ enum ImageFiles {
         }
         memory.executableMethods = code[.instance] ?? [:]
         memory.executableClassMethods = code[.classSide]
-        let (runtime, contents) = try ImageCodec.restore(memory)
-        journal.savedSequence = archive.checkpoint; runtime.journal = journal
-        return (runtime, LoadedImage(evaluation: runtime.snapshot(), workspace: contents.workspace, transcript: contents.transcript))
+        journal.savedSequence = archive.checkpoint
+        return try ImageCodec.restore(memory, journal: journal)
     }
 }

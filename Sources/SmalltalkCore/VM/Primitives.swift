@@ -1,56 +1,6 @@
 import Foundation
 
 extension SmalltalkRuntime {
-    static let primitiveDescriptions: [String: [String: String]] = [
-        "Object": [
-            "class": "Returns the receiver's class.", "yourself": "Returns the receiver.",
-            "printString": "Returns a readable representation.", "=": "Compares values.", "==": "Compares identity. Strings are treated as values.",
-            "~=": "Tests whether values differ.", "isNil": "Tests whether the receiver is nil.", "notNil": "Tests whether the receiver is non-nil.",
-            "ifNil:": "Evaluates a block if the receiver is nil.", "ifNotNil:": "Evaluates a block if the receiver is non-nil.",
-            "respondsTo:": "Tests whether the receiver understands a message.", "perform:": "Sends a message by selector.",
-            "perform:with:": "Sends a message by selector with one argument.",
-            "error:line:column:": "Reports an error at a source position.",
-        ],
-        "Class": [
-            "new": "Creates an object and sends initialize.", "new:": "Creates an array of the specified size.",
-            "name": "Returns the class name.", "superclass": "Returns the superclass.", "subclasses": "Returns the immediate subclasses.",
-            "subclass:instanceVariableNames:": "Creates a subclass.",
-            "subclass:instanceVariableNames:classVariableNames:poolDictionaries:category:": "Creates a subclass. Class variables and pools must be empty.",
-            "compile:": "Compiles or replaces an instance method.",
-            "compileClass:": "Compiles or replaces a class method.",
-            "methodNames": "Returns selectors of methods defined on the class.",
-            "methodSourceAt:": "Returns the stored source code for a method.",
-            "classMethodNames": "Returns selectors of class methods defined on the class.",
-            "classMethodSourceAt:": "Returns the stored source code for a class method.",
-            "isPrimitiveAt:": "Tests whether the selector names a VM primitive.",
-            "instanceVariableNamesText": "Returns the instance variable names."
-        ],
-        "Integer": [
-            "+": "Addition.", "-": "Subtraction.", "*": "Multiplication.",
-            "/": "Exact integer division. Fractions are not implemented.", "//": "Division rounded down.",
-            "\\\\": "Remainder from division rounded down.", "<": "Less than.", ">": "Greater than.",
-            "<=": "Less than or equal to.", ">=": "Greater than or equal to.",
-            "negated": "Returns the negated value.", "abs": "Returns the absolute value.", "squared": "Returns the square.",
-            "timesRepeat:": "Repeats a block.", "to:do:": "Iterates through the final value, inclusive.",
-            "to:by:do:": "Iterates with the specified step size.",
-        ],
-        "Boolean": [
-            "not": "Negation.", "ifTrue:": "Evaluates a block if the receiver is true.", "ifFalse:": "Evaluates a block if the receiver is false.",
-            "ifTrue:ifFalse:": "Evaluates one of two blocks.", "ifFalse:ifTrue:": "Evaluates one of two blocks.",
-            "and:": "Short-circuiting logical AND.", "or:": "Short-circuiting logical OR.",
-        ],
-        "String": [",": "Concatenates two strings.", "size": "Returns the number of Unicode characters.", "at:": "Returns the character at a one-based index.", "asString": "Returns the string.", "asSymbol": "Converts the string to a symbol.", "characters": "Returns an array of Unicode characters.",
-            "includes:": "Tests whether a character or substring is present.", "isLetter": "Tests whether the string is one letter.",
-            "isNumber": "Tests whether the string is one numeric character.", "isASCIIDigit": "Tests whether the string is one ASCII digit.",
-            "isLowercase": "Tests whether the string is one lowercase character.", "isWhitespace": "Tests whether the string is one whitespace character.",
-            "isLineBreak": "Tests whether the string is a line break.", "asIntegerOrNil": "Parses a 64-bit integer."],
-        "Symbol": ["asString": "Returns the symbol name as a string."],
-        "Array": ["size": "Returns the number of elements.", "at:": "Returns the element at a one-based index.", "at:put:": "Sets an element.", "do:": "Visits each element.", "collect:": "Transforms each element.", "select:": "Filters elements.", "isEmpty": "Tests whether the array is empty.", "includes:": "Tests whether the array contains an element.",
-            "joinedStringFrom:to:": "Joins the strings in an index range."],
-        "BlockClosure": ["value": "Evaluates the block.", "value:": "Evaluates the block with one argument.", "value:value:": "Evaluates the block with two arguments.", "whileTrue:": "Repeats while the block evaluates to true.", "whileFalse:": "Repeats while the block evaluates to false."],
-        "Transcript": ["record:": "Records transcript output for the current evaluation."],
-    ]
-
     func primitive(_ receiver: Value, _ selector: String, _ args: [Value]) throws -> Value? {
         switch selector {
         case "class": return .classObject(classOf(receiver))
@@ -229,40 +179,6 @@ extension SmalltalkRuntime {
         }
     }
 
-    func subclass(of superclass: STClass, name: String, fields source: String) throws -> STClass {
-        try validateSuperclass(superclass)
-        guard name.first?.isUppercase == true && name.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" }) else {
-            throw SmalltalkError("Class names must begin with an uppercase letter.")
-        }
-        guard globals[name] == nil else { throw SmalltalkError("\(name) already exists.") }
-        guard classes.count < 128 else { throw SmalltalkError("A session can contain at most 128 classes.") }
-        let fields = source.split(whereSeparator: \.isWhitespace).map(String.init)
-        try validateFields(fields, inherited: superclass.fields)
-        if recordingChanges {
-            let escaped = source.replacingOccurrences(of: "'", with: "''")
-            try journal.append(kind: .classDefinition, className: name, superclass: superclass.name, fields: fields, source: "\(superclass.name) subclass: #\(name) instanceVariableNames: '\(escaped)'")
-        }
-        let stClass = STClass(name, superclass: superclass, fields: fields)
-        classes[name] = stClass
-        catalogDirty = true
-        globals[name] = .classObject(stClass)
-        return stClass
-    }
-
-    func validateSuperclass(_ superclass: STClass) throws {
-        guard superclass.name == "Object" || !Self.builtinNames.contains(superclass.name) else {
-            throw SmalltalkError("Subclassing primitive classes is not implemented.")
-        }
-    }
-
-    func validateFields(_ fields: [String], inherited: [String]) throws {
-        guard CodeValidator.validNames(fields), Set(fields).isDisjoint(with: inherited), fields.count + inherited.count <= 64 else {
-            throw SmalltalkError("Instance variable names must be valid and unique, with at most 64 variables.")
-        }
-    }
-
-    static let builtinNames: Set<String> = ["Object", "Class", "UndefinedObject", "Boolean", "True", "False", "Number", "Integer", "SmallInteger", "String", "Symbol", "Array", "BlockClosure", "Transcript"]
-
     func integerPrimitive(_ n: Int64, _ selector: String, _ args: [Value]) throws -> Value? {
         switch selector {
         case "+": return .integer(try checked(n.addingReportingOverflow(integer(args[0]))))
@@ -308,110 +224,9 @@ extension SmalltalkRuntime {
         }
     }
 
-    func integer(_ value: Value) throws -> Int64 {
-        guard case .integer(let n) = value else { throw SmalltalkError("Expected an integer, got \(printValue(value)).") }
-        return n
-    }
-
-    func boolean(_ value: Value) throws -> Bool {
-        guard case .boolean(let b) = value else { throw SmalltalkError("Expected true or false, got \(printValue(value)).") }
-        return b
-    }
-
-    func string(_ value: Value) throws -> String {
-        guard case .string(let s) = value else { throw SmalltalkError("Expected a string.") }
-        return s
-    }
-
-    func symbol(_ value: Value) throws -> String {
-        guard case .symbol(let s) = value else { throw SmalltalkError("Expected a symbol such as #Counter.") }
-        return s
-    }
-
-    func index(_ value: Value, count: Int) throws -> Int {
-        let number = try integer(value)
-        guard number >= 1 && number <= count else { throw SmalltalkError("Index \(number) is outside the range 1…\(count).") }
-        return Int(number - 1)
-    }
-
-    func checked(_ result: (partialValue: Int64, overflow: Bool)) throws -> Int64 {
+    private func checked(_ result: (partialValue: Int64, overflow: Bool)) throws -> Int64 {
         guard !result.overflow else { throw SmalltalkError("64-bit integer overflow.") }
         return result.partialValue
-    }
-
-    func isNil(_ value: Value) -> Bool { if case .nilValue = value { return true }; return false }
-
-    func equal(_ a: Value, _ b: Value, identity: Bool = false) throws -> Bool {
-        struct ArrayPair: Hashable {
-            let left: ObjectIdentifier
-            let right: ObjectIdentifier
-        }
-        enum Comparison {
-            case values(Value, Value)
-            case elements(STArray, STArray, Int)
-        }
-
-        var pending: [Comparison] = [.values(a, b)]
-        var compared: Set<ArrayPair> = []
-        while let comparison = pending.popLast() {
-            switch comparison {
-            case .elements(let left, let right, let index):
-                guard index < left.elements.count else { continue }
-                // Keep one continuation per array rather than enqueueing every
-                // element of a wide or deeply nested graph at once.
-                pending.append(.elements(left, right, index + 1))
-                pending.append(.values(left.elements[index], right.elements[index]))
-            case .values(let left, let right):
-                try tick()
-                switch (left, right) {
-                case (.integer(let a), .integer(let b)): if a != b { return false }
-                case (.string(let a), .string(let b)), (.symbol(let a), .symbol(let b)): if a != b { return false }
-                case (.boolean(let a), .boolean(let b)): if a != b { return false }
-                case (.nilValue, .nilValue), (.transcript, .transcript): break
-                case (.object(let a), .object(let b)): if a !== b { return false }
-                case (.classObject(let a), .classObject(let b)): if a !== b { return false }
-                case (.block(let a), .block(let b)): if a !== b { return false }
-                case (.array(let a), .array(let b)):
-                    if a === b { continue }
-                    guard !identity, a.elements.count == b.elements.count else { return false }
-                    let pair = ArrayPair(left: ObjectIdentifier(a), right: ObjectIdentifier(b))
-                    // Shared branches are compared once; revisiting a cycle
-                    // does not make otherwise equal contents unequal.
-                    if compared.insert(pair).inserted { pending.append(.elements(a, b, 0)) }
-                default: return false
-                }
-            }
-        }
-        return true
-    }
-
-    func primitiveSelectors(_ stClass: STClass) -> Set<String> {
-        let own = Set((Self.primitiveDescriptions[stClass.name] ?? [:]).keys)
-        return own.union(stClass.superclass.map(primitiveSelectors) ?? [])
-    }
-
-    func reflectedMethods(on target: STClass, side: MethodSide) -> [MethodInfo] {
-        var methods = target[side].map { MethodInfo(selector: $0.key, source: $0.value.source, isPrimitive: false) }
-        if side == .instance {
-            for (selector, description) in Self.primitiveDescriptions[target.name] ?? [:] where target.methods[selector] == nil {
-                methods.append(MethodInfo(selector: selector, source: primitiveSource(selector, description), isPrimitive: true))
-            }
-        }
-        return methods.sorted { $0.selector < $1.selector }
-    }
-
-    func reflectedMethodSource(_ selector: String, on target: STClass, side: MethodSide) -> String? {
-        if let method = target[side][selector] { return method.source }
-        guard side == .instance, let description = Self.primitiveDescriptions[target.name]?[selector] else { return nil }
-        return primitiveSource(selector, description)
-    }
-
-    func isReflectedPrimitive(_ selector: String, on target: STClass, side: MethodSide) -> Bool {
-        side == .instance && target.methods[selector] == nil && Self.primitiveDescriptions[target.name]?[selector] != nil
-    }
-
-    private func primitiveSource(_ selector: String, _ description: String) -> String {
-        "\(selector)\n\n\"\(description)\"\n\n<primitive>"
     }
 
     func appendTranscript(_ text: String) throws {

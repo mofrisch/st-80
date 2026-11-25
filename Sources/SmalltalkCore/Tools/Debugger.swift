@@ -272,9 +272,8 @@ private extension BytecodeOperation {
 extension SmalltalkRuntime {
     fileprivate func runDebugSource(_ source: String, workspaceID: Int64?, channel: DebuggerChannel) -> EvaluationResult {
         if workspaceID == nil { transcript = "" }
-        let workspaceIdentity = workspaceID.flatMap { projectedWindow(withID: $0)?.nativeID }
-        steps = 0
-        depth = 0
+        let target = workspaceID.flatMap { id in projectedWindow(withID: id).map { (id: id, identity: $0.nativeID) } }
+        resetExecutionBudget()
         catalogDirty = true
         evaluatingToolSource = true
         debugger = DebuggerExecution(channel)
@@ -296,20 +295,6 @@ extension SmalltalkRuntime {
         debugger = nil
         debuggerCancellation = nil
         evaluatingToolSource = false
-        steps = 0
-        depth = 0
-
-        if let workspaceID, let workspace = projectedWindow(withID: workspaceID),
-           workspace.nativeID == workspaceIdentity, isUIClass(workspace.stClass, named: "WorkspaceWindow") {
-            do {
-                try withRoots([.object(workspace)]) { _ in
-                    let outcome = try array([.boolean(result.error == nil), .string(result.value ?? result.error ?? "")])
-                    _ = try send(.object(workspace), "result:", [outcome])
-                }
-            } catch {
-                return finishEvaluation(value: result.value, error: result.error ?? error.localizedDescription)
-            }
-        }
-        return finishEvaluation(value: result.value, error: result.error)
+        return finishWorkspaceEvaluation(value: result.value, error: result.error, target: target)
     }
 }

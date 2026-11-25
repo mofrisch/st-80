@@ -1,207 +1,32 @@
 import Foundation
 
-public enum MethodSide: String, Codable, CaseIterable, Sendable {
-    case instance
-    case classSide = "class"
-
-    public func displayName(for className: String) -> String {
-        self == .classSide ? "\(className) class" : className
-    }
-}
-
-enum Value {
-    case integer(Int64), string(String), symbol(String), boolean(Bool), nilValue
-    case classObject(STClass), object(STObject), block(STBlock), array(STArray), transcript
-}
-
-final class STClass {
-    let name: String
-    var superclass: STClass?
-    var ownFields: [String]
-    var methods: [String: Method] = [:]
-    var classMethods: [String: Method] = [:]
-    var fields: [String] { (superclass?.fields ?? []) + ownFields }
-
-    init(_ name: String, superclass: STClass?, fields: [String] = []) {
-        self.name = name
-        self.superclass = superclass
-        ownFields = fields
-    }
-
-    subscript(side: MethodSide) -> [String: Method] {
-        get { side == .instance ? methods : classMethods }
-        set {
-            switch side {
-            case .instance: methods = newValue
-            case .classSide: classMethods = newValue
-            }
-        }
-    }
-
-    func fields(for side: MethodSide) -> [String] { side == .instance ? fields : [] }
-
-    func lookup(_ selector: String, side: MethodSide = .instance) -> (Method, STClass)? {
-        if let method = self[side][selector] { return (method, self) }
-        return superclass?.lookup(selector, side: side)
-    }
-}
-
-final class STObject {
-    // Native handles are stable while live and regenerated on image load.
-    let nativeID = UUID().uuidString
-    let stClass: STClass
-    var fields: [String: Value]
-
-    init(_ stClass: STClass) {
-        self.stClass = stClass
-        fields = Dictionary(uniqueKeysWithValues: stClass.fields.map { ($0, .nilValue) })
-    }
-}
-
-final class STArray {
-    var elements: [Value]
-    init(_ elements: [Value]) { self.elements = elements }
-}
-
-final class Environment {
-    var values: [String: Value] = [:]
-    var parent: Environment?
-    init(parent: Environment? = nil) { self.parent = parent }
-
-    func binding(_ name: String) -> Environment? {
-        var scope: Environment? = self
-        while let current = scope {
-            if current.values[name] != nil { return current }
-            scope = current.parent
-        }
-        return nil
-    }
-}
-
-struct Context {
-    let environment: Environment
-    let receiver: Value
-    let homeClass: STClass?
-    let homeID: Int
-    let isWorkspace: Bool
-    var methodSide: MethodSide = .instance
-    var debuggerOrigin: DebuggerOrigin?
-}
-
-enum MessageLookup {
-    case normal
-    case instanceSuper(STClass)
-    case classSuper(STClass?)
-}
-
-final class STBlock {
-    let parameters: [String]
-    let body: BytecodeBody
-    let referenceBody: Body?
-    private var capturedContext: Context?
-    var context: Context {
-        get {
-            guard let capturedContext else { preconditionFailure("Using a collected block without a GC root.") }
-            return capturedContext
-        }
-        set { capturedContext = newValue }
-    }
-
-    init(parameters: [String], body: BytecodeBody, context: Context, referenceBody: Body? = nil) {
-        self.parameters = parameters
-        self.body = body
-        self.referenceBody = referenceBody
-        capturedContext = context
-    }
-
-    func clearReferences() { capturedContext = nil }
-}
-
 struct ReturnSignal: Error {
     // Execution never crosses an actor boundary; this is interpreter control flow.
     nonisolated(unsafe) let value: Value
     let homeID: Int
 }
 
-public struct MethodInfo: Identifiable, Sendable {
-    public var id: String { selector }
-    public let selector: String
-    public let source: String
-    public let isPrimitive: Bool
-}
-
-public struct ClassInfo: Identifiable, Sendable {
-    public var id: String { name }
-    public let name: String
-    public let superclass: String?
-    public let fields: [String]
-    public let methods: [MethodInfo]
-    public let classMethods: [MethodInfo]
-}
-
-public struct BindingInfo: Identifiable, Sendable {
-    public var id: String { name }
-    public let name: String
-    public let value: String
-    public let className: String
-}
-
-public struct EvaluationResult: Sendable {
-    public let value: String?
-    public let error: String?
-    /// A failed Smalltalk operation, distinct from an invalid native projection.
-    public let executionError: String?
-    public let windowProjectionError: String?
-    public let transcript: String
-    public let classes: [ClassInfo]
-    public let bindings: [BindingInfo]
-    public let windows: [ToolWindowInfo]
-    public let activeWindowID: Int64?
-    public let windowCommands: WindowCommandBatch
-    public let toolRequests: [NativeToolRequest]
-    public let changes: [ChangeInfo]
-    public let savedChangeSequence: Int64
-    public let changesPath: String?
-}
-
-/// An isolated, persistent object space. Evaluations run away from the UI actor.
-public actor SmalltalkSession {
-    let worker = InterpreterWorker()
-
-    public init() {}
-
-    public func evaluate(_ source: String) async -> EvaluationResult {
-        await worker.submit { $0.run(source) }
-    }
-
-    public func inspectSource(_ source: String) async -> EvaluationResult {
-        await worker.submit { $0.run(source, inspectingResult: true) }
-    }
-
-    public func snapshot() async -> EvaluationResult { await worker.submit { $0.snapshot() } }
-
-    public func compile(_ source: String, in className: String, side: MethodSide = .instance) async -> EvaluationResult {
-        await worker.submit { runtime in
-            runtime.transcript = ""
-            runtime.steps = 0
-            runtime.depth = 0
-            do {
-                guard let stClass = runtime.classes[className] else { throw SmalltalkError("Class \(className) does not exist.") }
-                let selector = try runtime.compile(source, in: stClass, side: side)
-                return runtime.finishEvaluation(value: "\(side.displayName(for: className)) » \(selector)")
-            } catch { return runtime.snapshot(error: error.localizedDescription) }
-        }
-    }
-
-    public func reset() async -> EvaluationResult {
-        await worker.submit { runtime in
-            runtime = SmalltalkRuntime()
-            return runtime.snapshot()
-        }
-    }
-}
-
 final class SmalltalkRuntime {
+    // Superclasses precede their subclasses so the same hierarchy can seed and
+    // identify the built-in classes.
+    private static let builtinHierarchy: [(name: String, superclass: String?)] = [
+        ("Object", nil),
+        ("Class", "Object"),
+        ("UndefinedObject", "Object"),
+        ("Boolean", "Object"),
+        ("True", "Boolean"),
+        ("False", "Boolean"),
+        ("Number", "Object"),
+        ("Integer", "Number"),
+        ("SmallInteger", "Integer"),
+        ("String", "Object"),
+        ("Symbol", "Object"),
+        ("Array", "Object"),
+        ("BlockClosure", "Object"),
+        ("Transcript", "Object"),
+    ]
+    static let builtinNames = Set(builtinHierarchy.map(\.name))
+
     var journal = SourceJournal()
     var catalogDirty = false
     var evaluatingToolSource = false
@@ -239,25 +64,11 @@ final class SmalltalkRuntime {
         self.compilationMode = compilationMode
         self.memory = memory ?? ObjectMemory(hardLimit: compilationMode ? 1_000_000 : 100_000,
                                              initialThreshold: compilationMode ? 32_768 : 4096)
-        func add(_ name: String, _ superclass: String? = "Object") {
+        for (name, superclass) in Self.builtinHierarchy {
             let stClass = STClass(name, superclass: superclass.flatMap { classes[$0] })
             classes[name] = stClass
             globals[name] = .classObject(stClass)
         }
-        add("Object", nil)
-        add("Class")
-        add("UndefinedObject")
-        add("Boolean")
-        add("True", "Boolean")
-        add("False", "Boolean")
-        add("Number")
-        add("Integer", "Number")
-        add("SmallInteger", "Integer")
-        add("String")
-        add("Symbol")
-        add("Array")
-        add("BlockClosure")
-        add("Transcript")
         globals["Transcript"] = .transcript
         if bootstrap {
             do {
@@ -283,6 +94,18 @@ final class SmalltalkRuntime {
         try tick()
         guard depth < (compilationMode ? 1400 : 128) else { throw SmalltalkError("Maximum call depth reached.") }
         depth += 1
+    }
+
+    /// Start a top-level operation with its own transcript and execution budget.
+    func beginEvaluation() {
+        transcript = ""
+        resetExecutionBudget()
+    }
+
+    /// Use only between evaluations, after the stack has unwound.
+    func resetExecutionBudget() {
+        steps = 0
+        depth = 0
     }
 
     func environment(parent: Environment? = nil) throws -> Environment {
@@ -314,9 +137,7 @@ final class SmalltalkRuntime {
     }
 
     func run(_ source: String, inspectingResult: Bool = false) -> EvaluationResult {
-        transcript = ""
-        steps = 0
-        depth = 0
+        beginEvaluation()
         catalogDirty = true
         do {
             if inspectingResult, source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -362,74 +183,10 @@ final class SmalltalkRuntime {
         return try executeBytecode(body, context: context)
     }
 
-    func evaluate(_ expression: Expression, context: Context) throws -> Value {
-        try enter()
-        defer { depth -= 1 }
-        do {
-            switch expression.kind {
-            case .literal(let literal): return try value(literal)
-            case .variable(let name): return try variable(name, context: context)
-            case .assignment(let name, let expression):
-                let value = try evaluate(expression, context: context)
-                try assign(name, value: value, context: context)
-                return value
-            case .send(let receiverExpression, let selector, let arguments):
-                let (receiver, lookup) = try messageReceiver(receiverExpression, context: context)
-                return try evaluateMessage(receiver, selector, arguments, context: context, startingAt: lookup)
-            case .cascade(let receiverExpression, let messages):
-                let (receiver, lookup) = try messageReceiver(receiverExpression, context: context)
-                return try withRoots([receiver]) { _ in
-                    var result = receiver
-                    for message in messages {
-                        result = try evaluateMessage(receiver, message.selector, message.arguments, context: context, startingAt: lookup)
-                    }
-                    return result
-                }
-            case .block(let parameters, let body):
-                return .block(try block(parameters: parameters, body: BytecodeBody.lower(body), context: context, referenceBody: body))
-            case .returnValue(let expression):
-                try checkHomeForReturn(context)
-                throw ReturnSignal(value: try evaluate(expression, context: context), homeID: context.homeID)
-            }
-        } catch var error as SmalltalkError {
-            error.locate(at: expression.position, in: context)
-            throw error
-        }
-    }
-
     func checkHomeForReturn(_ context: Context) throws {
         guard activeHomes.contains(context.homeID) else {
             throw SmalltalkError("The home context of this block has already returned, so ^ cannot return from it.")
         }
-    }
-
-    private func evaluateMessage(_ receiver: Value, _ selector: String, _ arguments: [Expression], context: Context, startingAt lookup: MessageLookup) throws -> Value {
-        // Earlier operands stay live while a later argument may redefine a class.
-        let rootCount = evaluationRoots.count
-        evaluationRoots.append(receiver)
-        pendingMessages.append((receiver, lookup))
-        defer {
-            evaluationRoots.removeSubrange(rootCount...)
-            pendingMessages.removeLast()
-        }
-        var values: [Value] = []
-        for argument in arguments {
-            let value = try evaluate(argument, context: context)
-            values.append(value)
-            evaluationRoots.append(value)
-        }
-        return try send(receiver, selector, values, startingAt: lookup)
-    }
-
-    func messageReceiver(_ expression: Expression, context: Context) throws -> (Value, MessageLookup) {
-        if case .variable("super") = expression.kind { return (context.receiver, try superLookup(context)) }
-        return (try evaluate(expression, context: context), .normal)
-    }
-
-    func superLookup(_ context: Context) throws -> MessageLookup {
-        if context.methodSide == .classSide, let home = context.homeClass { return .classSuper(home.superclass) }
-        guard let superclass = context.homeClass?.superclass else { throw SmalltalkError("super is unavailable here.") }
-        return .instanceSuper(superclass)
     }
 
     func variable(_ name: String, context: Context) throws -> Value {
@@ -494,130 +251,5 @@ final class SmalltalkRuntime {
         case .transcript: name = "Transcript"
         }
         return classes[name]!
-    }
-
-    func lookupMethod(_ selector: String, on receiver: Value, startingAt lookup: MessageLookup = .normal) -> (Method, STClass, MethodSide)? {
-        let classStart: STClass?
-        let instanceStart: STClass
-        switch lookup {
-        case .normal:
-            if case .classObject(let target) = receiver { classStart = target } else { classStart = nil }
-            instanceStart = classOf(receiver)
-        case .classSuper(let parent):
-            classStart = parent
-            instanceStart = classOf(receiver)
-        case .instanceSuper(let parent):
-            classStart = nil
-            instanceStart = parent
-        }
-        if let (method, owner) = classStart?.lookup(selector, side: .classSide) { return (method, owner, .classSide) }
-        if let (method, owner) = instanceStart.lookup(selector) { return (method, owner, .instance) }
-        return nil
-    }
-
-    func send(_ receiver: Value, _ selector: String, _ arguments: [Value], startingAt lookup: MessageLookup = .normal) throws -> Value {
-        try withRoots([receiver] + arguments) { _ in
-            try enter()
-            defer { depth -= 1 }
-            guard arguments.count == CodeValidator.arity(of: selector) else { throw SmalltalkError("Wrong number of arguments for \(selector).") }
-            if let (method, owner, side) = lookupMethod(selector, on: receiver, startingAt: lookup) {
-                return try invoke(method, owner: owner, receiver: receiver, arguments: arguments, side: side)
-            }
-            if let result = try primitive(receiver, selector, arguments) { return result }
-            throw SmalltalkError("\(classOf(receiver).name) does not understand \(selector).")
-        }
-    }
-
-    func invoke(_ method: Method, owner: STClass, receiver: Value, arguments: [Value], side: MethodSide) throws -> Value {
-        try withRoots([receiver] + arguments) { _ in
-            guard method.parameters.count == arguments.count else { throw SmalltalkError("Wrong number of arguments for \(method.selector).") }
-            let environment = try environment()
-            for (name, value) in zip(method.parameters, arguments) { environment.values[name] = value }
-            nextHome += 1
-            let homeID = nextHome
-            activeHomes.insert(homeID)
-            defer { activeHomes.remove(homeID) }
-            let origin = compilationMode ? nil : DebuggerOrigin(source: method.source, selector: method.selector)
-            let context = Context(environment: environment, receiver: receiver, homeClass: owner, homeID: homeID,
-                                  isWorkspace: false, methodSide: side, debuggerOrigin: origin)
-            do {
-                _ = try execute(method.body, context: context, referenceBody: method.referenceBody)
-                return receiver
-            } catch let signal as ReturnSignal where signal.homeID == homeID { return signal.value }
-        }
-    }
-
-    func invokeBlock(_ value: Value, _ arguments: [Value] = []) throws -> Value {
-        try withRoots([value] + arguments) { _ in
-            guard case .block(let block) = value else { throw SmalltalkError("Expected a block [...].") }
-            guard block.parameters.count == arguments.count else { throw SmalltalkError("Expected \(block.parameters.count) block arguments, got \(arguments.count).") }
-            try enter()
-            defer { depth -= 1 }
-            let environment = try environment(parent: block.context.environment)
-            for (name, value) in zip(block.parameters, arguments) { environment.values[name] = value }
-            let lexical = block.context
-            let context = Context(environment: environment, receiver: lexical.receiver, homeClass: lexical.homeClass,
-                                  homeID: lexical.homeID, isWorkspace: lexical.isWorkspace, methodSide: lexical.methodSide,
-                                  debuggerOrigin: lexical.debuggerOrigin)
-            return try execute(block.body, context: context, referenceBody: block.referenceBody, debuggerKind: .block)
-        }
-    }
-
-    @discardableResult
-    func compile(_ source: String, in stClass: STClass, side: MethodSide = .instance,
-                 validating validate: ((Method) throws -> Void)? = nil) throws -> String {
-        guard !compilationMode else { throw SmalltalkError("Compilation is already in progress.") }
-        let method = try compileMethod(source, fields: stClass.fields(for: side))
-        try validate?(method)
-        guard stClass[side].count < 512 || stClass[side][method.selector] != nil else { throw SmalltalkError("Too many methods in \(side.displayName(for: stClass.name)).") }
-        if recordingChanges {
-            try journal.append(kind: .method, className: stClass.name, selector: method.selector, side: side, source: source)
-        }
-        stClass[side][method.selector] = method
-        catalogDirty = true
-        return method.selector
-    }
-
-    func printValue(_ value: Value, depth: Int = 0) -> String {
-        var printer = ValuePrinter()
-        return printer.print(value, depth: depth)
-    }
-
-    func snapshot(value: String? = nil, error: String? = nil, requests: [NativeToolRequest] = []) -> EvaluationResult {
-        let infos = classes.values.sorted { $0.name < $1.name }.map { stClass in
-            ClassInfo(name: stClass.name, superclass: stClass.superclass?.name, fields: stClass.fields,
-                      methods: reflectedMethods(on: stClass, side: .instance), classMethods: reflectedMethods(on: stClass, side: .classSide))
-        }
-        let bindings = bindingInfos()
-        let desktop = projectWindows()
-        return EvaluationResult(value: value, error: error ?? desktop.error, executionError: error,
-                                windowProjectionError: desktop.error, transcript: transcript, classes: infos,
-                                bindings: bindings, windows: desktop.windows, activeWindowID: desktop.activeID,
-                                windowCommands: projectWindowCommands(desktop.windows, active: desktop.activeID, valid: desktop.error == nil),
-                                toolRequests: requests, changes: Array(journal.records.suffix(2000)),
-                                savedChangeSequence: journal.savedSequence, changesPath: journal.url?.path)
-    }
-    func bindingInfos() -> [BindingInfo] {
-        let bindings: [(String, Value)] = globals.keys.sorted().compactMap { name in
-            guard let value = globals[name] else { return nil }
-            if ["Desktop", "ToolVM", "TranscriptBuffer"].contains(name) { return nil }
-            if case .classObject = value { return nil }
-            if case .transcript = value { return nil }
-            return (name, value)
-        }
-        var bytes = ValuePrinter.allBindingsBytes
-        var values = ValuePrinter.allBindingsValues
-        return bindings.enumerated().map { index, binding in
-            let (name, value) = binding
-            // Share the remaining space among all names so early aliases do
-            // not consume the entire snapshot's preview budget.
-            let byteLimit = min(ValuePrinter.bindingBytes, bytes / (bindings.count - index))
-            let valueLimit = min(ValuePrinter.maximumValues, values / (bindings.count - index))
-            var printer = ValuePrinter(maximumBytes: byteLimit, maximumValues: valueLimit)
-            let preview = printer.print(value)
-            bytes -= preview.utf8.count
-            values -= valueLimit - printer.remainingValues
-            return BindingInfo(name: name, value: preview, className: classOf(value).name)
-        }
     }
 }

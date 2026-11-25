@@ -1,109 +1,9 @@
 import Foundation
 
-public struct LoadedImage: Sendable {
-    public let evaluation: EvaluationResult
-    public let workspace: String
-    public let transcript: String
-}
-
-// IDs index nodes, never host addresses. Classes use unique names; all other
-// reference objects (including lexical scopes) participate in one object table.
-struct ImageArchive: Codable {
-    var format = "st80-image"
-    var version = ImageCodec.version
-    var classes: [ImageClass]
-    var globals: [String: ImageValue]
-    var nodes: [ImageNode]
-    var workspace: String
-    var transcript: String
-    var executableMethods: [String: [String: MethodCode]]?
-    var executableClassMethods: [String: [String: MethodCode]]?
-    // Retain the last projected view so loading an open history window never
-    // needs to construct or synchronize it by executing restored methods.
-    var changesBrowser: ImageValue?
-}
-
-struct ImageClass: Codable {
-    var name: String
-    var superclass: String?
-    var fields: [String]
-    var methods: [String: String]
-    var classMethods: [String: String]?
-
-    subscript(side: MethodSide) -> [String: String] {
-        get { side == .instance ? methods : classMethods ?? [:] }
-        set {
-            switch side {
-            case .instance: methods = newValue
-            case .classSide: classMethods = newValue.isEmpty ? nil : newValue
-            }
-        }
-    }
-}
-
-enum ImageValue: Codable {
-    case integer(Int64), string(String), symbol(String), boolean(Bool), nilValue
-    case classObject(String), reference(Int), transcript
-}
-
-enum ImageNode: Codable {
-    case object(ImageObject), array([ImageValue]), environment(ImageEnvironment), block(ImageBlock)
-}
-
-struct ImageObject: Codable {
-    var className: String
-    var fields: [String: ImageValue]
-}
-
-struct ImageEnvironment: Codable {
-    var parent: Int?
-    var values: [String: ImageValue]
-}
-
-struct ImageBlock: Codable {
-    var parameters: [String]
-    var body: BytecodeBody
-    var environment: Int
-    var receiver: ImageValue
-    var homeClass: String?
-    var isWorkspace: Bool
-    var methodSide: MethodSide?
-}
-
-extension SmalltalkSession {
-    public func imageData(workspace: String = "", transcript: String = "") async throws -> Data {
-        try await worker.submitThrowing { try ImageCodec.encode($0, workspace: workspace, transcript: transcript) }
-    }
-
-    public func loadImage(_ data: Data) async throws -> LoadedImage {
-        try await worker.submitThrowing { runtime in
-            let (replacement, contents) = try ImageCodec.decode(data)
-            runtime = replacement
-            return contents
-        }
-    }
-
-    public func saveImage(to url: URL, workspace: String, transcript: String) async throws {
-        try await worker.submitThrowing { runtime in
-            try ImageFiles.save(runtime, to: url, workspace: workspace, transcript: transcript)
-        }
-    }
-
-    public func loadImage(from url: URL) async throws -> LoadedImage {
-        try await worker.submitThrowing { runtime in
-            let (replacement, contents) = try ImageFiles.load(url)
-            runtime = replacement
-            return contents
-        }
-    }
-}
-
 enum ImageCodec {
     static let version = 5
     static let maxBytes = 32 * 1_024 * 1_024
     static let maxNodes = 40_000
-
-    private typealias Pending = HeapReference
 
     static func encode(_ runtime: SmalltalkRuntime, workspace: String, transcript: String) throws -> Data {
         let archive = try capture(runtime, workspace: workspace, transcript: transcript, includesCode: true)
@@ -120,9 +20,9 @@ enum ImageCodec {
             throw SmalltalkError("Could not save the image: \(error)")
         }
         var ids: [ObjectIdentifier: Int] = [:]
-        var pending: [Pending] = []
+        var pending: [HeapReference] = []
 
-        func register(_ object: AnyObject, _ node: Pending) throws -> Int {
+        func register(_ object: AnyObject, _ node: HeapReference) throws -> Int {
             let identity = ObjectIdentifier(object)
             if let id = ids[identity] { return id }
             guard pending.count < maxNodes else { throw SmalltalkError("An image can contain at most 40,000 reachable objects.") }
@@ -185,13 +85,7 @@ enum ImageCodec {
 
     static func decode(_ data: Data) throws -> (SmalltalkRuntime, LoadedImage) {
         guard data.count <= maxBytes else { throw SmalltalkError("Image exceeds the 32 MiB limit.") }
-        struct Header: Decodable { let format: String; let version: Int }
-        let decoder = JSONDecoder()
-        let header: Header
-        do { header = try decoder.decode(Header.self, from: data) }
-        catch { throw SmalltalkError("The file is not a valid Smalltalk/80 image.") }
-        guard header.format == "st80-image" else { throw SmalltalkError("Unknown image format. Expected a Smalltalk/80 image.") }
-        guard header.version == ImageCodec.version else { throw SmalltalkError("Image version \(header.version) is unsupported. Expected version \(ImageCodec.version).") }
+        let decoder = try checkedDecoder(for: data)
         let archive: ImageArchive
         do { archive = try decoder.decode(ImageArchive.self, from: data) }
         catch { throw SmalltalkError("The image is corrupt or incomplete: \(error.localizedDescription)") }
@@ -199,11 +93,22 @@ enum ImageCodec {
         catch { throw SmalltalkError("Could not load the image: \(error.localizedDescription)") }
     }
 
+    static func checkedDecoder(for data: Data) throws -> JSONDecoder {
+        struct Header: Decodable { let format: String; let version: Int }
+        let decoder = JSONDecoder()
+        let header: Header
+        do { header = try decoder.decode(Header.self, from: data) }
+        catch { throw SmalltalkError("The file is not a valid Smalltalk/80 image.") }
+        guard header.format == "st80-image" else { throw SmalltalkError("Unknown image format. Expected a Smalltalk/80 image.") }
+        guard header.version == ImageCodec.version else { throw SmalltalkError("Image version \(header.version) is unsupported. Expected version \(ImageCodec.version).") }
+        return decoder
+    }
+
     private enum Shell {
         case value(Value), environment(Environment)
     }
 
-    static func restore(_ image: ImageArchive) throws -> (SmalltalkRuntime, LoadedImage) {
+    static func restore(_ image: ImageArchive, journal: SourceJournal? = nil) throws -> (SmalltalkRuntime, LoadedImage) {
         guard image.format == "st80-image", image.version == ImageCodec.version, let executableMethods = image.executableMethods else {
             throw invalid("The executable method store is missing or incompatible.")
         }
@@ -213,12 +118,16 @@ enum ImageCodec {
         // The shells are not reachable from globals until the entire graph has
         // been connected and validated. The fresh heap still enforces its hard
         // allocation budget while collection is suspended.
-        return try runtime.memory.withCollectionSuspended {
+        try runtime.memory.withCollectionSuspended {
             try restoreGraph(image, executableMethods: executableMethods, into: runtime)
         }
+        if let journal { runtime.journal = journal }
+        let evaluation = runtime.snapshot()
+        if let error = evaluation.windowProjectionError { throw SmalltalkError(error) }
+        return (runtime, LoadedImage(evaluation: evaluation, workspace: image.workspace, transcript: image.transcript))
     }
 
-    private static func restoreGraph(_ image: ImageArchive, executableMethods: [String: [String: MethodCode]], into runtime: SmalltalkRuntime) throws -> (SmalltalkRuntime, LoadedImage) {
+    private static func restoreGraph(_ image: ImageArchive, executableMethods: [String: [String: MethodCode]], into runtime: SmalltalkRuntime) throws {
         var records: [String: ImageClass] = [:]
         for record in image.classes {
             guard records.updateValue(record, forKey: record.name) == nil else { throw invalid("Duplicate class \(record.name).") }
@@ -366,13 +275,8 @@ enum ImageCodec {
             throw invalid("The image has no valid window manager.")
         }
         try runtime.validateMVCState()
-        if let error = runtime.projectWindows().error {
-            throw SmalltalkError(error)
-        }
         runtime.catalogDirty = false
         runtime.recordingChanges = true
-        let contents = LoadedImage(evaluation: runtime.snapshot(), workspace: image.workspace, transcript: image.transcript)
-        return (runtime, contents)
     }
 
     private static func validateNames(_ names: [String]) throws {

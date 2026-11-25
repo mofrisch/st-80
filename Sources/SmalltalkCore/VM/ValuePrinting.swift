@@ -103,3 +103,10 @@ struct ValuePrinter {
         outputBytes += 3
     }
 }
+
+extension SmalltalkRuntime {
+    func printValue(_ value: Value, depth: Int = 0) -> String {
+        var printer = ValuePrinter()
+        return printer.print(value, depth: depth)
+    }
+}

@@ -24,6 +24,38 @@ struct BrowserRegressionTests {
     }
 
     @Test(arguments: [MethodSide.instance, .classSide])
+    func browserPublishesAcceptAvailabilityForTheInstalledSource(side: MethodSide) async throws {
+        let session = SmalltalkSession()
+        let original = "value ^ 1"
+        let draft = "value ^ 42"
+        let installed = await session.compile(original, in: "Counter", side: side)
+        try #require(installed.error == nil)
+        let (windowID, opened) = try await browser(in: session, side: side)
+        let methods = try control("methodList", in: opened, windowID: windowID)
+        let selected = await session.uiAction(.select(windowID: windowID, elementID: methods.id, value: "value"))
+        let editor = try control("methodEditor", in: selected, windowID: windowID)
+        #expect(try !control("executeButton", in: selected, windowID: windowID).enabled)
+
+        let empty = await session.uiAction(.text(windowID: windowID, elementID: editor.id, value: ""))
+        #expect(try !control("executeButton", in: empty, windowID: windowID).enabled)
+        let edited = await session.uiAction(.text(windowID: windowID, elementID: editor.id, value: draft))
+        #expect(try control("executeButton", in: edited, windowID: windowID).enabled)
+
+        let externallyInstalled = await session.compile(draft, in: "Counter", side: side)
+        try #require(externallyInstalled.error == nil)
+        #expect(try control("methodEditor", in: externallyInstalled, windowID: windowID).text == draft)
+        let disabled = try control("executeButton", in: externallyInstalled, windowID: windowID)
+        #expect(!disabled.enabled)
+        let clicked = await session.dispatchUIAction(.click(windowID: windowID, elementID: disabled.id))
+        #expect(clicked.disposition == .ignored)
+        #expect(clicked.evaluation.changes.map(\.id) == externallyInstalled.changes.map(\.id))
+
+        let changedAgain = await session.compile("value ^ 73", in: "Counter", side: side)
+        #expect(try control("methodEditor", in: changedAgain, windowID: windowID).text == draft)
+        #expect(try control("executeButton", in: changedAgain, windowID: windowID).enabled)
+    }
+
+    @Test(arguments: [MethodSide.instance, .classSide])
     func browserRejectsStaleMethodDraftsAndKeepsTheirText(side: MethodSide) async throws {
         let session = SmalltalkSession()
         let initialMethod = await session.compile("value ^ 1", in: "Counter", side: side)

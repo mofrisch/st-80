@@ -300,6 +300,10 @@ final class AppController {
         controlEdits.text(at: ControlAddress(windowID: windowID, elementID: element.id), fallback: element.text)
     }
 
+    func hasPendingEditorInput(in windowID: Int64) -> Bool {
+        controlEdits.hasPendingEditorInput(in: windowID)
+    }
+
     func editInput(windowID: Int64, elementID: String, text: String) {
         controlEdits.recordText(text, at: ControlAddress(windowID: windowID, elementID: elementID))
         imageHasChanges = true

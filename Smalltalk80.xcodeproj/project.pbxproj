@@ -1223,6 +1223,16 @@
 			);
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};
+		"EDB30552A34A04E7ECADD725" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "BrowserAcceptTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"7EF721BE8953A3877387801A" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "EDB30552A34A04E7ECADD725";
+		};
 		"36B45DA3F3FAEF0D588A4C2B" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -1236,6 +1246,7 @@
 		"CB96234B92E11A4D09BEC9D5" = {
 			"isa" = "PBXGroup";
 			"children" = (
+				"EDB30552A34A04E7ECADD725",
 				"36B45DA3F3FAEF0D588A4C2B",
 			);
 			"name" = "Smalltalk80Tests";
@@ -1246,6 +1257,7 @@
 			"isa" = "PBXSourcesBuildPhase";
 			"buildActionMask" = "2147483647";
 			"files" = (
+				"7EF721BE8953A3877387801A",
 				"C46D93F502B99F7632A03644",
 			);
 			"runOnlyForDeploymentPostprocessing" = "0";

@@ -300,9 +300,10 @@ BrowserWindow compile: 'refreshTools
             ifTrue: [ textValue := ToolVM definitionOf: target ]
             ifFalse: [ selector notNil ifTrue: [ textValue := ToolVM methodSourceAt: selector in: target side: methodSide ] ].
         (textValue notNil and: [ textValue ~= originalSource and: [ editor text = originalSource ] ]) ifTrue: [
-            editor text: textValue. originalSource := textValue. self refreshEditor ] ].
+            editor text: textValue. originalSource := textValue. ^ self refreshEditor ] ].
     self refreshOrganizationActions.
-    self refreshBytecode'.
+    self refreshBytecode.
+    self draftChanged: editor text'.
 
 BrowserWindow compile: 'refreshEditor
     | primitive name target |
@@ -327,9 +328,14 @@ BrowserWindow compile: 'draftChanged: aString
     | target |
     target := self selectedClass.
     definitionButton enabled: (target notNil and: [ editingDefinition not or: [ aString ~= originalSource ] ]).
-    accept enabled: (target notNil and: [ aString size > 0 and: [ editingDefinition
-        ifTrue: [ (ToolVM canRedefine: target) and: [ aString ~= originalSource ] ]
-        ifFalse: [ self primitiveSelected not ] ] ])'.
+    accept enabled: (self canAccept: aString for: target)'.
+
+BrowserWindow compile: 'canAccept: aString for: target
+    (target isNil or: [ aString size = 0 ]) ifTrue: [ ^ false ].
+    editingDefinition ifTrue: [ ^ (ToolVM canRedefine: target) and: [ aString ~= originalSource ] ].
+    self primitiveSelected ifTrue: [ ^ false ].
+    selector isNil ifTrue: [ ^ true ].
+    ^ aString ~= (ToolVM methodSourceAt: selector in: target side: methodSide)'.
 
 BrowserWindow compile: 'chooseCategory: name
     category := name isNil ifTrue: [ ''All'' ] ifFalse: [ name ].
@@ -405,14 +411,15 @@ BrowserWindow compile: 'newMethod
     self refreshEditor'.
 
 BrowserWindow compile: 'acceptMethod
-    | outcome target |
+    | outcome target source |
     target := self selectedClass.
-    (target isNil or: [ self primitiveSelected or: [ editor text size = 0 ] ]) ifTrue: [ ^ self ].
+    source := editor text.
+    (self canAccept: source for: target) ifFalse: [ ^ self ].
     editingDefinition ifTrue: [ ^ self acceptDefinition ].
-    outcome := ToolVM acceptMethod: editor text in: target side: methodSide selector: selector basedOn: originalSource.
+    outcome := ToolVM acceptMethod: source in: target side: methodSide selector: selector basedOn: originalSource.
     (outcome at: 1) ifTrue: [
         selector := outcome at: 2.
-        originalSource := editor text.
+        originalSource := source.
         protocolName ~= ''All'' ifTrue: [ (SystemOrganization protocolsOf: target side: methodSide) move: selector to: protocolName ].
         self refreshTools.
         self refreshEditor.

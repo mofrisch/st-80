@@ -5,9 +5,17 @@ import SwiftUI
 extension AppController {
     private func activeButton(for command: String) -> (windowID: Int64, button: UIElementInfo)? {
         guard keyInspectorID == nil, let window = windowPresentation.activeWindow?.info,
-              let button = window.content?.firstVisible(where: { $0.command == command && $0.enabled }),
-              canPerform(button, in: window.id) else { return nil }
+              let root = window.content else { return nil }
+        let enabled = root.firstVisible(where: { $0.command == command && canPerform($0, in: window.id) })
+        guard let button = enabled ?? root.firstVisible(where: {
+            $0.command == command && canQueueAfterEditorFlush($0, in: window.id)
+        }) else { return nil }
         return (window.id, button)
+    }
+
+    private func canQueueAfterEditorFlush(_ button: UIElementInfo, in windowID: Int64) -> Bool {
+        // A native draft can change Accept's availability at the next VM update.
+        button.command == "acceptMethod" && !windowPresentation.isRecovering && hasPendingEditorInput(in: windowID)
     }
 
     func hasCommand(_ command: String) -> Bool { activeButton(for: command) != nil }
@@ -31,11 +39,7 @@ extension AppController {
             default: return true
             }
         }
-        // Class definitions and new methods already get their enabled state from Smalltalk.
-        guard element.command == "acceptMethod", let window = presentedWindow(windowID)?.info,
-              let compiled = window.browserMethodSource,
-              let editor = window.content?.firstVisible(where: { $0.accessibilityID == "methodEditor" }) else { return true }
-        return inputText(windowID: windowID, element: editor) != compiled
+        return true
     }
 
     func workspaceEditor(in window: ToolWindowInfo) -> UIElementInfo? {
@@ -219,7 +223,7 @@ extension AppController {
     func clickControl(windowID: Int64, elementID: String, selection capturedSelection: String? = nil) async {
         guard let window = presentedWindow(windowID)?.info,
               let root = window.content, let button = root.firstVisible(where: { $0.id == elementID }),
-              canPerform(button, in: windowID) else { return }
+              canPerform(button, in: windowID) || canQueueAfterEditorFlush(button, in: windowID) else { return }
         let selection = capturedSelection ?? selectedText(for: button, in: windowID, root: root)
         if windowPresentation.isRecovering, window.kind == .workspace,
            let command = button.command, let action = WorkspaceRecoveryAction(command: command),
@@ -227,7 +231,12 @@ extension AppController {
             await recoverWorkspace(window, editor: editor, action: action, selection: selection)
             return
         }
-        let flushPolicy: ControlFlushPolicy = window.kind == .workspace || window.kind == .browser ? .bestEffort : .requireSuccess
+        let flushPolicy: ControlFlushPolicy
+        if button.command == "acceptMethod" {
+            flushPolicy = .requireEditorFlush(windowIdentity: window.identity)
+        } else {
+            flushPolicy = window.kind == .workspace || window.kind == .browser ? .bestEffort : .requireSuccess
+        }
         await sendControl(.click(windowID: windowID, elementID: elementID, selection: selection),
                           windowID: windowID, flushPolicy: flushPolicy)
     }
@@ -251,6 +260,7 @@ extension AppController {
 
     private enum ControlFlushPolicy {
         case requireSuccess, bestEffort
+        case requireEditorFlush(windowIdentity: String)
     }
 
     private func sendControl(_ action: UIAction, windowID: Int64, flushPolicy: ControlFlushPolicy) async {
@@ -258,6 +268,10 @@ extension AppController {
             switch flushPolicy {
             case .requireSuccess:
                 guard await flushWindowStateRequiringSuccess() else { return }
+            case .requireEditorFlush(let identity):
+                await attemptToFlushWindowState()
+                guard !windowPresentation.isRecovering, !hasPendingEditorInput(in: windowID),
+                      presentedWindow(windowID)?.info.identity == identity else { return }
             case .bestEffort:
                 await attemptToFlushWindowState()
             }

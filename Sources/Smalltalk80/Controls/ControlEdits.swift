@@ -38,6 +38,10 @@ struct ControlEdits {
 
     func hasDraft(at address: ControlAddress) -> Bool { drafts[address] != nil }
 
+    func hasPendingEditorInput(in windowID: Int64) -> Bool {
+        drafts.keys.contains { $0.windowID == windowID && isCodeEditor($0) }
+    }
+
     var pendingEdits: [TextEdit] {
         drafts.values.sorted { $0.revision < $1.revision }
     }

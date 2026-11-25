@@ -204,7 +204,7 @@ BrowserOrganization compile: 'shippedProtocols
                 ''filter:'' ''matchesCategory:'' ''selectedClass'' ''protocolOf:in:''
                 ''showInstanceMethods'' ''showClassMethods'' ''chooseMethodSide:''))
             (''Catalog Updates'' (''refreshClasses'' ''refreshMethods'' ''refreshTools'' ''refreshOrganizationActions''))
-            (''Method Editing'' (''acceptMethod'' ''draftChanged:'' ''newMethod'' ''primitiveSelected''
+            (''Method Editing'' (''acceptMethod'' ''canAccept:for:'' ''draftChanged:'' ''newMethod'' ''primitiveSelected''
                 ''refreshEditor'' ''showVersions''))
             (''Class Definitions'' (''showDefinition'' ''acceptDefinition''))
             (''Bytecode'' (''toggleBytecode'' ''refreshBytecode''))

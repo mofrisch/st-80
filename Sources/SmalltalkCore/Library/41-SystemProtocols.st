@@ -80,7 +80,7 @@ BrowserOrganization compile: 'shippedProtocols
         (''UIBinding'' (
             (''Configuration'' (''initialize'' ''source:aspect:view:property:''))
             (''Binding Properties'' (''source'' ''aspect'' ''view'' ''property'' ''active''))
-            (''Connection Lifecycle'' (''connect'' ''disconnect''))
+            (''Connection Lifecycle'' (''connect'' ''disconnect'' ''reconcileMount:''))
             (''Model Updates'' (''update:''))))
         (''SystemWindow'' (
             (''Initialization'' (''initialize''))

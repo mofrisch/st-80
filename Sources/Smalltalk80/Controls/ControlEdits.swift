@@ -1,10 +1,11 @@
 import Foundation
+import SmalltalkCore
 
-package struct ControlAddress: Hashable {
-    package let windowID: Int64
-    package let elementID: String
+struct ControlAddress: Hashable {
+    let windowID: Int64
+    let elementID: String
 
-    package init(windowID: Int64, elementID: String) {
+    init(windowID: Int64, elementID: String) {
         self.windowID = windowID
         self.elementID = elementID
     }
@@ -12,10 +13,10 @@ package struct ControlAddress: Hashable {
 
 /// Editor drafts can be newer than the image snapshot. Keep them until the VM
 /// acknowledges the specific edit, or until its control leaves the snapshot.
-package struct ControlEdits {
-    package struct TextEdit {
-        package let address: ControlAddress
-        package let text: String
+struct ControlEdits {
+    struct TextEdit {
+        let address: ControlAddress
+        let text: String
         fileprivate let revision: UInt64
     }
 
@@ -30,43 +31,45 @@ package struct ControlEdits {
     private var selections: [ControlAddress: NSRange] = [:]
     private var revision: UInt64 = 0
 
-    package init() {}
+    init() {}
 
-    package var hasPendingEdits: Bool { !drafts.isEmpty }
-    package var hasLiveEdits: Bool { drafts.keys.contains { inputs[$0]?.live == true } }
+    var hasPendingEdits: Bool { !drafts.isEmpty }
+    var hasLiveEdits: Bool { drafts.keys.contains { inputs[$0]?.live == true } }
 
-    package var pendingEdits: [TextEdit] {
+    func hasDraft(at address: ControlAddress) -> Bool { drafts[address] != nil }
+
+    var pendingEdits: [TextEdit] {
         drafts.values.sorted { $0.revision < $1.revision }
     }
 
-    package func isCodeEditor(_ address: ControlAddress) -> Bool {
+    func isCodeEditor(_ address: ControlAddress) -> Bool {
         inputs[address]?.kind == .codeEditor
     }
 
-    package func text(at address: ControlAddress, fallback: String) -> String {
+    func text(at address: ControlAddress, fallback: String) -> String {
         drafts[address]?.text ?? inputs[address]?.text ?? fallback
     }
 
-    package mutating func recordText(_ text: String, at address: ControlAddress) {
+    mutating func recordText(_ text: String, at address: ControlAddress) {
         revision &+= 1
         drafts[address] = TextEdit(address: address, text: text, revision: revision)
     }
 
-    package mutating func acknowledge(_ edit: TextEdit) {
+    mutating func acknowledge(_ edit: TextEdit) {
         if drafts[edit.address]?.revision == edit.revision {
             drafts.removeValue(forKey: edit.address)
         }
     }
 
-    package func selection(at address: ControlAddress) -> NSRange {
+    func selection(at address: ControlAddress) -> NSRange {
         selections[address] ?? NSRange(location: 0, length: 0)
     }
 
-    package mutating func recordSelection(_ range: NSRange, at address: ControlAddress) {
+    mutating func recordSelection(_ range: NSRange, at address: ControlAddress) {
         if selections[address] != range { selections[address] = range }
     }
 
-    package mutating func reconcile(with windows: [ToolWindowInfo]) {
+    mutating func reconcile(with windows: [ToolWindowInfo]) {
         var mounted: [ControlAddress: Input] = [:]
         func collectInputs(_ element: UIElementInfo, windowID: Int64) {
             if element.kind == .textField || element.kind == .codeEditor {

@@ -2,8 +2,7 @@ import SmalltalkCore
 
 enum EditorContextAction: Equatable {
     case control(String)
-    case legacyInspect
-    case debugWorkspace(editorID: String)
+    case recovery(WorkspaceRecoveryAction, editorID: String)
 }
 
 enum EditorContextItem {

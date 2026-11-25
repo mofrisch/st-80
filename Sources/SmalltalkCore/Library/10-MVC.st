@@ -75,6 +75,10 @@ UIBinding compile: 'disconnect
     active := false.
     source removeDependent: self'.
 
+UIBinding compile: 'reconcileMount: isMounted
+    isMounted ifTrue: [ ^ self connect ].
+    ^ self disconnect'.
+
 UIBinding compile: 'update: anAspect
     active ifFalse: [ ^ self ].
     (anAspect isNil or: [ anAspect = aspect ]) ifTrue: [

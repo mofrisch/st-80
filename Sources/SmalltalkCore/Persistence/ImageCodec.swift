@@ -168,6 +168,9 @@ enum ImageCodec {
             }
         }
         try runtime.validateCompilerClasses()
+        guard runtime.classes["UIBinding"]?.lookup("reconcileMount:") != nil else {
+            throw invalid("The image is missing UIBinding>>reconcileMount:. Start a fresh session.")
+        }
 
         // Allocate first, connect second: this preserves identity and cycles.
         var shells: [Shell] = []

@@ -42,6 +42,22 @@ public struct EvaluationResult: Sendable {
 }
 
 extension SmalltalkRuntime {
+    /// Execution boundaries may reconnect mounted bindings and invoke their
+    /// accessors. snapshot(), drawing and image loading remain read-only.
+    func finishEvaluation(value: String? = nil, error: String? = nil) -> EvaluationResult {
+        var failure = error
+        do {
+            try refreshToolWindowsIfNeeded()
+            try synchronizeMVCBindings()
+            try synchronizeChangesBrowser()
+        } catch {
+            failure = failure ?? error.localizedDescription
+        }
+        let requests = toolRequests
+        toolRequests.removeAll()
+        return snapshot(value: value, error: failure, requests: requests)
+    }
+
     func snapshot(value: String? = nil, error: String? = nil, requests: [NativeToolRequest] = []) -> EvaluationResult {
         let infos = classes.values.sorted { $0.name < $1.name }.map { stClass in
             ClassInfo(name: stClass.name, superclass: stClass.superclass?.name, fields: stClass.fields,

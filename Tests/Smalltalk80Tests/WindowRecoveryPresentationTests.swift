@@ -1,6 +1,7 @@
 import Foundation
+import SmalltalkCore
 import Testing
-@testable import SmalltalkCore
+@testable import Smalltalk80
 
 struct WindowRecoveryPresentationTests {
     @Test func aNewValidWorkspaceCanBeAdoptedWhenNoRepairEditorWasRetained() async throws {
@@ -91,10 +92,8 @@ struct WindowRecoveryPresentationTests {
         let workspace = try #require(initial.windows.first { $0.kind == .workspace })
         var presentation = WindowPresentation()
         presentation.update(from: initial, replacingWindows: true)
-        let broken = await session.worker.submit { runtime in
-            runtime.projectedWindow(withID: workspace.id)?.fields["width"] = .integer(0)
-            return runtime.snapshot()
-        }
+        let broken = await session.windowAction(.frame(workspace.id, x: workspace.x, y: workspace.y,
+                                                       width: 0, height: workspace.height))
         #expect(!broken.hasCompleteWindowProjection)
         #expect(!broken.windows.isEmpty)
         #expect(!broken.windows.contains { $0.id == workspace.id })

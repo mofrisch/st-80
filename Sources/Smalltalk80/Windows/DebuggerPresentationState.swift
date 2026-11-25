@@ -1,24 +1,25 @@
 import Foundation
 import Observation
+import SmalltalkCore
 
 @MainActor
 @Observable
-package final class DebuggerPresentationState {
+final class DebuggerPresentationState {
     @ObservationIgnored private var snapshot: DebuggerSnapshot
     private let onCommand: (DebuggerCommand) -> Void
     @ObservationIgnored private var rendering: Task<Void, Never>?
     @ObservationIgnored private var sendingCommand: Task<Void, Never>?
     @ObservationIgnored private var selectedFrameID: Int?
     private var phase = DebuggerPresentationPhase.paused
-    package private(set) var content: UIElementInfo?
+    private(set) var content: UIElementInfo?
 
-    package init(snapshot: DebuggerSnapshot, onCommand: @escaping (DebuggerCommand) -> Void) {
+    init(snapshot: DebuggerSnapshot, onCommand: @escaping (DebuggerCommand) -> Void) {
         self.snapshot = snapshot
         self.onCommand = onCommand
         render()
     }
 
-    package func update(_ snapshot: DebuggerSnapshot) {
+    func update(_ snapshot: DebuggerSnapshot) {
         cancel()
         self.snapshot = snapshot
         selectedFrameID = nil
@@ -26,14 +27,14 @@ package final class DebuggerPresentationState {
         render()
     }
 
-    package func select(_ control: UIElementInfo, row: String) {
+    func select(_ control: UIElementInfo, row: String) {
         guard phase == .paused, sendingCommand == nil, control.enabled, control.command == "selectFrame",
               let id = Int(row), selectedFrameID != id else { return }
         selectedFrameID = id
         render()
     }
 
-    package func click(_ control: UIElementInfo) {
+    func click(_ control: UIElementInfo) {
         guard control.enabled, let command = control.command.flatMap(DebuggerCommand.init(rawValue:)) else { return }
         if command == .stop {
             stop()
@@ -59,7 +60,7 @@ package final class DebuggerPresentationState {
         }
     }
 
-    package func stop() {
+    func stop() {
         guard phase != .stopping else { return }
         cancel()
         phase = .stopping
@@ -68,7 +69,7 @@ package final class DebuggerPresentationState {
         render()
     }
 
-    package func cancel() {
+    func cancel() {
         rendering?.cancel()
         rendering = nil
         sendingCommand?.cancel()

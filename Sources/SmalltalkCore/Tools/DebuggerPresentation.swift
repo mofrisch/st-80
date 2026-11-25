@@ -66,7 +66,7 @@ extension DebuggerSnapshot {
         }
     }
 
-    func commandPhase(after command: DebuggerCommand, from phase: DebuggerPresentationPhase) async throws -> DebuggerPresentationPhase? {
+    package func commandPhase(after command: DebuggerCommand, from phase: DebuggerPresentationPhase) async throws -> DebuggerPresentationPhase? {
         try Task.checkCancellation()
         return try await Self.presentationWorker.submitThrowing { runtime in
             let windowClass = try runtime.debuggerWindowClass(presentation?.window)
@@ -83,7 +83,7 @@ extension DebuggerSnapshot {
         }
     }
 
-    func recoveryContent(message: String, phase: DebuggerPresentationPhase) async throws -> UIElementInfo {
+    package func recoveryContent(message: String, phase: DebuggerPresentationPhase) async throws -> UIElementInfo {
         try Task.checkCancellation()
         return try await Self.recoveryWorker.submitThrowing { runtime in
             runtime.steps = 0

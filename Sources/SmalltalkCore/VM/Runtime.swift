@@ -34,6 +34,7 @@ final class SmalltalkRuntime {
     var toolRequests: [NativeToolRequest] = []
     var objectInspectors: [UUID: Value] = [:]
     var changesBrowser: Value?
+    var mvcBindingIndex = MVCBindingIndex()
     var recordingChanges = false
     var bootstrapError: String?
     let windowEpoch = UUID().uuidString

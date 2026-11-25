@@ -8,6 +8,7 @@
   <TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="YES">
     <Testables>
       <TestableReference skipped="NO" parallelizable="NO"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="A87675F759F0123EC5677F6D" BuildableName="SmalltalkCoreTests.xctest" BlueprintName="SmalltalkCoreTests" ReferencedContainer="container:Smalltalk80.xcodeproj"/></TestableReference>
+      <TestableReference skipped="NO" parallelizable="NO"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="1C054BD499900B5E869E0BB9" BuildableName="Smalltalk80Tests.xctest" BlueprintName="Smalltalk80Tests" ReferencedContainer="container:Smalltalk80.xcodeproj"/></TestableReference>
       <TestableReference skipped="NO" parallelizable="NO"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="267E6119F2E73580EF1878AD" BuildableName="Smalltalk80UITests.xctest" BlueprintName="Smalltalk80UITests" ReferencedContainer="container:Smalltalk80.xcodeproj"/></TestableReference>
     </Testables>
   </TestAction>

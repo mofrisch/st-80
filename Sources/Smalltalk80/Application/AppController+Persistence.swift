@@ -31,22 +31,14 @@ extension AppController {
             do {
                 let source = try String(contentsOf: url, encoding: .utf8)
                 await attemptToFlushWindowState()
-                let opened = await session.windowAction(.open(.workspace))
-                let workspaceID = opened.activeWindowID
-                let wasOpen = workspaceID.flatMap { presentedWindow($0) } != nil
-                apply(opened)
-                guard opened.executionError == nil else { return }
-                guard !wasOpen, let workspaceID,
-                      presentedWindow(workspaceID)?.info.kind == .workspace else {
-                    error = opened.windows.count >= 128
-                        ? "Could not open the workspace: the desktop is limited to 128 windows. Close a window and try again."
-                        : "Could not open the workspace: Smalltalk did not create a new workspace window."
-                    return
-                }
-                let loaded = await session.windowAction(.text(workspaceID, source))
-                apply(loaded)
-                if loaded.executionError == nil {
-                    associateWorkspace(workspaceID, with: url, afterOpening: true)
+                let opened = await session.openWorkspace(source: source)
+                apply(opened.evaluation)
+                switch opened.outcome {
+                case .success(let workspace):
+                    guard presentedWindow(workspace.id)?.info.identity == workspace.identity else { return }
+                    associateWorkspace(workspace.id, with: url, afterOpening: true)
+                case .failure(let failure):
+                    error = failure.localizedDescription
                 }
             } catch { self.error = error.localizedDescription }
         }

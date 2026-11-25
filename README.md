@@ -8,13 +8,14 @@ A small native macOS system with a language inspired by Smalltalk-80. The native
 2. Select the **Smalltalk80** scheme and **My Mac** as the destination.
 3. Press **⌘R**.
 
-The project contains four targets.
+The project contains five targets.
 
 | Target | Purpose |
 | --- | --- |
 | Smalltalk80 | Native macOS windows with SwiftUI content and an AppKit text editor |
 | SmalltalkCore | Swift bytecode VM with object memory and the Smalltalk compiler |
 | SmalltalkCoreTests | Language, image, and window model tests |
+| Smalltalk80Tests | Native window presentation and editor draft tests |
 | Smalltalk80UITests | Workspaces, live method editing, native windows, and image restoration after relaunch |
 
 Local builds use ad hoc signing, so you can run the app without a development team. You need macOS 14 or later and Xcode with Swift 6.
@@ -224,6 +225,8 @@ The controller's `nameChanged:` method sends `model name: aString`. The model no
 
 You can bind `text` on labels and text fields, `title` on buttons, `enabled` and `visible` on all UI elements, and `spacing` and `padding` on layouts. Use `unbind: #text` to remove one binding or `unbindAll` to clear a view's bindings. Rebinding a property replaces the previous binding. At the end of an evaluation or native event, bindings on removed controls and closed windows disconnect. Reopening reconnects them with the current model values.
 
+The VM reads the window and control fields to detect attachment changes, then sends `reconcileMount:` to the affected `UIBinding` objects. The image can edit this method to customize the lifecycle. Images must provide `UIBinding>>reconcileMount:` to load. Loading validates the stored bindings without calling any of these methods.
+
 ### Controls and rendering
 
 | Class | Messages |
@@ -242,7 +245,7 @@ You can bind `text` on labels and text fields, `title` on buttons, `enabled` and
 
 You can nest rows and columns. `add:` returns the added element. `spacing:` accepts 0 to 128 points and `padding:` accepts 0 to 256. An interface is a tree of at most 512 elements and 16 nesting levels. Each element can appear only once in a window. A disabled layout also disables its children.
 
-Smalltalk objects stay on the interpreter thread. The native SwiftUI view renders immutable snapshots. `AppController` forwards native events and publishes the resulting snapshots. Smalltalk handles change notifications directly without polling.
+Smalltalk objects stay on the interpreter thread. `SmalltalkCore` projects immutable snapshots and runs the Smalltalk tool operations. `Smalltalk80` renders the snapshots and keeps native window state, unsent edits, selections, and file associations. `AppController` forwards native events and publishes the resulting snapshots. Smalltalk handles change notifications directly without polling.
 
 Text fields with an input controller send changes after an 80 ms pause while keeping the field active. Before button actions, workspace evaluations, and image saves, the app flushes pending input in order. Model-driven changes do not generate more input events. If a model or controller method fails, the workspace and browser remain available for repair. Once repaired, the app retries pending input.
 
@@ -339,11 +342,11 @@ xcodebuild -project Smalltalk80.xcodeproj -scheme Smalltalk80 \
 
 xcodebuild -project Smalltalk80.xcodeproj -scheme Smalltalk80 \
   -destination 'platform=macOS' -derivedDataPath .build/xcode \
-  -only-testing:SmalltalkCoreTests test
+  -only-testing:SmalltalkCoreTests -only-testing:Smalltalk80Tests test
 
 xcodebuild -project Smalltalk80.xcodeproj -scheme Smalltalk80 \
   -destination 'platform=macOS' -derivedDataPath .build/xcode \
   -only-testing:Smalltalk80UITests test
 ```
 
-You can also run the core tests with `swift test`. The checked-in Xcode project is ready to open and build. After adding source files, use `python3 scripts/generate-project.py` to recreate it. Regeneration replaces manual project edits.
+You can also run the unit tests with `swift test`. The checked-in Xcode project is ready to open and build. After adding source files, use `python3 scripts/generate-project.py` to recreate it. Regeneration replaces manual project edits.

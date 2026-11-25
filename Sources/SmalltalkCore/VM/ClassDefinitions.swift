@@ -114,6 +114,7 @@ extension SmalltalkRuntime {
             for update in updates { update.object.fields = update.previous }
             throw error
         }
+        if previousSuperclass !== superclass { reindexMVCBindings() }
         catalogDirty = true
     }
 

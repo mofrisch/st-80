@@ -84,13 +84,13 @@ extension SmalltalkSession {
         }
     }
 
-    func inspectorAction(_ command: String, row: String?, in snapshot: InspectorSnapshot) async throws -> InspectorSnapshot? {
+    package func inspectorAction(_ command: String, row: String?, in snapshot: InspectorSnapshot) async throws -> InspectorSnapshot? {
         try await worker.submitThrowing { runtime in
             try runtime.performInspectorAction(command, row: row, in: snapshot)
         }
     }
 
-    func inspectorRecoveryContent(_ message: String) async throws -> UIElementInfo {
+    package func inspectorRecoveryContent(_ message: String) async throws -> UIElementInfo {
         try await Self.bundledInspectorWorker.submitThrowing { runtime in
             runtime.steps = 0
             let windowClass = try runtime.inspectorWindowClass()

@@ -67,6 +67,7 @@ products = {
     "Smalltalk80": ("Smalltalk80.app", "wrapper.application", "com.apple.product-type.application"),
     "SmalltalkCore": ("SmalltalkCore.framework", "wrapper.framework", "com.apple.product-type.framework"),
     "SmalltalkCoreTests": ("SmalltalkCoreTests.xctest", "wrapper.cfbundle", "com.apple.product-type.bundle.unit-test"),
+    "Smalltalk80Tests": ("Smalltalk80Tests.xctest", "wrapper.cfbundle", "com.apple.product-type.bundle.unit-test"),
     "Smalltalk80UITests": ("Smalltalk80UITests.xctest", "wrapper.cfbundle", "com.apple.product-type.bundle.ui-testing"),
 }
 product_refs = {
@@ -121,16 +122,17 @@ for name, (_, _, product_type) in products.items():
     frameworks = []
     dependencies = []
     extra_phases = []
-    if name in ["Smalltalk80", "SmalltalkCoreTests"]:
+    if name in {"Smalltalk80", "SmalltalkCoreTests", "Smalltalk80Tests"}:
         frameworks.append(add(f"Link.{name}.Core", "PBXBuildFile", fileRef=product_refs["SmalltalkCore"]))
         proxy = add(f"Proxy.{name}.Core", "PBXContainerItemProxy", containerPortal=uid("Project"), proxyType=1, remoteGlobalIDString=uid("Target.SmalltalkCore"), remoteInfo="SmalltalkCore")
         dependencies.append(add(f"Dependency.{name}.Core", "PBXTargetDependency", target=uid("Target.SmalltalkCore"), targetProxy=proxy))
     if name == "Smalltalk80":
         embed = add("Embed.Core", "PBXBuildFile", fileRef=product_refs["SmalltalkCore"], settings={"ATTRIBUTES": ["CodeSignOnCopy", "RemoveHeadersOnCopy"]})
         extra_phases.append(add("Embed.Frameworks", "PBXCopyFilesBuildPhase", buildActionMask=2147483647, dstPath="", dstSubfolderSpec=10, files=[embed], name="Embed Frameworks", runOnlyForDeploymentPostprocessing=0))
-    if name == "Smalltalk80UITests":
-        proxy = add("Proxy.UI.App", "PBXContainerItemProxy", containerPortal=uid("Project"), proxyType=1, remoteGlobalIDString=uid("Target.Smalltalk80"), remoteInfo="Smalltalk80")
-        dependencies.append(add("Dependency.UI.App", "PBXTargetDependency", target=uid("Target.Smalltalk80"), targetProxy=proxy))
+    if name in {"Smalltalk80Tests", "Smalltalk80UITests"}:
+        key = "UI" if name == "Smalltalk80UITests" else name
+        proxy = add(f"Proxy.{key}.App", "PBXContainerItemProxy", containerPortal=uid("Project"), proxyType=1, remoteGlobalIDString=uid("Target.Smalltalk80"), remoteInfo="Smalltalk80")
+        dependencies.append(add(f"Dependency.{key}.App", "PBXTargetDependency", target=uid("Target.Smalltalk80"), targetProxy=proxy))
     framework_phase = add(f"Frameworks.{name}", "PBXFrameworksBuildPhase", buildActionMask=2147483647, files=frameworks, runOnlyForDeploymentPostprocessing=0)
     resource_phase = add(f"Resources.{name}", "PBXResourcesBuildPhase", buildActionMask=2147483647, files=resource_builds[name], runOnlyForDeploymentPostprocessing=0)
     settings = {
@@ -141,7 +143,7 @@ for name, (_, _, product_type) in products.items():
         "MARKETING_VERSION": "0.1.0",
         "LD_RUNPATH_SEARCH_PATHS": ["$(inherited)", "@executable_path/../Frameworks", "@loader_path/../Frameworks", "$(BUILT_PRODUCTS_DIR)"],
     }
-    if name in {"Smalltalk80", "SmalltalkCore", "SmalltalkCoreTests"}:
+    if name != "Smalltalk80UITests":
         settings["SWIFT_PACKAGE_NAME"] = "Smalltalk80"
     if name == "Smalltalk80":
         settings.update({
@@ -155,6 +157,11 @@ for name, (_, _, product_type) in products.items():
         })
     elif name == "SmalltalkCore":
         settings.update({"DEFINES_MODULE": "YES", "SKIP_INSTALL": "YES", "DYLIB_COMPATIBILITY_VERSION": "1", "DYLIB_CURRENT_VERSION": "1", "INSTALL_PATH": "$(LOCAL_LIBRARY_DIR)/Frameworks", "LD_DYLIB_INSTALL_NAME": "@rpath/$(EXECUTABLE_PATH)"})
+    elif name == "Smalltalk80Tests":
+        settings.update({
+            "TEST_HOST": "$(BUILT_PRODUCTS_DIR)/Smalltalk80.app/Contents/MacOS/Smalltalk80",
+            "BUNDLE_LOADER": "$(TEST_HOST)",
+        })
     elif name == "Smalltalk80UITests":
         settings["TEST_TARGET_NAME"] = "Smalltalk80"
     target_configs = configurations(name, settings)
@@ -163,7 +170,7 @@ for name, (_, _, product_type) in products.items():
 add("Project", "PBXProject", attributes={
     "BuildIndependentTargetsInParallel": "YES",
     "LastUpgradeCheck": "2730",
-    "TargetAttributes": {uid(f"Target.{name}"): {"CreatedOnToolsVersion": "27.3", **({"TestTargetID": uid("Target.Smalltalk80")} if name == "Smalltalk80UITests" else {})} for name in products},
+    "TargetAttributes": {uid(f"Target.{name}"): {"CreatedOnToolsVersion": "27.3", **({"TestTargetID": uid("Target.Smalltalk80")} if name in {"Smalltalk80Tests", "Smalltalk80UITests"} else {})} for name in products},
 }, buildConfigurationList=project_configs, compatibilityVersion="Xcode 14.0", developmentRegion="en", hasScannedForEncodings=0, knownRegions=["en", "Base"], mainGroup=main_group, productRefGroup=products_group, projectDirPath="", projectRoot="", targets=targets)
 
 PROJECT.mkdir(exist_ok=True)
@@ -187,6 +194,7 @@ scheme = f'''<?xml version="1.0" encoding="UTF-8"?>
   <TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="YES">
     <Testables>
       <TestableReference skipped="NO" parallelizable="NO">{reference("SmalltalkCoreTests")}</TestableReference>
+      <TestableReference skipped="NO" parallelizable="NO">{reference("Smalltalk80Tests")}</TestableReference>
       <TestableReference skipped="NO" parallelizable="NO">{reference("Smalltalk80UITests")}</TestableReference>
     </Testables>
   </TestAction>

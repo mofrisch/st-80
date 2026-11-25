@@ -224,6 +224,7 @@ extension SmalltalkRuntime {
         try checkAllocation()
         let object = STObject(stClass)
         memory.register(object)
+        registerMVCBinding(object)
         return object
     }
 

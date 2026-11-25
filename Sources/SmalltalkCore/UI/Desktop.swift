@@ -103,6 +103,8 @@ extension SmalltalkSession {
 }
 
 extension SmalltalkRuntime {
+    static let desktopWindowLimit = 128
+
     func performWindowAction(_ action: WindowAction) -> EvaluationResult {
         beginEvaluation()
         do {
@@ -209,7 +211,7 @@ extension SmalltalkRuntime {
 
     func projectedWindow(withID id: Int64) -> STObject? {
         guard let windows = desktopWindows else { return nil }
-        for case .object(let window) in windows.elements.prefix(128) {
+        for case .object(let window) in windows.elements.prefix(Self.desktopWindowLimit) {
             if case .integer(id)? = window.fields["id"] { return window }
         }
         return nil
@@ -240,9 +242,9 @@ extension SmalltalkRuntime {
         guard globals["Desktop"] != nil else { return ([], nil, nil) }
         guard let model = desktopModel, let list = desktopWindows else { return ([], nil, "Desktop has no valid window list.") }
         var windows: [ToolWindowInfo] = [], ids: Set<Int64> = []
-        var warning: String? = list.elements.count > 128 ? "Desktop has more than 128 windows." : nil
+        var warning: String? = list.elements.count > Self.desktopWindowLimit ? "Desktop has more than \(Self.desktopWindowLimit) windows." : nil
         var activeID: Int64?
-        for value in list.elements.prefix(128) {
+        for value in list.elements.prefix(Self.desktopWindowLimit) {
             guard case .object(let object) = value,
                   case .integer(let id)? = object.fields["id"], id > 0, ids.insert(id).inserted,
                   case .symbol(let name)? = object.fields["kind"], let kind = ToolKind(rawValue: name),

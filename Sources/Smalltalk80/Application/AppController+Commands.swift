@@ -56,44 +56,26 @@ extension AppController {
     }
 
     func editorContextItems(windowID: Int64, editor: UIElementInfo) -> [EditorContextItem] {
-        let window = presentedWindow(windowID)?.info
-        let isWorkspaceEditor = window.flatMap { workspaceEditor(in: $0) }?.id == editor.id
-        if windowPresentation.isRecovering {
-            guard isWorkspaceEditor, let window else { return [] }
-            return ["doIt", "printIt", "inspectIt"].compactMap { command in
-                window.content?.firstVisible(where: { $0.command == command && $0.selectionSource == editor.id })
-                    .flatMap(EditorContextItem.init(projected:))
-            }
+        guard windowPresentation.isRecovering else {
+            return (editor.contextMenuItems ?? []).compactMap(EditorContextItem.init(projected:))
         }
-        var items: [EditorContextItem]
-        if let projected = editor.contextMenuItems {
-            items = projected.compactMap(EditorContextItem.init(projected:))
-            guard !items.isEmpty, !projected.contains(where: { $0.command == "debugIt" }) else { return items }
-        } else if isWorkspaceEditor, let window {
-            // An older image already defines the first two commands on its toolbar.
-            items = ["doIt", "printIt"].compactMap { command in
-                window.content?.firstVisible(where: { $0.command == command && $0.selectionSource == editor.id })
-                    .flatMap(EditorContextItem.init(projected:))
-            }
-            items.append(.command(title: "Inspect it", identifier: "inspectIt", action: .legacyInspect, enabled: true))
-        } else {
-            return []
-        }
-        if isWorkspaceEditor {
-            items.append(.command(title: "Debug it", identifier: "debugIt",
-                                  action: .debugWorkspace(editorID: editor.id), enabled: true))
-        }
-        return items
+        guard let window = presentedWindow(windowID)?.info, workspaceEditor(in: window)?.id == editor.id else { return [] }
+        return [
+            .command(title: "Do it", identifier: "doIt", action: .recovery(.evaluate, editorID: editor.id), enabled: true),
+            .command(title: "Print it", identifier: "printIt", action: .recovery(.print, editorID: editor.id), enabled: true),
+            .command(title: "Inspect it", identifier: "inspectIt", action: .recovery(.inspect, editorID: editor.id), enabled: true)
+        ]
     }
 
-    func performEditorContextAction(_ action: EditorContextAction, windowID: Int64, selection: String? = nil) async {
+    func performEditorContextAction(_ action: EditorContextAction, windowID: Int64, selection: String) async {
         switch action {
         case .control(let id):
+            guard !windowPresentation.isRecovering else { return }
             await clickControl(windowID: windowID, elementID: id, selection: selection)
-        case .legacyInspect:
-            await inspectLegacyWorkspace(windowID: windowID, capturedSelection: selection)
-        case .debugWorkspace(let editorID):
-            await debugWorkspace(windowID: windowID, editorID: editorID, capturedSelection: selection)
+        case .recovery(let command, let editorID):
+            guard windowPresentation.isRecovering, let window = presentedWindow(windowID)?.info,
+                  let editor = workspaceEditor(in: window), editor.id == editorID else { return }
+            await recoverWorkspace(window, editor: editor, action: command, selection: selection)
         }
     }
 
@@ -120,13 +102,12 @@ extension AppController {
         debugSession?.send(.stop)
     }
 
-    func debugWorkspace(windowID: Int64, editorID: String, capturedSelection: String? = nil,
-                        preparedSource: String? = nil) async {
+    func debugWorkspace(windowID: Int64, editorID: String, preparedSource: String? = nil) async {
         guard let window = presentedWindow(windowID)?.info,
               let editor = workspaceEditor(in: window), editor.id == editorID else { return }
         await runOperation {
             let text = inputText(windowID: windowID, element: editor)
-            let selected = capturedSelection ?? selectedText(in: editor, windowID: windowID, text: text)
+            let selected = selectedText(in: editor, windowID: windowID, text: text)
             let source = preparedSource ?? (selected.isEmpty ? text : selected)
             let debuggerWindowID = UUID()
             var presentation: DebuggerPresentationState?
@@ -221,12 +202,12 @@ extension AppController {
         await inspectLegacyWorkspace(windowID: windowID)
     }
 
-    private func inspectLegacyWorkspace(windowID: Int64, capturedSelection: String? = nil) async {
+    private func inspectLegacyWorkspace(windowID: Int64) async {
         guard let window = presentedWindow(windowID)?.info,
               let editor = legacyWorkspaceEditor(in: window) else { return }
         await runOperation {
             let text = inputText(windowID: windowID, element: editor)
-            let selected = capturedSelection ?? selectedText(in: editor, windowID: windowID, text: text)
+            let selected = selectedText(in: editor, windowID: windowID, text: text)
             let source = selected.isEmpty ? text : selected
             await attemptToFlushWindowState()
             guard let current = presentedWindow(windowID)?.info, legacyWorkspaceEditor(in: current)?.id == editor.id else { return }

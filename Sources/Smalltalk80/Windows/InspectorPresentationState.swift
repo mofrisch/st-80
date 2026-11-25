@@ -1,26 +1,27 @@
 import Foundation
 import Observation
+import SmalltalkCore
 
 @MainActor
 @Observable
-package final class InspectorPresentationState {
+final class InspectorPresentationState {
     private let session: SmalltalkSession
     @ObservationIgnored private var snapshot: InspectorSnapshot
     @ObservationIgnored private var rendering: Task<Void, Never>?
-    package private(set) var content: UIElementInfo?
-    package private(set) var isLoading = true
+    private(set) var content: UIElementInfo?
+    private(set) var isLoading = true
 
-    package init(snapshot: InspectorSnapshot, session: SmalltalkSession) {
+    init(snapshot: InspectorSnapshot, session: SmalltalkSession) {
         self.snapshot = snapshot
         self.session = session
         render()
     }
 
-    package func click(_ control: UIElementInfo) { perform(control, row: nil) }
+    func click(_ control: UIElementInfo) { perform(control, row: nil) }
 
-    package func select(_ control: UIElementInfo, row: String) { perform(control, row: row) }
+    func select(_ control: UIElementInfo, row: String) { perform(control, row: row) }
 
-    package func close() {
+    func close() {
         rendering?.cancel()
         rendering = nil
         let id = snapshot.id

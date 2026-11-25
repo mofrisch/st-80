@@ -18,5 +18,6 @@ let package = Package(
         ),
         .executableTarget(name: "SmalltalkBootstrap", dependencies: ["SmalltalkCore"]),
         .testTarget(name: "SmalltalkCoreTests", dependencies: ["SmalltalkCore"], resources: [.copy("SmalltalkTests")]),
+        .testTarget(name: "Smalltalk80Tests", dependencies: ["Smalltalk80", "SmalltalkCore"]),
     ]
 )

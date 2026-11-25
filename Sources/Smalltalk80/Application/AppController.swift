@@ -240,18 +240,20 @@ final class AppController {
         var failures: [Int64: String] = [:]
         var editedWindows: Set<Int64> = []
         var acknowledged: [ControlEdits.TextEdit] = []
+        var ignored: Set<ControlAddress> = []
         for edit in controlEdits.pendingEdits {
             let address = edit.address
             // Editors must remain usable for repairing a rejected form input.
             if !failures.isEmpty && !controlEdits.isCodeEditor(address) { continue }
-            let evaluation = await session.uiAction(.text(windowID: address.windowID, elementID: address.elementID, value: edit.text))
+            let result = await session.dispatchUIAction(.text(windowID: address.windowID, elementID: address.elementID, value: edit.text))
             guard inputEpoch == epoch else { return true }
+            let evaluation = result.evaluation
             latestInput = evaluation
             editedWindows.insert(address.windowID)
-            if let error = evaluation.executionError {
-                failures[address.windowID] = error
-            } else {
-                acknowledged.append(edit)
+            switch result.disposition {
+            case .applied: acknowledged.append(edit)
+            case .ignored: ignored.insert(address)
+            case .rejected(let reason): failures[address.windowID] = reason
             }
             if !evaluation.toolRequests.isEmpty { apply(evaluation) }
         }
@@ -260,6 +262,11 @@ final class AppController {
         if let latestInput { apply(latestInput) }
         if !windowPresentation.isRecovering {
             for edit in acknowledged { controlEdits.acknowledge(edit) }
+        }
+        // Reconciliation drops drafts whose controls were removed. A control
+        // that still exists may accept its draft on a later flush.
+        for address in ignored where controlEdits.hasDraft(at: address) && failures[address.windowID] == nil {
+            failures[address.windowID] = "The control could not accept its pending edit. The draft is still available."
         }
         for id in editedWindows { windowPresentation.setInputError(failures[id], for: id) }
         return failures.isEmpty

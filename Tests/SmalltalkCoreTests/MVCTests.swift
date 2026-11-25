@@ -134,6 +134,105 @@ struct MVCTests {
         #expect(elements(clicked.windows.last?.content).contains { $0.kind == .textField && $0.text.isEmpty })
     }
 
+    @Test func restoredBindingsReconcileThroughTheImageHook() async throws {
+        let donor = SmalltalkSession()
+        try #require(await donor.evaluate(SmalltalkExamples.userInterface).error == nil)
+        try #require(await donor.evaluate("mountChanges := 0").error == nil)
+        try #require(await donor.compile("""
+        reconcileMount: isMounted
+            mountChanges := mountChanges + 1.
+            isMounted ifTrue: [ ^ self connect ].
+            ^ self disconnect
+        """, in: "UIBinding").error == nil)
+        let restored = SmalltalkSession()
+        let loaded = try await restored.loadImage(donor.imageData())
+        let window = try #require(loaded.evaluation.windows.first { $0.kind == .custom })
+        #expect(loaded.evaluation.bindings.first { $0.name == "mountChanges" }?.value == "0")
+        #expect(await restored.snapshot().bindings.first { $0.name == "mountChanges" }?.value == "0")
+        #expect(await restored.evaluate("greetingModel dependents size").value == "2")
+
+        let closed = await restored.windowAction(.close(window.id))
+        #expect(closed.error == nil)
+        #expect(closed.bindings.first { $0.name == "mountChanges" }?.value == "2")
+        #expect(await restored.evaluate("greetingModel dependents size").value == "0")
+
+        let opened = await restored.evaluate("greetingView open")
+        #expect(opened.error == nil)
+        #expect(opened.bindings.first { $0.name == "mountChanges" }?.value == "4")
+        #expect(await restored.evaluate("greetingModel dependents size").value == "2")
+    }
+
+    @Test(arguments: [false, true])
+    func imagesMissingTheBindingLifecycleMethodAreRejected(fileImage: Bool) async throws {
+        let donor = SmalltalkSession()
+        let current = SmalltalkSession()
+        try #require(await current.evaluate("kept := 73").error == nil)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("st80-mvc-image-\(UUID())")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+        let selector = "reconcileMount:"
+
+        do {
+            if fileImage {
+                let url = directory.appendingPathComponent("Old.stimage")
+                try await donor.saveImage(to: url, workspace: "", transcript: "")
+                let archive = try decoder.decode(ImageFileArchive.self, from: Data(contentsOf: url))
+                let methods = archive.methods.filter { $0.className != "UIBinding" || $0.code.selector != selector }
+                try #require(methods.count == archive.methods.count - 1)
+                let older = ImageFileArchive(memory: archive.memory, methods: methods,
+                                             sourcesFile: archive.sourcesFile, sourcesID: archive.sourcesID,
+                                             changesFile: archive.changesFile, changesID: archive.changesID,
+                                             checkpoint: archive.checkpoint)
+                try encoder.encode(older).write(to: url)
+                _ = try await current.loadImage(from: url)
+            } else {
+                var archive = try await decoder.decode(ImageArchive.self, from: donor.imageData())
+                let bindingClass = try #require(archive.classes.firstIndex { $0.name == "UIBinding" })
+                archive.classes[bindingClass].methods.removeValue(forKey: selector)
+                archive.executableMethods?["UIBinding"]?.removeValue(forKey: selector)
+                _ = try await current.loadImage(encoder.encode(archive))
+            }
+            Issue.record("The image without a binding lifecycle method loaded.")
+        } catch let error as SmalltalkError {
+            #expect(error.message.contains("The image is missing UIBinding>>reconcileMount:"))
+        }
+        #expect(await current.evaluate("kept").value == "73")
+    }
+
+    @Test func existingInstancesJoinTheBindingIndexAfterReparenting() async throws {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+        Object subclass: #FutureBinding instanceVariableNames: ''.
+        binding := FutureBinding new.
+        ToolVM acceptDefinition: 'UIBinding subclass: #FutureBinding instanceVariableNames: ''''' in: FutureBinding basedOn: (ToolVM definitionOf: FutureBinding).
+        binding initialize.
+        model := Model new.
+        binding source: model aspect: #isNil view: UILabel new property: #enabled.
+        binding connect
+        """)
+        try #require(result.error == nil)
+        #expect(await session.evaluate("FutureBinding superclass name").value == "#UIBinding")
+        #expect(await session.evaluate("binding active").value == "false")
+        #expect(await session.evaluate("model dependents size").value == "0")
+    }
+
+    @Test func theBindingIndexDoesNotKeepACollectedBindingAlive() async throws {
+        let session = SmalltalkSession()
+        try #require(await session.evaluate("temporaryBinding := UIBinding new").error == nil)
+        let reclaimed = await session.worker.submit { runtime in
+            weak var binding: STObject?
+            if case .object(let object)? = runtime.globals.removeValue(forKey: "temporaryBinding") {
+                binding = object
+            }
+            guard binding != nil else { return false }
+            runtime.collectGarbage()
+            return binding == nil
+        }
+        #expect(reclaimed)
+    }
+
     @Test func corruptDependencyGraphsAreRejectedTransactionally() async throws {
         let donor = SmalltalkSession()
         _ = await donor.evaluate(SmalltalkExamples.userInterface)

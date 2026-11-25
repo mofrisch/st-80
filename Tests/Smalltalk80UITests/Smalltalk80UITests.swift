@@ -931,6 +931,70 @@ final class Smalltalk80UITests: XCTestCase {
         }
     }
 
+    func testWorkspaceContextMenuOnlyShowsCommandsDefinedInSmalltalk() {
+        let app = launchFreshApp()
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        let execute = workspace.buttons["executeButton"]
+        replaceText(in: editor, with: """
+        menuProbe := 0.
+        menuEditor := (Desktop windowAt: 1) content children at: 3.
+        menuEditor contextMenu: (UIMenu new add: (UIButton new title: 'Run Probe';
+            command: #runProbe; action: [ menuProbe := 42 ]; yourself); yourself).
+        #menuChanged
+        """)
+        execute.click()
+        XCTAssertTrue(workspace.staticTexts["#menuChanged"].waitForExistence(timeout: 5))
+
+        editor.coordinate(withNormalizedOffset: CGVector(dx: 0.45, dy: 0.45)).rightClick()
+        let custom = app.menuItems["editorContext-runProbe"].firstMatch
+        XCTAssertTrue(custom.waitForExistence(timeout: 5))
+        XCTAssertEqual(custom.title, "Run Probe")
+        XCTAssertFalse(app.menuItems["editorContext-debugIt"].exists)
+        custom.click()
+
+        replaceText(in: editor, with: "menuProbe")
+        execute.click()
+        XCTAssertTrue(workspace.staticTexts["42"].waitForExistence(timeout: 5))
+    }
+
+    func testWorkspaceRecoveryMenuWorksWithoutProjectedCommands() {
+        let app = launchFreshApp()
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        let execute = workspace.buttons["executeButton"]
+        replaceText(in: editor, with: """
+        menuRoot := (Desktop windowAt: 1) content.
+        (menuRoot children at: 3) contextMenu: nil.
+        ((menuRoot children at: 1) children at: 2) visible: false.
+        #commandsHidden
+        """)
+        execute.click()
+        XCTAssertTrue(workspace.staticTexts["#commandsHidden"].waitForExistence(timeout: 5))
+        replaceText(in: editor, with: "heldWindows := Desktop windows. Desktop model windows: nil")
+        execute.click()
+        let message = "Desktop has no valid window list."
+        let failure = workspace.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", message, message)).firstMatch
+        XCTAssertTrue(failure.waitForExistence(timeout: 5))
+
+        replaceText(in: editor, with: "1 / 0.\n6 * 7")
+        editor.typeKey(.leftArrow, modifierFlags: [.command, .shift])
+        editor.coordinate(withNormalizedOffset: CGVector(dx: 0.45, dy: 0.45)).rightClick()
+        let evaluate = app.menuItems["editorContext-doIt"].firstMatch
+        XCTAssertTrue(evaluate.waitForExistence(timeout: 5))
+        let print = app.menuItems["editorContext-printIt"].firstMatch
+        let inspect = app.menuItems["editorContext-inspectIt"].firstMatch
+        XCTAssertTrue(print.exists && print.isEnabled)
+        XCTAssertTrue(inspect.exists && inspect.isEnabled)
+        XCTAssertFalse(app.menuItems["editorContext-debugIt"].exists)
+        evaluate.click()
+
+        let result = workspace.staticTexts["workspaceRecoveryResult"]
+        XCTAssertTrue(result.waitForExistence(timeout: 5))
+        XCTAssertEqual(result.value as? String ?? result.label, "42")
+        XCTAssertTrue(failure.exists)
+    }
+
     func testWorkspaceDebuggerStepsIntoSelectedCodeAndContinues() {
         let app = launchFreshApp()
         let workspace = app.windows["toolWindow-1"]
@@ -1356,6 +1420,51 @@ final class Smalltalk80UITests: XCTestCase {
         wait(for: [expectation(for: NSCompoundPredicate(notPredicateWithSubpredicate: printed), evaluatedWith: transcript)], timeout: 5)
         XCTAssertTrue(transcript.exists)
         XCTAssertEqual(editor.value as? String, unsaved)
+    }
+
+    func testIgnoredFormEditKeepsItsDraftUntilTheControlAcceptsIt() {
+        let app = launchFreshApp()
+        defer { app.terminate() }
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        replaceText(in: editor, with: """
+        UITextField subclass: #GateField instanceVariableNames: ''.
+        GateField compile: 'editText: aString
+            heldField enabled: false.
+            ^ super editText: aString'.
+        gate := GateField new identifier: 'gate'; label: 'Gate'; yourself.
+        heldField := UITextField new identifier: 'heldField'; label: 'Draft'; yourself.
+        resultLabel := UILabel new text: 'Ready'; yourself.
+        submit := UIButton new identifier: 'submit'; title: 'Submit';
+            action: [ resultLabel text: heldField text ]; yourself.
+        form := UIWindow new content: (UIColumn new add: gate; add: heldField; add: submit; add: resultLabel; yourself); open
+        """)
+        workspace.buttons["executeButton"].click()
+        let form = app.windows["toolWindow-4"]
+        let gate = form.textFields["gate"]
+        let field = form.textFields["heldField"]
+        let submit = form.buttons["submit"]
+        XCTAssertTrue(gate.waitForExistence(timeout: 10))
+
+        // Neither field has live input. The first edit disables the second
+        // while the app is flushing both pending edits for Submit.
+        gate.click()
+        pasteText("Close the gate", into: gate)
+        field.click()
+        pasteText("Retained draft", into: field)
+        submit.click()
+        XCTAssertTrue(form.staticTexts["The control could not accept its pending edit. The draft is still available."].waitForExistence(timeout: 5))
+        XCTAssertFalse(field.isEnabled)
+        XCTAssertEqual(field.value as? String, "Retained draft")
+        XCTAssertTrue(form.staticTexts["Ready"].exists)
+
+        submit.typeKey("1", modifierFlags: .command)
+        replaceText(in: editor, with: "heldField enabled: true")
+        workspace.buttons["executeButton"].click()
+        let enabled = expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: field)
+        wait(for: [enabled], timeout: 5)
+        submit.click()
+        XCTAssertTrue(form.staticTexts["Retained draft"].waitForExistence(timeout: 5))
     }
 
     func testSmalltalkFormFlushesInputsBeforeClickAndSurvivesImageRelaunch() throws {

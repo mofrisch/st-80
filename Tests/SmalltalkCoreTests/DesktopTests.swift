@@ -51,6 +51,53 @@ struct DesktopTests {
         #expect(await value("(Desktop windowAt: \(second.id)) text", in: session) == "'shared + 2'")
     }
 
+    @Test func workspaceImportUsesTheNewWindowReturnedBySmalltalk() async throws {
+        let session = SmalltalkSession()
+        let initial = await session.snapshot()
+        let existing = try #require(initial.windows.first { $0.kind == .workspace })
+        let configured = await session.compile("""
+        openWorkspace
+            | previous opened |
+            previous := self windowAt: \(existing.id).
+            opened := self createKind: #workspace title: 'Imported Workspace'.
+            self activate: previous.
+            ^ opened
+        """, in: "DesktopManager")
+        try #require(configured.error == nil)
+
+        let source = "\"Grüße 👋\"\nsourceWasRun := 42"
+        let imported = await session.openWorkspace(source: source)
+        let workspace = try imported.outcome.get()
+        #expect(imported.evaluation.error == nil)
+        #expect(imported.evaluation.activeWindowID == existing.id)
+        #expect(imported.evaluation.windows.count == initial.windows.count + 1)
+        #expect(workspace.id != existing.id)
+        #expect(workspace.identity != existing.identity)
+        #expect(workspace.kind == .workspace)
+        #expect(workspace.text == source)
+        #expect(imported.evaluation.windows.first { $0.identity == workspace.identity }?.text == source)
+        #expect(imported.evaluation.windows.first { $0.identity == existing.identity }?.text == existing.text)
+        #expect(!imported.evaluation.bindings.contains { $0.name == "sourceWasRun" })
+    }
+
+    @Test func workspaceImportRejectsAnExistingWindowWithoutOverwritingIt() async throws {
+        let session = SmalltalkSession()
+        let initial = await session.snapshot()
+        let existing = try #require(initial.windows.first { $0.kind == .workspace })
+        let configured = await session.compile("openWorkspace ^ self windowAt: \(existing.id)", in: "DesktopManager")
+        try #require(configured.error == nil)
+
+        let imported = await session.openWorkspace(source: "This would overwrite the workspace")
+        guard case .failure(let error) = imported.outcome else {
+            Issue.record("Expected the import to reject the existing workspace.")
+            return
+        }
+        #expect(error.message.contains("did not create a new workspace window"))
+        #expect(imported.evaluation.executionError == error.message)
+        #expect(imported.evaluation.windows.count == initial.windows.count)
+        #expect(imported.evaluation.windows.first { $0.identity == existing.identity }?.text == existing.text)
+    }
+
     @Test func activationRestoresMinimizedWindowsAndClosingPreservesOtherTools() async throws {
         let session = SmalltalkSession()
         let initial = await session.snapshot()

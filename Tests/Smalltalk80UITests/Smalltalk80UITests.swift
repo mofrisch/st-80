@@ -1646,7 +1646,11 @@ final class Smalltalk80UITests: XCTestCase {
         let workspace = app.windows["toolWindow-1"]
         let editor = workspace.textViews["workspaceEditor"]
         replaceText(in: editor, with: source + """
-        . greetingView moveToX: 100 y: 1000.
+        . nameEdits := 0.
+        GreetingController compile: 'nameChanged: aString
+            nameEdits := nameEdits + 1.
+            model name: aString'.
+        greetingView moveToX: 100 y: 1000.
         mirrorView := GreetingView new.
         mirrorView moveToX: 650 y: 1000.
         mirrorView model: greetingModel controller: greetingController; open
@@ -1670,11 +1674,16 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertEqual(field.value as? String, "Dr. Moritz")
 
         focusWindow("Workspace", in: app)
-        replaceText(in: editor, with: "greetingModel name: 'Ada'")
+        replaceText(in: editor, with: "editsBeforeAda := nameEdits. greetingModel name: 'Ada'")
         workspace.buttons["executeButton"].click()
         XCTAssertTrue(first.staticTexts["Hello, Ada!"].waitForExistence(timeout: 5))
         XCTAssertTrue(second.staticTexts["Hello, Ada!"].exists)
         XCTAssertEqual(field.value as? String, "Ada")
+        // A second command flushes queued edits. Showing Ada must not have run
+        // the input controller again, even if it writes back the same name.
+        replaceText(in: editor, with: "greetingModel name , ' / ' , (nameEdits - editsBeforeAda) printString")
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(workspace.staticTexts["'Ada / 0'"].waitForExistence(timeout: 5))
         second.buttons["Clear"].click()
         XCTAssertTrue(first.staticTexts["No greeting yet."].waitForExistence(timeout: 5))
         XCTAssertEqual(field.value as? String, "")

@@ -66,12 +66,13 @@ struct UIElementView: View {
         case .button:
             button
         case .textField:
+            let fieldText = text
             VStack(alignment: .leading, spacing: 4) {
                 if !element.label.isEmpty { Text(element.label).font(.callout) }
-                TextField(element.placeholder, text: text)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityLabel(element.label.isEmpty ? element.placeholder : element.label)
-                    .accessibilityIdentifier(identifier)
+                NativeTextField(text: fieldText.wrappedValue, placeholder: element.placeholder, identifier: identifier,
+                                label: element.label.isEmpty ? element.placeholder : element.label) {
+                    fieldText.wrappedValue = $0
+                }
             }
         case .codeEditor:
             if let options = element.editor {

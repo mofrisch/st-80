@@ -1,11 +1,9 @@
-import Foundation
 import SmalltalkCore
 
-/// The VM snapshot owns display state. File associations and input errors are
-/// attached to the lifetime of a particular window.
+/// The VM snapshot owns display state. Input errors are attached to the
+/// lifetime of a particular window.
 struct PresentedWindow {
     fileprivate(set) var info: ToolWindowInfo
-    fileprivate(set) var documentURL: URL?
     fileprivate(set) var inputError: String?
     fileprivate(set) var recoveryResult: String?
 }
@@ -54,10 +52,6 @@ struct WindowPresentation {
             return existing
         }
         activeID = evaluation.activeWindowID
-    }
-
-    mutating func setDocumentURL(_ url: URL, for id: Int64) {
-        if let index = index(of: id) { windows[index].documentURL = url }
     }
 
     mutating func setInputError(_ error: String?, for id: Int64) {

@@ -7,7 +7,6 @@ TranscriptModel compile: 'initialize
     contents := '''''.
 
 TranscriptModel compile: 'text
-    contents size = 0 ifTrue: [ ^ ''Transcript show: ''''Hello''''; cr.'' ].
     ^ contents'.
 
 TranscriptModel compile: 'append: aString

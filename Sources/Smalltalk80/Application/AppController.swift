@@ -394,11 +394,6 @@ final class AppController {
         imageHasChanges = true
     }
 
-    func associateWorkspace(_ windowID: Int64, with url: URL, afterOpening: Bool = false) {
-        windowPresentation.setDocumentURL(url, for: windowID)
-        if afterOpening { imageHasChanges = true }
-    }
-
     func setSavedImageURL(_ url: URL?, includingPendingEdits: Bool = false) {
         imageURL = url
         imageHasChanges = includingPendingEdits && (controlEdits.hasPendingEdits || !pendingWindowEvents.isEmpty)

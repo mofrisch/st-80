@@ -9,18 +9,11 @@ struct Smalltalk80App: App {
         Settings { Text("Windows and session state are stored in the Smalltalk image.").padding(24) }
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("New Workspace") { Task { await controller.openTool(.workspace) } }.keyboardShortcut("n").disabled(controller.isRunning)
-                Button("Open Workspace …") { Task { await controller.openWorkspace() } }.keyboardShortcut("o").disabled(controller.isRunning)
-                Button(controller.activeKind == .browser ? "Accept" : "Save Workspace …") {
-                    Task {
-                        if controller.activeKind == .browser { await controller.performCommand("acceptMethod") }
-                        else { await controller.saveWorkspace() }
-                    }
+                if controller.activeKind == .browser {
+                    Button("Accept") { Task { await controller.performCommand("acceptMethod") } }
+                        .keyboardShortcut("s").disabled(controller.isRunning || !controller.hasCommand("acceptMethod"))
+                    Divider()
                 }
-                .keyboardShortcut("s")
-                .disabled(controller.isRunning || (controller.activeKind == .browser
-                    ? !controller.hasCommand("acceptMethod") : controller.workspaceWindow == nil))
-                Divider()
                 Button("Open Image …") { Task { await controller.openImage() } }
                     .keyboardShortcut("o", modifiers: [.command, .shift]).disabled(controller.isRunning)
                 Button(controller.imageURL == nil ? "Save Image …" : "Save Image") { Task { await controller.saveImage() } }

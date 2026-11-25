@@ -207,7 +207,10 @@ DesktopManager compile: 'open: aWindow
     self append: aWindow.
     ^ self activate: aWindow'.
 DesktopManager compile: 'openWorkspace
-    ^ self createKind: #workspace title: ''Workspace'''.
+    | window |
+    window := self createKind: #workspace title: ''Workspace''.
+    window notNil ifTrue: [ window text: ''Transcript show: ''''Hello''''; cr.'' ].
+    ^ window'.
 DesktopManager compile: 'openWindow
     ^ self open: UIWindow new'.
 DesktopManager compile: 'showWorkspace
@@ -218,7 +221,10 @@ DesktopManager compile: 'showWorkspace
 DesktopManager compile: 'openBrowser
     ^ self createKind: #browser title: ''System Browser'''.
 DesktopManager compile: 'openTranscript
-    ^ self createKind: #transcript title: ''Transcript'''.
+    | existing | existing := nil.
+    self windows do: [ :each | each kind = #transcript ifTrue: [ existing := each ] ].
+    existing isNil ifTrue: [ ^ self createKind: #transcript title: ''Transcript'' ].
+    ^ self activate: existing'.
 DesktopManager compile: 'openChanges
     | existing | existing := self windowOfKind: #changes.
     existing notNil ifTrue: [ ^ self activate: existing ].

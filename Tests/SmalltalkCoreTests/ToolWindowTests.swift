@@ -354,7 +354,7 @@ struct ToolWindowTests {
         let session = SmalltalkSession()
         let initial = try await openTools(.transcript, in: session)
         let initialWindow = try #require(initial.windows.first { $0.kind == .transcript })
-        let initialText = try #require(element("transcriptOutput", in: initialWindow.content)?.text)
+        #expect(element("transcriptOutput", in: initialWindow.content)?.text == "")
         let firstHalf = await session.evaluate("""
         chunk := '🌍'.
         1 to: 13 do: [ :index | chunk := chunk , chunk ].
@@ -379,7 +379,7 @@ struct ToolWindowTests {
         let clear = try #require(window.content?.contextMenuItems?.first { $0.command == "clearTranscript" })
         let cleared = await session.uiAction(.click(windowID: window.id, elementID: clear.id))
         #expect(cleared.error == nil)
-        #expect(element("transcriptOutput", in: cleared.windows.first { $0.id == window.id }?.content)?.text == initialText)
+        #expect(element("transcriptOutput", in: cleared.windows.first { $0.id == window.id }?.content)?.text == "")
     }
 
     @Test func browserOrganizationEditsSurviveClosingTheBrowserAndLoadingAnImage() async throws {

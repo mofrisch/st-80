@@ -21,56 +21,6 @@ extension AppController {
         }
     }
 
-    func openWorkspace() async {
-        await runOperation {
-            let panel = NSOpenPanel()
-            panel.allowedContentTypes = [.plainText, UTType(filenameExtension: "st") ?? .plainText]
-            panel.allowsOtherFileTypes = true
-            panel.canChooseDirectories = false
-            guard panel.runModal() == .OK, let url = panel.url else { return }
-            do {
-                let source = try String(contentsOf: url, encoding: .utf8)
-                await attemptToFlushWindowState()
-                let opened = await session.openWorkspace(source: source)
-                apply(opened.evaluation)
-                switch opened.outcome {
-                case .success(let workspace):
-                    guard presentedWindow(workspace.id)?.info.identity == workspace.identity else { return }
-                    associateWorkspace(workspace.id, with: url, afterOpening: true)
-                case .failure(let failure):
-                    error = failure.localizedDescription
-                    presentErrorWithoutActiveWindow(failure.localizedDescription, title: "Could not open the workspace")
-                }
-            } catch {
-                self.error = error.localizedDescription
-                presentErrorWithoutActiveWindow(error.localizedDescription, title: "Could not open the workspace")
-            }
-        }
-    }
-
-    func saveWorkspace() async {
-        guard let workspace = windowPresentation.workspace else { return }
-        await runOperation {
-            if windowPresentation.isRecovering {
-                await attemptToFlushWindowState()
-            } else {
-                guard await flushWindowStateRequiringSuccess() else { return }
-            }
-            guard let current = presentedWindow(workspace.info.id), current.info.identity == workspace.info.identity else { return }
-            let panel = NSSavePanel()
-            panel.allowedContentTypes = [UTType(filenameExtension: "st") ?? .plainText]
-            panel.nameFieldStringValue = current.documentURL?.lastPathComponent ?? "Workspace.st"
-            guard panel.runModal() == .OK, let url = panel.url else { return }
-            do {
-                let source = workspaceEditor(in: current.info).map { inputText(windowID: current.info.id, element: $0) }
-                    ?? current.info.text
-                try source.write(to: url, atomically: true, encoding: .utf8)
-                associateWorkspace(current.info.id, with: url)
-                error = nil
-            } catch { self.error = error.localizedDescription }
-        }
-    }
-
     func openImage() async {
         await runOperation {
             let panel = NSOpenPanel()

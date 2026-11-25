@@ -32,8 +32,7 @@ Local builds use ad hoc signing, so you can run the app without a development te
 - Selecting a class shows its definition in the source editor. **Definition** returns to it from a method. Edit the superclass or instance variable names in `subclass:instanceVariableNames:` and press **⌘S**. Use **Move Class …** to change the category.
 - Create classes in the Workspace by evaluating `Object subclass: #Greeter instanceVariableNames: 'name'`. Use **New Method** in the browser to add a method. The browser shows the selected class's own methods. Select its superclass to browse inherited methods.
 - Evaluate `ToolVM bindingSummary` in a Workspace to list shared variables with their classes and values.
-- **Tools → Browser / Workspace / Transcript** opens a new window each time. **⌘1 / ⌘2 / ⌘3** open a Workspace, System Browser, or Transcript respectively. **⌘N** also opens a Workspace. Use the macOS **Window** menu to switch between open windows.
-- **⌘O** opens UTF-8 source code in a new workspace. In a workspace, **⌘S** saves the source as a `.st` file.
+- **Tools → Workspace** (**⌘1**) opens a new editor containing `Transcript show: 'Hello'; cr.`. Click **Do it** to run the example. **Tools → Browser** (**⌘2**) opens a new browser. **Tools → Transcript** (**⌘3**) opens the output window or brings the existing one forward. Use the macOS **Window** menu to switch between open windows.
 - With a Workspace open, **Smalltalk → Examples** opens sample code for counters, arrays and blocks, class definitions, native windows, and custom interfaces. Edit the sources and menu entries on the class side of `WorkspaceExamples` in the **Examples** category.
 
 The Object Inspector shows a value's class, instance variables, and one-based array elements. Open a row to follow its value, use **Back** to return, and use **Refresh** after another workspace changes the object. Long arrays are shown one page at a time. Smalltalk code can also open the window with `ToolVM inspect: anObject`.
@@ -56,7 +55,7 @@ An image preserves classes and their hierarchy, accepted methods (including chan
 
 The VM builds and validates a separate session before replacing the active one. It validates the saved method structure and source references. Loading performs no compilation or Smalltalk execution and leaves completed block return contexts closed. If an image is invalid or incompatible, the active session remains available.
 
-**Reset Session** starts a fresh session with an empty desktop. In a workspace, **⌘S** saves the source text as `.st`.
+**Reset Session** starts a fresh session with an empty desktop.
 
 The JSON image format (`format: st80-image`, `version: 6`) stores an object table, bytecode for methods and blocks, source positions, and source references. Use a fresh session when upgrading from an earlier image version. The core API `imageData` produces a portable image with embedded method sources. Each image can contain up to 32 MiB and 40,000 reachable reference objects.
 
@@ -115,9 +114,9 @@ Images contain the reachable object graph. Loading suspends collection while the
 
 ## Native window management
 
-The Workspace, System Browser, and Transcript are separate macOS windows. You can open multiple windows of each kind, up to 128 windows on the Smalltalk desktop. Use the standard title bars to move, resize, minimize, and close them. Workspaces share one Smalltalk session and each keeps its own text, selection, and last result. Browsers have their own navigation and editor state while sharing the system catalog. Transcript windows observe the same output buffer, which also receives output while all of them are closed.
+The Workspace, System Browser, and Transcript are separate macOS windows. You can open multiple Workspaces and Browsers, up to 128 windows on the Smalltalk desktop. Use the standard title bars to move, resize, minimize, and close them. Workspaces share one Smalltalk session and each keeps its own text, selection, and last result. Browsers have their own navigation and editor state while sharing the system catalog. The Transcript is blank until it receives output. Its buffer also receives output while the window is closed.
 
-The bundled desktop places new tools slightly offset from the frontmost visible window of the same kind. Saved images restore their own window positions. **Smalltalk → Arrange Tools** arranges the backmost Browser, Workspace, and Transcript into two columns when all three kinds are open. The group occupies at most 1800 × 1000 screen points. This command installs the arrangement method in an older image if it is missing. When **Tools** first calls an older image's original singleton Browser or Transcript opener, the command installs the new opener and records it in the changes log. An image's customized openers still apply.
+The bundled desktop places new tools slightly offset from the frontmost visible window of the same kind. Saved images restore their own windows and positions. **Smalltalk → Arrange Tools** arranges the backmost Browser, Workspace, and Transcript into two columns when all three kinds are open. The group occupies at most 1800 × 1000 screen points. This command installs the arrangement method in an older image if it is missing. The **Tools** menu updates earlier stock tool methods on first use and records the updates in the changes log. An image's customized methods still apply.
 
 Smalltalk implements window management. The global `Desktop` holds the `DesktopManager` controller. Its `DesktopModel` tracks the window list, order, active window, and display information. `SystemWindow` is a subclass of `Model` that reports state changes through the standard observer protocol.
 
@@ -151,11 +150,11 @@ See `Examples/WindowPolicy.st` for a complete example of a close veto.
 
 A custom `DesktopManager` subclass can override `screenFor:`, `constrain:`, `requestClose:`, or `createKind:title:`, for example. The base classes and their model are ordinary Smalltalk objects stored in the image.
 
-In the bundled desktop, `openWorkspace`, `openBrowser`, and `openTranscript` each create a window. Coordinates use macOS screen points with the origin at the bottom left. On load, windows are adjusted to the available displays.
+In the bundled desktop, `openWorkspace` and `openBrowser` create windows, and `openTranscript` reuses the existing transcript when one is open. Coordinates use macOS screen points with the origin at the bottom left. On load, windows are adjusted to the available displays.
 
 The app sends window text to the Smalltalk objects before an evaluation or image save. The saved object graph includes the Transcript and the browser selection.
 
-If the live window model or a control tree becomes invalid, the app keeps the last valid native tools and their editor drafts visible. A retained Workspace can still run **Do it**, **Print it**, and **Inspect it** to repair the image; **Save Workspace …** exports its current draft. Normal controls resume after a valid projection is restored.
+If the live window model or a control tree becomes invalid, the app keeps the last valid native tools and their editor drafts visible. A retained Workspace can still run **Do it**, **Print it**, and **Inspect it** to repair the image. Normal controls resume after a valid projection is restored.
 
 ## Tools in Smalltalk
 
@@ -177,7 +176,7 @@ File dialogs, keyboard shortcuts, native text editing, and control rendering sit
 
 ## Interfaces with MVC
 
-Choose **Smalltalk → Examples → Custom Interface** for a complete MVC example. You can also open and run `Examples/GreetingWindow.st` using **⌘O**.
+Choose **Smalltalk → Examples → Custom Interface** for a complete MVC example. The source is also available in `Examples/GreetingWindow.st`.
 
 | Role | Responsibility in the example |
 | --- | --- |

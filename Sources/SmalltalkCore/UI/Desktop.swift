@@ -130,7 +130,7 @@ extension SmalltalkRuntime {
             case .open(let kind):
                 let selectors: [ToolKind: String] = [.workspace: "openWorkspace", .browser: "openBrowser", .transcript: "openTranscript", .custom: "openWindow", .changes: "openChanges"]
                 let selector = selectors[kind]!
-                try upgradeSingletonOpener(selector, kind: kind, on: desktop)
+                try updateToolDefaults(for: kind, selector: selector, on: desktop)
                 let opened = try send(desktop, selector, [])
                 if case .nilValue = opened, (desktopWindows?.elements.count ?? 0) >= Self.desktopWindowLimit {
                     throw SmalltalkError("The desktop is limited to \(Self.desktopWindowLimit) windows. Close a window and try again.")
@@ -152,23 +152,45 @@ extension SmalltalkRuntime {
         } catch { return finishEvaluation(error: error.localizedDescription) }
     }
 
-    /// Upgrade the shipped singleton policy on first use, preserving authored
-    /// methods and leaving the saved world untouched during image loading.
-    private func upgradeSingletonOpener(_ selector: String, kind: ToolKind, on desktop: Value) throws {
-        guard kind == .browser || kind == .transcript,
-              let (method, owner, _) = lookupMethod(selector, on: desktop), owner === classes["DesktopManager"] else { return }
-        let title = kind == .browser ? "System Browser" : "Transcript"
-        let legacySource = """
-        \(selector)
-            | existing | existing := self windowOfKind: #\(kind.rawValue).
-            existing notNil ifTrue: [ ^ self activate: existing ].
-            ^ self createKind: #\(kind.rawValue) title: '\(title)'
-        """
-        guard method.source == legacySource else { return }
-        guard let source = try SystemLibrary.shared.get().sources.methods["DesktopManager"]?[selector] else {
-            throw SmalltalkError("The bundled \(selector) method is missing.")
+    /// Update unchanged system methods on first use. Loading itself preserves
+    /// the saved desktop, controls, and any authored methods.
+    private func updateToolDefaults(for kind: ToolKind, selector: String, on desktop: Value) throws {
+        let legacySource: String
+        switch kind {
+        case .workspace: legacySource = "openWorkspace\n    ^ self createKind: #workspace title: 'Workspace'"
+        case .browser:
+            legacySource = """
+            openBrowser
+                | existing | existing := self windowOfKind: #browser.
+                existing notNil ifTrue: [ ^ self activate: existing ].
+                ^ self createKind: #browser title: 'System Browser'
+            """
+        case .transcript: legacySource = "openTranscript\n    ^ self createKind: #transcript title: 'Transcript'"
+        case .custom, .changes: return
+        }
+        try updateStockMethod(selector, on: desktop, in: "DesktopManager", replacing: legacySource)
+        if kind == .transcript, let buffer = globals["TranscriptBuffer"] {
+            let legacyText = """
+            text
+                contents size = 0 ifTrue: [ ^ 'Transcript show: ''Hello''; cr.' ].
+                ^ contents
+            """
+            if try updateStockMethod("text", on: buffer, in: "TranscriptModel", replacing: legacyText) {
+                _ = try send(buffer, "changed:", [.symbol("text")])
+            }
+        }
+    }
+
+    @discardableResult
+    private func updateStockMethod(_ selector: String, on receiver: Value, in className: String,
+                                   replacing legacySource: String) throws -> Bool {
+        guard let (method, owner, _) = lookupMethod(selector, on: receiver), owner === classes[className],
+              method.source == legacySource else { return false }
+        guard let source = try SystemLibrary.shared.get().sources.methods[className]?[selector] else {
+            throw SmalltalkError("The bundled \(className)>>\(selector) method is missing.")
         }
         try compile(source, in: owner)
+        return true
     }
 
     func notifyDesktopOfCatalogChange() throws {

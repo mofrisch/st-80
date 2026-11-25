@@ -31,15 +31,13 @@ struct WindowRecoveryPresentationTests {
         #expect(presentation.workspace?.info.identity == workspace.identity)
     }
 
-    @Test func invalidProjectionPreservesWindowsDocumentsDraftsAndSelectionUntilRepair() async throws {
+    @Test func invalidProjectionPreservesWindowsDraftsAndSelectionUntilRepair() async throws {
         let session = SmalltalkSession()
         let initial = await session.windowAction(.open(.workspace))
         let workspace = try #require(initial.windows.first { $0.kind == .workspace })
         let editor = try #require(workspace.content?.firstVisible { $0.accessibilityID == "workspaceEditor" })
         var presentation = WindowPresentation()
         presentation.update(from: initial, replacingWindows: true)
-        let document = URL(fileURLWithPath: "/private/tmp/Recovery.st")
-        presentation.setDocumentURL(document, for: workspace.id)
         var edits = ControlEdits()
         edits.reconcile(with: presentation.windows.map(\.info))
         let address = ControlAddress(windowID: workspace.id, elementID: editor.id)
@@ -61,7 +59,6 @@ struct WindowRecoveryPresentationTests {
         #expect(presentation.isRecovering)
         #expect(presentation.windows.map { $0.info.identity } == initial.windows.map(\.identity))
         #expect(presentation.activeID == initial.activeWindowID)
-        #expect(presentation.window(workspace.id)?.documentURL == document)
         #expect(edits.text(at: address, fallback: "") == draft)
         #expect(edits.selection(at: address) == NSRange(location: 0, length: 7))
         #expect(edits.hasPendingEdits)
@@ -74,7 +71,6 @@ struct WindowRecoveryPresentationTests {
         presentation.update(from: repaired, replacingWindows: false)
         edits.reconcile(with: presentation.windows.map(\.info))
         #expect(!presentation.isRecovering)
-        #expect(presentation.window(workspace.id)?.documentURL == document)
         #expect(edits.text(at: address, fallback: "") == draft)
         let edit = try #require(edits.pendingEdits.first)
         let acknowledged = await session.uiAction(.text(windowID: workspace.id, elementID: editor.id, value: draft))

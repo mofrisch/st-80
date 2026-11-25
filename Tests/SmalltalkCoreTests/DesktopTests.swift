@@ -182,7 +182,7 @@ struct DesktopTests {
         #expect(closed.activeWindowID != workspace.id)
     }
 
-    @Test(arguments: [ToolKind.workspace, .browser, .transcript])
+    @Test(arguments: [ToolKind.workspace, .browser])
     func openingAToolTwiceCreatesTwoDistinctWindows(_ kind: ToolKind) async throws {
         let session = SmalltalkSession()
         let initial = try await openTools(kind, in: session)
@@ -194,6 +194,29 @@ struct DesktopTests {
         #expect(second.frame != first.frame)
         let closed = await session.windowAction(.close(first.id))
         #expect(closed.windows.map(\.id) == [second.id])
+    }
+
+    @Test func workspaceStartsWithTheTranscriptExampleAndTranscriptReusesItsWindow() async throws {
+        let session = SmalltalkSession()
+        let started = try await openTools(.workspace, .transcript, in: session)
+        let workspace = try #require(started.windows.first { $0.kind == .workspace })
+        let transcript = try #require(started.windows.first { $0.kind == .transcript })
+        #expect(workspace.text == "Transcript show: 'Hello'; cr.")
+        #expect(workspace.content?.firstVisible { $0.accessibilityID == "workspaceEditor" }?.text == workspace.text)
+        #expect(transcript.content?.firstVisible { $0.accessibilityID == "transcriptOutput" }?.text == "")
+        let minimized = await session.windowAction(.minimize(transcript.id, true))
+        #expect(minimized.activeWindowID == workspace.id)
+        let reused = try await openTools(.transcript, in: session)
+        #expect(reused.activeWindowID == transcript.id)
+        #expect(reused.windows.filter { $0.kind == .transcript }.map(\.id) == [transcript.id])
+        let execute = try #require(workspace.content?.firstVisible { $0.command == "doIt" })
+        let executed = await session.uiAction(.click(windowID: workspace.id, elementID: execute.id))
+        #expect(executed.error == nil)
+        _ = await session.windowAction(.close(transcript.id))
+        let reopened = try await openTools(.transcript, in: session)
+        let output = reopened.windows.first { $0.kind == .transcript }?.content?.firstVisible { $0.accessibilityID == "transcriptOutput" }
+        #expect(output?.text == "Hello\n")
+        #expect(reopened.changes.isEmpty)
     }
 
     @Test func legacyOpenersUpgradeOnFirstUseWithoutReplacingAuthoredMethods() async throws {
@@ -215,6 +238,39 @@ struct DesktopTests {
         #expect(opened.windows.filter { $0.kind == .browser }.count == 3)
         #expect(opened.windows.filter { $0.kind == .transcript }.count == 1)
         #expect(opened.changes.map(\.selector) == ["openBrowser"])
+    }
+
+    @Test func previousToolDefaultsUpdateOnUseAfterLoadingAnImage() async throws {
+        let original = SmalltalkSession()
+        let configured = await original.evaluate("""
+        DesktopManager compile: 'openWorkspace
+            ^ self createKind: #workspace title: ''Workspace'''.
+        DesktopManager compile: 'openTranscript
+            ^ self createKind: #transcript title: ''Transcript'''.
+        TranscriptModel compile: 'text
+            contents size = 0 ifTrue: [ ^ ''Transcript show: ''''Hello''''; cr.'' ].
+            ^ contents'.
+        Desktop openWorkspace.
+        Desktop openTranscript.
+        Desktop openTranscript
+        """)
+        try #require(configured.error == nil)
+        let restored = SmalltalkSession()
+        let loaded = try await restored.loadImage(original.imageData())
+        #expect(loaded.evaluation.changes.isEmpty)
+        let existingTranscripts = loaded.evaluation.windows.filter { $0.kind == .transcript }
+        try #require(existingTranscripts.count == 2)
+        let reused = try await openTools(.transcript, .transcript, in: restored)
+        let transcripts = reused.windows.filter { $0.kind == .transcript }
+        #expect(transcripts.map(\.id) == existingTranscripts.map(\.id))
+        #expect(reused.activeWindowID == existingTranscripts.last?.id)
+        for window in transcripts {
+            #expect(window.content?.firstVisible { $0.accessibilityID == "transcriptOutput" }?.text == "")
+        }
+        let opened = try await openTools(.workspace, in: restored)
+        #expect(opened.windows.first { $0.kind == .workspace }?.text == "")
+        #expect(opened.windows.last?.text == "Transcript show: 'Hello'; cr.")
+        #expect(opened.changes.map(\.selector) == ["openTranscript", "text", "openWorkspace"])
     }
 
     @Test func nativeGeometryAndSmalltalkWindowMessagesSurviveImageRestart() async throws {
@@ -319,7 +375,7 @@ struct DesktopTests {
         let transcript = try #require(redirected.windows.first { $0.kind == .transcript })
         #expect(redirected.activeWindowID == transcript.id)
         let next = await restored.windowAction(.open(.workspace))
-        #expect(next.windows.filter { $0.kind == .transcript }.count == 2)
-        #expect(next.activeWindowID != transcript.id)
+        #expect(next.windows.filter { $0.kind == .transcript }.count == 1)
+        #expect(next.activeWindowID == transcript.id)
     }
 }

@@ -136,4 +136,49 @@ struct SourceJournalAppendIntegrityTests {
         #expect(reopened.records.map(\.source) == ["answer ^ 1", "answer ^ 3"])
         #expect(reopened.sequence == 2)
     }
+
+    @Test func failedImportRollsBackEvenACompleteFirstRecordAndCanRetry() throws {
+        let folder = try directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("ImportTarget.changes")
+        let target = SourceJournal()
+        let existing = try target.append(kind: .method, className: "Counter", selector: "value", source: "value ^ 1")
+        target.savedSequence = target.sequence
+        try target.attach(to: url)
+        let before = try Data(contentsOf: url)
+
+        let incoming = SourceJournal()
+        try incoming.append(kind: .classDefinition, className: "Imported", superclass: "Object", fields: ["value"],
+                            source: "Object subclass: #Imported instanceVariableNames: 'value'")
+        try incoming.append(kind: .method, className: "Imported", selector: "answer", side: .classSide, source: "answer ^ 42")
+
+        do {
+            try target.appendImportedRecords(incoming.records) { file, bytes in
+                let firstRecordLength = try #require(bytes.firstIndex(of: 10)) + 1
+                try #require(firstRecordLength < bytes.count - 1)
+                try file.write(contentsOf: bytes.prefix(firstRecordLength + 1))
+                throw SmalltalkError("Simulated failure during the second imported record.")
+            }
+            Issue.record("The injected write failure did not propagate.")
+        } catch let error as SmalltalkError {
+            #expect(error.message == "Simulated failure during the second imported record.")
+        }
+
+        #expect(try Data(contentsOf: url) == before)
+        #expect(target.records.map(\.id) == [existing.id])
+        #expect(target.sequence == 1)
+        #expect(target.savedSequence == 1)
+
+        try target.appendImportedRecords(incoming.records)
+        let reopened = try SourceJournal.read(url)
+        let imported = Array(reopened.records.dropFirst())
+        #expect(reopened.id == target.id)
+        #expect(reopened.records.map(\.sequence) == [1, 2, 3])
+        #expect(reopened.records.first?.id == existing.id)
+        #expect(imported.map(\.source) == incoming.records.map(\.source))
+        #expect(imported.first?.fields == ["value"])
+        #expect(imported.last?.side == .classSide)
+        #expect(Set(imported.map(\.id)).isDisjoint(with: incoming.records.map(\.id)))
+        #expect(target.savedSequence == 1)
+    }
 }

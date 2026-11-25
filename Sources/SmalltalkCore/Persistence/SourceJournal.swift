@@ -36,19 +36,20 @@ final class SourceJournal {
         }
     }
     static let maxBytes = 64 * 1024 * 1024
+    static let maxRecords = 100_000
     let id: String
     private(set) var records: [ChangeInfo]
     private(set) var url: URL?
     private var physicalSize: UInt64 = 0
+    // The complete header and records, excluding any interrupted tail. Zero
+    // means the size of an unattached journal has not been calculated yet.
     private var validSize: UInt64 = 0
-    private var memoryBytes: Int = 0
     private var validatedFileStamp: FileStamp?
     var savedSequence: Int64 = 0
     var sequence: Int64 { records.last?.sequence ?? 0 }
 
     init(id: String = UUID().uuidString, records: [ChangeInfo] = []) {
         self.id = id; self.records = records
-        memoryBytes = records.reduce(0) { $0 + $1.source.utf8.count }
     }
     private static func line<T: Encodable>(_ value: T) throws -> Data {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
@@ -110,10 +111,44 @@ final class SourceJournal {
     @discardableResult
     func append(kind: ChangeInfo.Kind, className: String, selector: String? = nil, superclass: String? = nil, fields: [String]? = nil, side: MethodSide = .instance, source: String,
                 writing: (FileHandle, Data) throws -> Void = { try $0.write(contentsOf: $1) }) throws -> ChangeInfo {
-        guard records.count < 100_000 else { throw SmalltalkError("The changes log contains too many entries.") }
+        try checkCapacity(for: 1)
         let record = ChangeInfo(id: UUID().uuidString, sequence: sequence + 1, timestamp: Date(), kind: kind, className: className, selector: selector, superclass: superclass, fields: fields, source: source, methodSide: side == .classSide ? side : nil)
-        let bytes = try Self.line(record)
-        guard validSize + UInt64(bytes.count) <= Self.maxBytes, memoryBytes + bytes.count <= Self.maxBytes else { throw SmalltalkError("The changes log exceeds the 64 MiB limit.") }
+        try appendPrepared([record], writing: writing)
+        return record
+    }
+
+    /// Import as new entries, preserving their order and source in one append.
+    func appendImportedRecords(_ history: [ChangeInfo],
+                               writing: (FileHandle, Data) throws -> Void = { try $0.write(contentsOf: $1) }) throws {
+        guard !history.isEmpty else { return }
+        try checkCapacity(for: history.count)
+        let previousSequence = sequence
+        let timestamp = Date()
+        let prepared = history.enumerated().map { index, entry in
+            ChangeInfo(id: UUID().uuidString, sequence: previousSequence + Int64(index) + 1, timestamp: timestamp,
+                       kind: entry.kind, className: entry.className, selector: entry.selector, superclass: entry.superclass,
+                       fields: entry.fields, source: entry.source, methodSide: entry.side == .classSide ? .classSide : nil)
+        }
+        try appendPrepared(prepared, writing: writing)
+    }
+
+    private func checkCapacity(for count: Int) throws {
+        guard count <= Self.maxRecords - records.count else {
+            throw SmalltalkError("The changes log contains too many entries.")
+        }
+    }
+
+    private func appendPrepared(_ prepared: [ChangeInfo], writing: (FileHandle, Data) throws -> Void) throws {
+        let currentSize = validSize == 0 ? try data().count : Int(validSize)
+        var bytes = Data()
+        for record in prepared {
+            let line = try Self.line(record)
+            guard currentSize + bytes.count + line.count <= Self.maxBytes else {
+                throw SmalltalkError("The changes log exceeds the 64 MiB limit.")
+            }
+            bytes.append(line)
+        }
+        let newSize = UInt64(currentSize + bytes.count)
         if url != nil {
             try withValidatedFileHandle { file in
                 do {
@@ -127,26 +162,28 @@ final class SourceJournal {
                     var written = stat(), current = stat()
                     guard let url, fstat(file.fileDescriptor, &written) == 0, stat(url.path, &current) == 0,
                           FileStamp(written) == FileStamp(current),
-                          written.st_size >= 0, UInt64(written.st_size) == validSize + UInt64(bytes.count) else {
+                          written.st_size == off_t(newSize) else {
                         throw Self.modifiedFile()
                     }
                     validatedFileStamp = FileStamp(written)
-                } catch {
+                    physicalSize = newSize
+                } catch let writeError {
+                    validatedFileStamp = nil
                     do {
                         try file.truncate(atOffset: validSize)
                         // A repaired incomplete tail is now gone even when
                         // this append fails. A retry must validate that size.
                         physicalSize = validSize
-                    } catch { /* Keep the original write/validation error. */ }
-                    validatedFileStamp = nil
-                    throw error
+                        try file.synchronize()
+                    } catch {
+                        throw SmalltalkError("Could not roll back the changes log after a failed write. Reload the image. Write: \(writeError.localizedDescription) Rollback: \(error.localizedDescription)")
+                    }
+                    throw writeError
                 }
-                validSize += UInt64(bytes.count); physicalSize = validSize
             }
         }
-        records.append(record)
-        memoryBytes += bytes.count
-        return record
+        validSize = newSize
+        records.append(contentsOf: prepared)
     }
     static func read(_ url: URL) throws -> SourceJournal {
         let bytes = try readBounded(url, maximum: maxBytes)
@@ -163,7 +200,7 @@ final class SourceJournal {
         while let end = bytes[cursor...].firstIndex(of: 10) {
             let record = try decoder.decode(ChangeInfo.self, from: bytes[cursor..<end])
             guard record.sequence == Int64(records.count + 1), identifiers.insert(record.id).inserted,
-                  record.source.utf8.count <= 262_144, records.count < 100_000 else { throw SmalltalkError("Invalid changes log entry order or size.") }
+                  record.source.utf8.count <= 262_144, records.count < maxRecords else { throw SmalltalkError("Invalid changes log entry order or size.") }
             records.append(record); cursor = bytes.index(after: end); validEnd = cursor
         }
         let journal = SourceJournal(id: header.id, records: records)
@@ -212,13 +249,11 @@ extension SmalltalkSession {
     public func startChangeLog(at url: URL) async throws {
         try await worker.submitThrowing { try $0.journal.attach(to: url) }
     }
-    /// Imports history for review. Importing a log never executes its code.
+    /// Appends the imported history as a batch for review, without executing its code.
     public func importChanges(from url: URL) async throws -> EvaluationResult {
         try await worker.submitThrowing { runtime in
             let imported = try SourceJournal.read(url)
-            for record in imported.records {
-                try runtime.journal.append(kind: record.kind, className: record.className, selector: record.selector, superclass: record.superclass, fields: record.fields, side: record.side, source: record.source)
-            }
+            try runtime.journal.appendImportedRecords(imported.records)
             return runtime.snapshot(value: "\(imported.records.count) changes imported for review.")
         }
     }

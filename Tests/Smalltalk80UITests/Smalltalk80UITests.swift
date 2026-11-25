@@ -1515,6 +1515,21 @@ final class Smalltalk80UITests: XCTestCase {
         pasteText("Recoverable", into: field)
         let inputError = first.staticTexts.containing(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Division by zero", "Division by zero")).firstMatch
         XCTAssertTrue(inputError.waitForExistence(timeout: 5))
+
+        let image = directory.appendingPathComponent("Smalltalk.stimage")
+        field.typeKey("q", modifierFlags: .command)
+        let save = app.buttons["Save"]
+        XCTAssertTrue(save.waitForExistence(timeout: 5))
+        save.click()
+        let panelSave = app.buttons["OKButton"]
+        XCTAssertTrue(panelSave.waitForExistence(timeout: 5))
+        navigateFilePanel(in: app, to: directory.path)
+        panelSave.click()
+        XCTAssertTrue(app.staticTexts["Could not save the image"].waitForExistence(timeout: 5))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: image.path))
+        app.buttons["OK"].click()
+        XCTAssertEqual(field.value as? String, "Recoverable")
+
         field.typeKey("1", modifierFlags: .command)
         replaceText(in: editor, with: "GreetingController compile: 'nameChanged: aString model name: aString'")
         workspace.buttons["executeButton"].click()
@@ -1527,7 +1542,6 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertTrue(app.buttons["OKButton"].waitForExistence(timeout: 5))
         navigateFilePanel(in: app, to: directory.path)
         app.buttons["OKButton"].click()
-        let image = directory.appendingPathComponent("Smalltalk.stimage")
         let saved = expectation(for: NSPredicate { _, _ in FileManager.default.fileExists(atPath: image.path) }, evaluatedWith: nil)
         wait(for: [saved], timeout: 10)
         app.terminate()
@@ -1574,6 +1588,43 @@ final class Smalltalk80UITests: XCTestCase {
         wait(for: [closed], timeout: 5)
         XCTAssertTrue(first.exists)
         XCTAssertFalse(first.staticTexts["ERROR"].exists)
+    }
+
+    func testOpeningChangesReportsInvalidJournalAndAllowsRetry() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let invalid = directory.appendingPathComponent("Invalid.changes")
+        try Data("Incomplete header".utf8).write(to: invalid)
+        let valid = directory.appendingPathComponent("Valid.changes")
+        let journal = """
+        {"format":"st80-changes","version":1,"id":"\(UUID())"}
+        {"id":"\(UUID())","sequence":1,"timestamp":0,"kind":"method","className":"Counter","selector":"recoveredImport","source":"recoveredImport ^ 73"}
+
+        """
+        try Data(journal.utf8).write(to: valid)
+
+        let app = launchFreshApp()
+        defer { app.terminate() }
+        XCTAssertTrue(app.windows["toolWindow-1"].textViews["workspaceEditor"].waitForExistence(timeout: 10))
+
+        func openChanges(_ file: URL) {
+            app.menuBars.menuBarItems["Smalltalk"].click()
+            app.menuItems["Open Changes File …"].firstMatch.click()
+            let open = app.buttons["OKButton"]
+            XCTAssertTrue(open.waitForExistence(timeout: 5))
+            navigateFilePanel(in: app, to: file.path)
+            open.click()
+        }
+
+        openChanges(invalid)
+        let history = app.windows["toolWindow-4"]
+        XCTAssertTrue(app.staticTexts["Could not import the changes log"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["The changes log header is missing or incomplete."].exists)
+        app.buttons["OK"].click()
+        XCTAssertFalse(history.exists)
+
+        openChanges(valid)
+        XCTAssertTrue(history.staticTexts["Counter » recoveredImport"].firstMatch.waitForExistence(timeout: 5))
     }
 
     func testChangesAfterImageSnapshotSurviveRelaunchAndCanBeRestoredFromTheUI() throws {

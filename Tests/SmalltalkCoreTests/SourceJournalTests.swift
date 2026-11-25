@@ -494,12 +494,39 @@ struct SourceJournalTests {
         try await original.startChangeLog(at: url)
         _ = await original.evaluate("Object subclass: #LostClass instanceVariableNames: ''. LostClass compile: 'answer ^ 73'")
         let fresh = SmalltalkSession()
+        let activeLog = folder.appendingPathComponent("Active.changes")
+        try await fresh.startChangeLog(at: activeLog)
         let imported = try await fresh.importChanges(from: url)
         #expect(!imported.classes.contains { $0.name == "LostClass" })
         #expect(imported.changes.count == 2)
+        #expect(try SourceJournal.read(activeLog).records.map(\.id) == imported.changes.map(\.id))
         for record in imported.changes { #expect(await fresh.restoreChange(record.id).error == nil) }
         let recovered = await fresh.evaluate("LostClass new answer")
         #expect(recovered.value == "73")
+    }
+
+    @Test func importingBeyondTheRecordLimitDoesNotKeepTheRecordsThatFit() async throws {
+        let folder = try directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("Incoming.changes")
+        let incoming = SourceJournal()
+        try incoming.append(kind: .method, className: "Counter", selector: "answer", source: "answer ^ 2")
+        try incoming.append(kind: .method, className: "Counter", selector: "answer", source: "answer ^ 3")
+        try incoming.attach(to: url)
+
+        let session = SmalltalkSession()
+        await session.worker.submit { runtime in
+            let timestamp = Date(timeIntervalSince1970: 0)
+            runtime.journal = SourceJournal(records: (1...99_999).map { sequence in
+                ChangeInfo(id: "existing-\(sequence)", sequence: Int64(sequence), timestamp: timestamp,
+                           kind: .method, className: "Counter", selector: "answer", superclass: nil,
+                           fields: nil, source: "answer ^ 1", methodSide: nil)
+            })
+        }
+        await #expect(throws: SmalltalkError.self) { try await session.importChanges(from: url) }
+        let last = await session.worker.submit { $0.journal.records.last }
+        #expect(last?.sequence == 99_999)
+        #expect(last?.id == "existing-99999")
     }
 
     @Test func theShippedBaseVersionCanBeRestoredAndTheRestoreIsJournaled() async throws {

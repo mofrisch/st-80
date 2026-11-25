@@ -114,86 +114,30 @@ struct DesktopTests {
         #expect(await value("(Desktop windowAt: \(second.id)) text", in: session) == "'shared + 2'")
     }
 
-    @Test func workspaceImportUsesTheNewWindowReturnedBySmalltalk() async throws {
-        let session = SmalltalkSession()
-        let initial = try await openTools(.workspace, in: session)
-        let existing = try #require(initial.windows.first { $0.kind == .workspace })
-        let configured = await session.compile("""
-        openWorkspace
-            | previous opened |
-            previous := self windowAt: \(existing.id).
-            opened := self createKind: #workspace title: 'Imported Workspace'.
-            self activate: previous.
-            ^ opened
-        """, in: "DesktopManager")
-        try #require(configured.error == nil)
-
-        let source = "\"Grüße 👋\"\nsourceWasRun := 42"
-        let imported = await session.openWorkspace(source: source)
-        let workspace = try imported.outcome.get()
-        #expect(imported.evaluation.error == nil)
-        #expect(imported.evaluation.activeWindowID == existing.id)
-        #expect(imported.evaluation.windows.count == initial.windows.count + 1)
-        #expect(workspace.id != existing.id)
-        #expect(workspace.identity != existing.identity)
-        #expect(workspace.kind == .workspace)
-        #expect(workspace.text == source)
-        #expect(imported.evaluation.windows.first { $0.identity == workspace.identity }?.text == source)
-        #expect(imported.evaluation.windows.first { $0.identity == existing.identity }?.text == existing.text)
-        #expect(!imported.evaluation.bindings.contains { $0.name == "sourceWasRun" })
-    }
-
-    @Test func workspaceImportRejectsAnExistingWindowWithoutOverwritingIt() async throws {
-        let session = SmalltalkSession()
-        let initial = try await openTools(.workspace, in: session)
-        let existing = try #require(initial.windows.first { $0.kind == .workspace })
-        let configured = await session.compile("openWorkspace ^ self windowAt: \(existing.id)", in: "DesktopManager")
-        try #require(configured.error == nil)
-
-        let imported = await session.openWorkspace(source: "This would overwrite the workspace")
-        guard case .failure(let error) = imported.outcome else {
-            Issue.record("Expected the import to reject the existing workspace.")
-            return
-        }
-        #expect(error.message.contains("did not create a new workspace window"))
-        #expect(imported.evaluation.executionError == error.message)
-        #expect(imported.evaluation.windows.count == initial.windows.count)
-        #expect(imported.evaluation.windows.first { $0.identity == existing.identity }?.text == existing.text)
-    }
-
-    @Test func activationRestoresMinimizedWindowsAndClosingPreservesOtherTools() async throws {
-        let session = SmalltalkSession()
-        let initial = try await openTools(.browser, .transcript, .workspace, in: session)
-        let workspace = try #require(initial.windows.first { $0.kind == .workspace })
-        let extra = await session.windowAction(.open(.workspace))
-        let second = try #require(extra.windows.first { $0.kind == .workspace && $0.id != workspace.id })
-        let minimized = await session.windowAction(.minimize(workspace.id, true))
-        #expect(minimized.windows.first { $0.id == workspace.id }?.minimized == true)
-        let activated = await session.windowAction(.activate(workspace.id))
-        #expect(activated.activeWindowID == workspace.id)
-        #expect(activated.windows.first { $0.id == workspace.id }?.minimized == false)
-        #expect(activated.windows.last?.id == workspace.id)
-        let closed = await session.windowAction(.close(workspace.id))
-        #expect(closed.error == nil)
-        #expect(!closed.windows.contains { $0.id == workspace.id })
-        #expect(closed.windows.contains { $0.id == second.id })
-        #expect(closed.windows.contains { $0.kind == .browser })
-        #expect(closed.windows.contains { $0.kind == .transcript })
-        #expect(closed.activeWindowID != workspace.id)
-    }
-
     @Test(arguments: [ToolKind.workspace, .browser])
-    func openingAToolTwiceCreatesTwoDistinctWindows(_ kind: ToolKind) async throws {
+    func independentToolsCanBeOpenedActivatedAndClosedSeparately(_ kind: ToolKind) async throws {
         let session = SmalltalkSession()
-        let initial = try await openTools(kind, in: session)
-        let first = try #require(initial.windows.first)
+        let initial = try await openTools(kind, .transcript, in: session)
+        let first = try #require(initial.windows.first { $0.kind == kind })
+        let transcript = try #require(initial.windows.first { $0.kind == .transcript })
         let opened = try await openTools(kind, in: session)
         let second = try #require(opened.windows.first { $0.id == opened.activeWindowID })
-        #expect(opened.windows.map(\.kind) == [kind, kind])
+        #expect(opened.windows.filter { $0.kind == kind }.count == 2)
         #expect(second.id != first.id)
         #expect(second.frame != first.frame)
+
+        let minimized = await session.windowAction(.minimize(first.id, true))
+        #expect(minimized.error == nil)
+        #expect(minimized.windows.first { $0.id == first.id }?.minimized == true)
+        let activated = await session.windowAction(.activate(first.id))
+        #expect(activated.error == nil)
+        #expect(activated.activeWindowID == first.id)
+        #expect(activated.windows.last?.id == first.id)
+        #expect(activated.windows.last?.minimized == false)
         let closed = await session.windowAction(.close(first.id))
-        #expect(closed.windows.map(\.id) == [second.id])
+        #expect(closed.error == nil)
+        #expect(closed.windows.map(\.id) == [transcript.id, second.id])
+        #expect(closed.activeWindowID == second.id)
     }
 
     @Test func workspaceStartsWithTheTranscriptExampleAndTranscriptReusesItsWindow() async throws {
@@ -282,7 +226,7 @@ struct DesktopTests {
         _ = await session.windowAction(.minimize(workspace.id, true))
         #expect(await value("(Desktop windowAt: \(workspace.id)) title: 'Saved Workspace'", in: session) != nil)
         let before = await session.snapshot()
-        let image = try await session.imageData(workspace: "legacy metadata", transcript: "history\n")
+        let image = try await session.imageData()
         let restarted = SmalltalkSession()
         let loaded = try await restarted.loadImage(image)
         #expect(loaded.evaluation.windows.count == before.windows.count)

@@ -199,6 +199,9 @@ struct UserInterfaceTests {
 
     @Test func invalidTreesAndActionFailuresAreReportedWithoutHanging() async throws {
         let session = SmalltalkSession()
+        let tools = try await openTools(.workspace, in: session)
+        let workspace = try #require(tools.windows.first { $0.kind == .workspace })
+        let editor = try #require(elements(workspace.content).first { $0.accessibilityID == "workspaceEditor" })
         let opened = await session.evaluate("""
         column := UIColumn new.
         window := UIWindow new.
@@ -209,15 +212,15 @@ struct UserInterfaceTests {
         let invalid = await session.evaluate("column add: column")
         #expect(invalid.error?.contains("interface") == true)
         #expect(invalid.executionError == nil)
-        let flushed = await session.windowAction(.text(1, "column removeAll"))
-        #expect(flushed.executionError == nil)
+        let draft = "column removeAll"
+        let edited = await session.dispatchUIAction(.text(windowID: workspace.id, elementID: editor.id, value: draft))
+        #expect(edited.disposition == .applied)
+        #expect(edited.evaluation.windows.first { $0.id == workspace.id }?.text == draft)
         await #expect(throws: SmalltalkError.self) { try await session.imageData() }
         var archive = try JSONDecoder().decode(ImageArchive.self, from: valid)
-        let columnID = try #require(archive.nodes.firstIndex { node in
-            if case .object(let object) = node { return object.className == "UIColumn" }
-            return false
-        })
-        guard case .object(let column) = archive.nodes[columnID], case .reference(let childrenID)? = column.fields["children"] else {
+        guard case .reference(let columnID)? = archive.globals["column"],
+              case .object(let column) = archive.nodes[columnID],
+              case .reference(let childrenID)? = column.fields["children"] else {
             Issue.record("Column has no children array.")
             return
         }

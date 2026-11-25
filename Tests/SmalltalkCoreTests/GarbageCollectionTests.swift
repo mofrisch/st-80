@@ -372,7 +372,8 @@ struct GarbageCollectionTests {
 
     @Test func nativeDisplayBatchesKeepPartiallyConstructedObjectsAliveUnderStress() throws {
         let runtime = SmalltalkRuntime()
-        let initial = runtime.snapshot()
+        let initial = runtime.performWindowAction(.open(.workspace))
+        let workspace = try #require(initial.windows.first { $0.kind == .workspace })
         let displays = [
             ScreenInfo(id: "left", frame: WindowRect(x: -1600, y: 0, width: 1600, height: 1000)),
             ScreenInfo(id: "main", frame: WindowRect(x: 0, y: 0, width: 1440, height: 900)),
@@ -383,7 +384,8 @@ struct GarbageCollectionTests {
         let event = NativeWindowEvent(epoch: initial.windowCommands.epoch, sequence: 1, kind: .screens(displays))
         let result = runtime.performWindowEvents([event])
         #expect(result.error == nil, "\(result.error ?? "")")
-        #expect(result.windows.count == initial.windows.count)
+        #expect(result.windows.map(\.id) == [workspace.id])
+        #expect(result.activeWindowID == workspace.id)
         #expect(runtime.memory.statistics.totalCollections > before)
         _ = runtime.collectGarbage()
         let desktop = try #require(runtime.globals["Desktop"])

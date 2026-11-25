@@ -99,12 +99,15 @@ struct ImageSaveRecoveryTests {
         defer { try? FileManager.default.removeItem(at: folder) }
         let image = folder.appendingPathComponent("Occupied.stimage")
         let changes = folder.appendingPathComponent("Occupied.changes")
+        let activeLog = folder.appendingPathComponent("Active.changes")
         let unrelated = SourceJournal()
         try unrelated.append(kind: .method, className: "Counter", selector: "answer", source: "answer ^ 99")
         try unrelated.attach(to: changes)
         let originalBytes = try Data(contentsOf: changes)
         let session = SmalltalkSession()
+        try await session.startChangeLog(at: activeLog)
         #expect(await session.compile("answer ^ 42", in: "Counter").error == nil)
+        let activeBytes = try Data(contentsOf: activeLog)
         let before = await session.snapshot()
 
         await #expect(throws: (any Error).self) {
@@ -112,6 +115,7 @@ struct ImageSaveRecoveryTests {
         }
         let failed = await session.snapshot()
         #expect(try Data(contentsOf: changes) == originalBytes)
+        #expect(try Data(contentsOf: activeLog) == activeBytes)
         #expect(!FileManager.default.fileExists(atPath: image.path))
         #expect(failed.changesPath == before.changesPath)
         #expect(failed.savedChangeSequence == before.savedChangeSequence)

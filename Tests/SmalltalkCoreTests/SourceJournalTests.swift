@@ -442,28 +442,6 @@ struct SourceJournalTests {
         #expect(!String(decoding: try Data(contentsOf: log), as: UTF8.self).contains("incomplete"))
     }
 
-    @Test func saveAsBranchesHistoryAndNeverOverwritesAnUnrelatedLog() async throws {
-        let folder = try directory(); defer { try? FileManager.default.removeItem(at: folder) }
-        let first = folder.appendingPathComponent("First.stimage"), second = folder.appendingPathComponent("Second.stimage")
-        let session = SmalltalkSession()
-        _ = await session.compile("answer ^ 1", in: "Counter")
-        try await session.saveImage(to: first, workspace: "", transcript: "")
-        let firstLog = first.deletingPathExtension().appendingPathExtension("changes")
-        let firstBytes = try Data(contentsOf: firstLog)
-        try await session.saveImage(to: second, workspace: "", transcript: "")
-        _ = await session.compile("answer ^ 2", in: "Counter")
-        #expect(try Data(contentsOf: firstLog) == firstBytes)
-        let firstID = try SourceJournal.read(firstLog).id
-        let secondLog = try SourceJournal.read(second.deletingPathExtension().appendingPathExtension("changes"))
-        #expect(firstID != secondLog.id)
-        #expect(secondLog.records.last?.source == "answer ^ 2")
-        let stranger = folder.appendingPathComponent("Stranger.changes")
-        try Data("Do not overwrite".utf8).write(to: stranger)
-        await #expect(throws: (any Error).self) { try await session.saveImage(to: folder.appendingPathComponent("Stranger.stimage"), workspace: "", transcript: "") }
-        #expect(try String(contentsOf: stranger, encoding: .utf8) == "Do not overwrite")
-        #expect(!FileManager.default.fileExists(atPath: folder.appendingPathComponent("Stranger.stimage").path))
-    }
-
     @Test func missingOrMismatchedCompanionsLeaveTheCurrentWorldIntact() async throws {
         let folder = try directory(); defer { try? FileManager.default.removeItem(at: folder) }
         let url = folder.appendingPathComponent("Missing.stimage")

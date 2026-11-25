@@ -23,7 +23,12 @@ struct ImageTests {
     @Test func roundTripPreservesClassesMethodsObjectsAndEditorState() async throws {
         let original = SmalltalkSession()
         let workspace = "\"Ein gespeicherter Workspace 👋\"\nsaved value"
-        let transcript = "Greetings from the old session.\n"
+        let line = "Grüße aus dem gespeicherten Image 👋"
+        let tools = try await openTools(.workspace, .transcript, in: original)
+        let workspaceID = try #require(tools.windows.first { $0.kind == .workspace }?.id)
+        let transcriptID = try #require(tools.windows.first { $0.kind == .transcript }?.id)
+        let edited = await original.windowAction(.text(workspaceID, workspace))
+        try #require(edited.error == nil)
         _ = await value("""
         Counter compile: 'value ^ count + 100'.
         Object compile: 'imageMarker ^ 42'.
@@ -37,15 +42,19 @@ struct ImageTests {
         saved := SpecialCounter new.
         saved add: 7.
         saved label: 'Cafés 👋'.
+        Transcript show: '\(line)'; cr.
         classReference := SpecialCounter
         """, in: original)
 
-        let data = try await original.imageData(workspace: workspace, transcript: transcript)
+        let data = try await original.imageData()
         _ = await value("saved add: 100", in: original)
         let restarted = SmalltalkSession()
         let loaded = try await restarted.loadImage(data)
-        #expect(loaded.workspace == workspace)
-        #expect(loaded.transcript == transcript)
+        let restoredWorkspace = try #require(loaded.evaluation.windows.first { $0.id == workspaceID })
+        let restoredTranscript = try #require(loaded.evaluation.windows.first { $0.id == transcriptID })
+        #expect(restoredWorkspace.text == workspace)
+        #expect(restoredWorkspace.content?.firstVisible { $0.accessibilityID == "workspaceEditor" }?.text == workspace)
+        #expect(restoredTranscript.content?.firstVisible { $0.accessibilityID == "transcriptOutput" }?.text == line + "\n")
         #expect(loaded.evaluation.classes.contains { $0.name == "SpecialCounter" && $0.superclass == "Counter" && $0.fields == ["count", "label"] })
         #expect(await value("saved value", in: restarted) == "107")
         #expect(await value("saved label", in: restarted) == "'Cafés 👋'")

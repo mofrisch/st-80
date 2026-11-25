@@ -45,9 +45,11 @@ struct WindowArchitectureTests {
 
     @Test func arrangingAnOlderImageInstallsOnlyTheMissingMethodOnce() async throws {
         let original = SmalltalkSession()
-        _ = try await openTools(.workspace, .browser, .transcript, in: original)
+        let tools = try await openTools(.workspace, .browser, .transcript, in: original)
+        let workspace = try #require(tools.windows.first { $0.kind == .workspace })
         let customFrame = WindowRect(x: 220, y: 180, width: 640, height: 420)
-        _ = await original.windowAction(.frame(1, x: customFrame.x, y: customFrame.y, width: customFrame.width, height: customFrame.height))
+        _ = await original.windowAction(.frame(workspace.id, x: customFrame.x, y: customFrame.y,
+                                               width: customFrame.width, height: customFrame.height))
         var archive = try JSONDecoder().decode(ImageArchive.self, from: await original.imageData())
         let manager = try #require(archive.classes.firstIndex { $0.name == "DesktopManager" })
         let removedSource = archive.classes[manager].methods.removeValue(forKey: "arrangeTools")
@@ -57,11 +59,11 @@ struct WindowArchitectureTests {
 
         let restored = SmalltalkSession()
         let loaded = try await restored.loadImage(JSONEncoder().encode(archive))
-        #expect(loaded.evaluation.windows.first { $0.id == 1 }?.frame == customFrame)
+        #expect(loaded.evaluation.windows.first { $0.id == workspace.id }?.frame == customFrame)
         #expect(loaded.evaluation.changes.isEmpty)
         let arranged = await restored.windowAction(.arrangeTools)
         #expect(arranged.error == nil)
-        #expect(arranged.windows.first { $0.id == 1 }?.frame != customFrame)
+        #expect(arranged.windows.first { $0.id == workspace.id }?.frame != customFrame)
         #expect(arranged.changes.count == 1)
         let installation = try #require(arranged.changes.first)
         #expect(installation.kind == .method)
@@ -89,23 +91,24 @@ struct WindowArchitectureTests {
     @Test func smalltalkOwnsScreenSelectionLimitsAndRemovedDisplayRecovery() async throws {
         let session = SmalltalkSession()
         let initial = try await openTools(.workspace, in: session)
+        let workspace = try #require(initial.windows.first { $0.kind == .workspace })
         let screens = [screen("left", -1600, 0, 1600, 1000), screen("main", 0, 0, 1440, 900)]
         let connected = await session.windowEvents([event(initial, 1, .screens(screens))])
         #expect(connected.error == nil)
         let moved = await session.evaluate("""
-        window := Desktop windowAt: 1.
+        window := Desktop windowAt: \(workspace.id).
         window moveToX: -1400 y: 200; resizeWidth: 900 height: 600
         """)
         #expect(moved.error == nil)
-        #expect(moved.windows.first { $0.id == 1 }?.x == -1400)
+        #expect(moved.windows.first { $0.id == workspace.id }?.x == -1400)
         let shrunk = await session.evaluate("window minimumWidth: 610 height: 410; resizeWidth: 50 height: 20")
-        #expect(shrunk.windows.first { $0.id == 1 }?.width == 610)
-        #expect(shrunk.windows.first { $0.id == 1 }?.height == 410)
+        #expect(shrunk.windows.first { $0.id == workspace.id }?.width == 610)
+        #expect(shrunk.windows.first { $0.id == workspace.id }?.height == 410)
         let disconnected = await session.windowEvents([event(initial, 2, .screens([screens[1]]))])
         #expect(disconnected.error == nil)
-        #expect(disconnected.windows.first { $0.id == 1 }?.x == 0)
+        #expect(disconnected.windows.first { $0.id == workspace.id }?.x == 0)
         let smallDisplay = await session.windowEvents([event(initial, 3, .screens([screen("small", 20, 30, 300, 180)]))])
-        let fitted = try #require(smallDisplay.windows.first { $0.id == 1 })
+        let fitted = try #require(smallDisplay.windows.first { $0.id == workspace.id })
         #expect(fitted.frame == WindowRect(x: 20, y: 30, width: 300, height: 180))
         #expect(fitted.minimumWidth == 300 && fitted.minimumHeight == 180)
         let modelLimits = await session.evaluate("window minimumWidth")
@@ -133,30 +136,35 @@ struct WindowArchitectureTests {
 
     @Test func nativeFactsDoNotInvokeRequestsAndStaleRepliesCannotUndoNewGeometry() async throws {
         let session = SmalltalkSession()
-        _ = try await openTools(.workspace, .browser, in: session)
-        _ = await session.windowAction(.activate(1))
+        let tools = try await openTools(.workspace, .browser, in: session)
+        let workspace = try #require(tools.windows.first { $0.kind == .workspace })
+        let browser = try #require(tools.windows.first { $0.kind == .browser })
+        _ = await session.windowAction(.activate(workspace.id))
         let initial = await session.evaluate("""
         requests := 0.
         DesktopManager compile: 'activate: aWindow requests := requests + 1. model requestFocus. ^ self bringToFront: aWindow'.
         Desktop activeWindow moveToX: 500 y: 400
         """)
-        let window = try #require(initial.windows.first { $0.id == 1 })
+        let window = try #require(initial.windows.first { $0.id == workspace.id })
         let changed = await session.windowEvents([
-            event(initial, 1, .activated(2)),
-            event(initial, 2, .frameApplied(1, request: window.frameRevision - 1, WindowRect(x: 1, y: 2, width: 600, height: 400)))
+            event(initial, 1, .activated(browser.id)),
+            event(initial, 2, .frameApplied(window.id, request: window.frameRevision - 1,
+                                           WindowRect(x: 1, y: 2, width: 600, height: 400)))
         ])
-        #expect(changed.activeWindowID == 2)
-        #expect(changed.windows.first { $0.id == 1 }?.x == 500)
+        #expect(changed.activeWindowID == browser.id)
+        #expect(changed.windows.first { $0.id == window.id }?.x == 500)
         let requests = await session.evaluate("requests")
         #expect(requests.value == "0")
         let observed = WindowRect(x: 333, y: 222, width: 699, height: 499)
-        let facts = await session.windowEvents([event(initial, 3, .frame(1, observed))])
-        #expect(facts.windows.first { $0.id == 1 }?.frame == observed)
-        let ignored = await session.windowEvents([event(initial, 2, .frame(1, WindowRect(x: 0, y: 0, width: 1, height: 1)))])
-        #expect(ignored.windows.first { $0.id == 1 }?.frame == observed)
-        let restarted = await session.reset()
-        let stale = await session.windowEvents([event(initial, 999, .closeRequested(1))])
-        #expect(stale.windows.count == restarted.windows.count)
+        let facts = await session.windowEvents([event(initial, 3, .frame(window.id, observed))])
+        #expect(facts.windows.first { $0.id == window.id }?.frame == observed)
+        let ignored = await session.windowEvents([event(initial, 2, .frame(window.id, WindowRect(x: 0, y: 0, width: 1, height: 1)))])
+        #expect(ignored.windows.first { $0.id == window.id }?.frame == observed)
+        _ = await session.reset()
+        let restarted = try await openTools(.workspace, in: session)
+        try #require(restarted.windows.first?.id == window.id)
+        let stale = await session.windowEvents([event(initial, 999, .closeRequested(window.id))])
+        #expect(stale.windows.map(\.identity) == restarted.windows.map(\.identity))
         #expect(stale.windowCommands.acknowledgedEvent == 0)
     }
 
@@ -209,11 +217,11 @@ struct WindowArchitectureTests {
     @Test func replacingTheDesktopCannotRetargetCallbacksFromOldWindowObjects() async throws {
         let session = SmalltalkSession()
         let initial = try await openTools(.workspace, in: session)
-        let old = try #require(initial.windows.first { $0.id == 1 })
+        let old = try #require(initial.windows.first { $0.kind == .workspace })
         let replacement = await session.evaluate("Desktop := DesktopManager new. Desktop openWorkspace")
         let current = try #require(replacement.windows.first)
         #expect(current.id == old.id && current.identity != old.identity)
-        let stale = NativeWindowEvent(epoch: initial.windowCommands.epoch, sequence: 1, kind: .closeRequested(1), windowIdentity: old.identity)
+        let stale = NativeWindowEvent(epoch: initial.windowCommands.epoch, sequence: 1, kind: .closeRequested(old.id), windowIdentity: old.identity)
         let ignored = await session.windowEvents([stale])
         #expect(ignored.windows.first?.identity == current.identity)
         #expect(ignored.windows.count == 1)

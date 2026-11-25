@@ -21,6 +21,10 @@ final class InterpreterWorker: Sendable {
         var activeCancellation: (@Sendable () -> Void)?
     }
 
+    /// Worst-case interpreter and compiler recursion must fit in this stack.
+    /// VMRegressionTests runs those cases on a thread of this size.
+    static let stackSize = 16 * 1_024 * 1_024
+
     private let queue: Queue
 
     init(bootstrap: Bool = true) {
@@ -44,7 +48,7 @@ final class InterpreterWorker: Sendable {
             }
         }
         thread.name = bootstrap ? "Smalltalk interpreter" : "Smalltalk source scanner"
-        thread.stackSize = 16 * 1_024 * 1_024
+        thread.stackSize = Self.stackSize
         thread.start()
     }
 

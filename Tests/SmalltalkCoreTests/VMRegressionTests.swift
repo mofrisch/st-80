@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import SmalltalkCore
 
@@ -124,5 +125,82 @@ struct VMRegressionTests {
         let accepted = await removePayload(in: session)
         #expect(accepted.value?.hasPrefix("#(true ") == true)
         #expect(accepted.classes.first { $0.name == "MigrationOwner" }?.fields == [])
+    }
+
+    // MARK: - Interpreter stack budget
+
+    /// Runs on a thread with the interpreter worker's stack, so a stack overflow
+    /// crashes the test process exactly as it would crash the app.
+    private func onWorkerStack<T>(_ body: @escaping @Sendable () throws -> T) throws -> T {
+        let done = DispatchSemaphore(value: 0)
+        nonisolated(unsafe) var result: Result<T, Error>?
+        let thread = Thread {
+            result = Result { try body() }
+            done.signal()
+        }
+        thread.stackSize = InterpreterWorker.stackSize
+        thread.start()
+        done.wait()
+        return try result!.get()
+    }
+
+    @Test func compilingTheDeepestSourceAtTheDeepestCallFitsTheWorkerStack() throws {
+        let nesting = 32 // The Smalltalk compiler's source nesting limit.
+        let deepest = String(repeating: "[", count: nesting) + "1" + String(repeating: "]", count: nesting)
+        let tooDeep = "[" + deepest + "]"
+        let results = try onWorkerStack { () -> [EvaluationResult] in
+            let runtime = SmalltalkRuntime()
+            let setup = runtime.run("""
+                Object subclass: #StackProbe instanceVariableNames: ''.
+                StackProbe compile: 'down: n source: aString
+                    n = 0 ifTrue: [ ^ StackProbe compile: aString ].
+                    ^ self down: n - 1 source: aString'.
+                nil
+                """)
+            return [
+                setup,
+                // 124 is the deepest call at which compile: still runs; 125 hits the
+                // 128-frame limit first.
+                runtime.run("StackProbe new down: 124 source: 'deep ^ \(deepest)'"),
+                runtime.run("StackProbe new deep value"),
+                runtime.run("StackProbe new down: 125 source: 'deeper ^ 1'"),
+                runtime.run("StackProbe new down: 0 source: 'tooDeep ^ \(tooDeep)'"),
+            ]
+        }
+        #expect(results[0].executionError == nil, "\(results[0].executionError ?? "")")
+        #expect(results[1].value == "#deep", "\(results[1].error ?? "")")
+        #expect(results[2].executionError == nil, "\(results[2].error ?? "")")
+        #expect(results[3].error?.contains("Maximum call depth") == true)
+        // The nesting limit is what bounds the compiler's recursion. If it is raised,
+        // revisit this test together with the worker stack size.
+        #expect(results[4].error?.contains("nesting limit of 32") == true)
+    }
+
+    @Test func compilerModeRecursionStopsAtItsDepthLimitWithoutOverflowingTheWorkerStack() throws {
+        // Block-heavy recursion costs more native stack per Smalltalk frame than a
+        // plain send, much like the compiler's own recursive descent.
+        let sources = [
+            "loop ^ self loop",
+            "loop ^ true ifTrue: [ true ifTrue: [ self loop ] ]",
+            "loop ^ [ :x | [ :y | self loop ] value: x ] value: 1",
+        ]
+        for source in sources {
+            let message = try onWorkerStack { () -> String in
+                let method = try SmalltalkRuntime().compileMethod(source)
+                let runtime = SmalltalkRuntime(bootstrap: false, compilationMode: true)
+                guard let object = runtime.classes["Object"] else { return "Object is missing" }
+                let probe = STClass("DepthProbe", superclass: object, fields: [])
+                probe.classMethods[method.selector] = method
+                runtime.classes[probe.name] = probe
+                runtime.globals[probe.name] = .classObject(probe)
+                do {
+                    _ = try runtime.send(.classObject(probe), "loop", [])
+                    return "no error"
+                } catch {
+                    return error.localizedDescription
+                }
+            }
+            #expect(message.contains("Maximum call depth"), "\(source): \(message)")
+        }
     }
 }

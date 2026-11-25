@@ -49,7 +49,7 @@ extension SmalltalkRuntime {
         do {
             try refreshToolWindowsIfNeeded()
             try synchronizeMVCBindings()
-            try synchronizeChangesBrowser()
+            try synchronizeChangeHistory()
         } catch {
             failure = failure ?? error.localizedDescription
         }

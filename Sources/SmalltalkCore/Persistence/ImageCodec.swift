@@ -1,7 +1,7 @@
 import Foundation
 
 enum ImageCodec {
-    static let version = 5
+    static let version = 6
     static let maxBytes = 32 * 1_024 * 1_024
     static let maxNodes = 40_000
 
@@ -49,7 +49,6 @@ enum ImageCodec {
 
         var globals: [String: ImageValue] = [:]
         for name in runtime.globals.keys.sorted() { globals[name] = try value(runtime.globals[name]!) }
-        let changesBrowser = try runtime.changesBrowser.map(value)
         var nodes: [ImageNode] = []
         var index = 0
         while index < pending.count {
@@ -80,7 +79,7 @@ enum ImageCodec {
         }
         let code = includesCode ? runtime.classes.mapValues { $0.methods.mapValues(MethodCode.init) }.filter { !$0.value.isEmpty } : nil
         let classCode = includesCode ? runtime.classes.mapValues { $0.classMethods.mapValues(MethodCode.init) }.filter { !$0.value.isEmpty } : [:]
-        return ImageArchive(classes: classes, globals: globals, nodes: nodes, workspace: workspace, transcript: transcript, executableMethods: code, executableClassMethods: classCode.isEmpty ? nil : classCode, changesBrowser: changesBrowser)
+        return ImageArchive(classes: classes, globals: globals, nodes: nodes, workspace: workspace, transcript: transcript, executableMethods: code, executableClassMethods: classCode.isEmpty ? nil : classCode)
     }
 
     static func decode(_ data: Data) throws -> (SmalltalkRuntime, LoadedImage) {
@@ -266,13 +265,6 @@ enum ImageCodec {
         }
         guard Set(globals.keys).isDisjoint(with: ["nil", "true", "false", "self", "super", "thisContext"]) else { throw invalid("Reserved global variable.") }
         runtime.globals = globals
-        if let savedBrowser = image.changesBrowser {
-            let browser = try value(savedBrowser)
-            guard case .object(let object) = browser, runtime.isUIClass(object.stClass, named: "ChangesBrowser") else {
-                throw invalid("Invalid Code Changes browser.")
-            }
-            runtime.changesBrowser = browser
-        }
         guard case .object(let desktop)? = globals["Desktop"], runtime.isUIClass(desktop.stClass, named: "DesktopManager"),
               case .object(let model)? = desktop.fields["model"], runtime.isUIClass(model.stClass, named: "DesktopModel") else {
             throw invalid("The image has no valid window manager.")

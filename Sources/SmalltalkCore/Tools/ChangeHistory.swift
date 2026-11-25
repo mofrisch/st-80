@@ -1,56 +1,7 @@
 import Foundation
 
 extension SmalltalkRuntime {
-    func changesBrowserContent(for window: STObject) -> Value? {
-        guard case .symbol("changes")? = window.fields["kind"], window.fields["content"] == nil,
-              case .object(let browser)? = changesBrowser else { return nil }
-        return browser.fields["content"]
-    }
-
-    func showChanges(className: String?, selector: String?, side: MethodSide, on desktop: Value) throws {
-        let opened = try send(desktop, "openChanges", [])
-        guard case .object(let window) = opened, window.fields["content"] == nil else { return }
-        let browser = try workingChangesBrowser()
-        _ = try send(browser, "showClass:selector:side:", [
-            className.map(Value.string) ?? .nilValue,
-            selector.map(Value.string) ?? .nilValue,
-            selector == nil ? .nilValue : .symbol(side.rawValue),
-        ])
-    }
-
-    func synchronizeChangesBrowser() throws {
-        guard desktopWindows?.elements.contains(where: {
-            guard case .object(let window) = $0, case .symbol("changes")? = window.fields["kind"] else { return false }
-            return window.fields["content"] == nil
-        }) == true else { return }
-        let previousSteps = steps
-        let previousDebugger = debugger
-        steps = 0
-        debugger = nil
-        defer {
-            steps = previousSteps
-            debugger = previousDebugger
-        }
-        let browser = try workingChangesBrowser()
-        _ = try send(browser, "synchronize", [])
-    }
-
-    private func workingChangesBrowser() throws -> Value {
-        if let changesBrowser { return changesBrowser }
-        for name in ["UIHistoryList", "ChangesBrowser"] where classes[name] == nil {
-            // Upgrade only the two missing controls when an older image
-            // opens its existing Code Changes window.
-            let stClass = try SystemLibrary.shared.get().bundledClass(name, in: self)
-            classes[name] = stClass
-            globals[name] = .classObject(stClass)
-        }
-        guard let stClass = classes["ChangesBrowser"] else { throw SmalltalkError("The Code Changes tool is missing.") }
-        let browser = try send(.classObject(stClass), "new", [])
-        changesBrowser = browser
-        return browser
-    }
-
-    func changesBrowserPrimitive(_ selector: String, _ args: [Value]) throws -> Value? {
+    func changeHistoryPrimitive(_ selector: String, _ args: [Value]) throws -> Value? {
         switch selector {
         case "changesBrowserRevision":
             return .string("\(journal.id):\(journal.sequence):\(journal.savedSequence):\(journal.url?.path ?? "")")

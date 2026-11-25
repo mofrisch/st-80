@@ -194,10 +194,11 @@ struct ToolWindowTests {
         #expect(element("methodList", in: content)?.selection == "value")
         #expect(installed.changes.last?.side == .classSide)
         let history = try await click("methodVersionsButton")
-        #expect(history.toolRequests.contains {
-            if case .showVersions("Counter", "value", .classSide) = $0 { return true }
-            return false
-        })
+        let historyWindow = try #require(history.windows.first { $0.kind == .changes })
+        let historyList = try #require(element("changesList", in: historyWindow.content))
+        #expect(historyList.historyEntries.map(\.title) == ["Counter class » value"])
+        #expect(history.activeWindowID == historyWindow.id)
+        #expect(history.toolRequests.isEmpty)
 
         try await click("instanceMethodSide")
         #expect(element("methodList", in: content)?.selection == "value")

@@ -281,7 +281,7 @@ extension SmalltalkRuntime {
     // a different control at the same position.
     func projectedActionTarget(windowID: Int64, elementID: String) throws -> (object: STObject, kind: UIElementKind)? {
         guard let window = projectedWindow(withID: windowID),
-              let content = changesBrowserContent(for: window) ?? window.fields["content"],
+              let content = window.fields["content"],
               let control = try projectInterface(content).controls[elementID], control.enabled else { return nil }
         return (control.object, control.kind)
     }

@@ -151,7 +151,7 @@ DisplayScreen compile: 'distanceTo: aWindow
     dy := (y * 2 + height) - (aWindow y * 2 + aWindow height).
     ^ dx squared + dy squared'.
 
-Controller subclass: #DesktopManager instanceVariableNames: ''.
+Controller subclass: #DesktopManager instanceVariableNames: 'changesWindow'.
 DesktopManager compile: 'initialize
     super initialize.
     model := DesktopModel new'.
@@ -187,6 +187,7 @@ DesktopManager compile: 'windowClassFor: aKind
     aKind = #workspace ifTrue: [ ^ WorkspaceWindow ].
     aKind = #browser ifTrue: [ ^ BrowserWindow ].
     aKind = #transcript ifTrue: [ ^ TranscriptWindow ].
+    aKind = #changes ifTrue: [ ^ ChangesBrowser ].
     ^ SystemWindow'.
 
 DesktopManager compile: 'open: aWindow
@@ -216,7 +217,18 @@ DesktopManager compile: 'openTranscript
 DesktopManager compile: 'openChanges
     | existing | existing := self windowOfKind: #changes.
     existing notNil ifTrue: [ ^ self activate: existing ].
-    ^ self createKind: #changes title: ''Code Changes'''.
+    changesWindow notNil ifTrue: [ ^ self open: changesWindow ].
+    changesWindow := self createKind: #changes title: ''Code Changes''.
+    ^ changesWindow'.
+DesktopManager compile: 'showChangesFor: aClass selector: aSelector side: aSide
+    | window |
+    window := self openChanges.
+    (window respondsTo: #showClass:selector:side:) ifTrue: [
+        window showClass: aClass selector: aSelector side: aSide ].
+    ^ window'.
+DesktopManager compile: 'synchronizeChanges
+    self windows do: [ :window |
+        (window respondsTo: #synchronizeHistory) ifTrue: [ window synchronizeHistory ] ]'.
 DesktopManager compile: 'arrangeTools
     | browser workspace output screen left bottom availableWidth availableHeight gap browserWidth rightWidth outputHeight workspaceHeight |
     browser := self windowOfKind: #browser.

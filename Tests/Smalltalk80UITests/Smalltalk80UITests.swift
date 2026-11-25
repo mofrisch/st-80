@@ -1699,6 +1699,31 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertFalse(first.staticTexts["ERROR"].exists)
     }
 
+    func testBrowserVersionsOpensTheSelectedMethodsHistory() {
+        let app = launchFreshApp()
+        let workspace = app.windows["toolWindow-1"].textViews["workspaceEditor"]
+        XCTAssertTrue(workspace.waitForExistence(timeout: 10))
+        workspace.typeKey("2", modifierFlags: .command)
+
+        let browser = app.windows["toolWindow-2"]
+        let method = browser.staticTexts["value"].firstMatch
+        XCTAssertTrue(method.waitForExistence(timeout: 5))
+        method.click()
+        let actions = browser.descendants(matching: .any).matching(identifier: "methodActions").firstMatch
+        XCTAssertTrue(actions.waitForExistence(timeout: 5))
+        actions.click()
+        let versions = app.menuItems["Versions …"].firstMatch
+        XCTAssertTrue(versions.waitForExistence(timeout: 5))
+        versions.click()
+
+        let history = app.windows["toolWindow-4"]
+        XCTAssertTrue(history.staticTexts["Versions: Counter » value"].waitForExistence(timeout: 5))
+        XCTAssertTrue(history.staticTexts["Shipped Baseline"].firstMatch.exists)
+        history.staticTexts["Counter » value"].firstMatch.click()
+        let restore = expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: history.buttons["restoreChangeButton"])
+        wait(for: [restore], timeout: 5)
+    }
+
     func testOpeningChangesReportsInvalidJournalAndAllowsRetry() throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }

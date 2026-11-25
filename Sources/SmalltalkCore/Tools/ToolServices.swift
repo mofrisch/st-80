@@ -1,10 +1,8 @@
 import Foundation
 
-/// Native actions requested by a Smalltalk control. File dialogs and the
-/// platform's version-history window are handled by the app.
+/// Native actions requested by a Smalltalk control.
 public enum NativeToolRequest: Sendable {
     case saveImage
-    case showVersions(className: String, selector: String, side: MethodSide = .instance)
     case openInspector(InspectorSnapshot)
     case debugWorkspace(windowID: Int64, identity: String, source: String)
 }
@@ -148,11 +146,7 @@ extension SmalltalkRuntime {
         case "requestSaveImage":
             toolRequests.append(.saveImage)
             return .nilValue
-        case "requestVersionsFor:selector:", "requestVersionsFor:selector:side:":
-            let methodSide = args.count == 3 ? try side(args[2]) : .instance
-            toolRequests.append(.showVersions(className: try string(args[0]), selector: try string(args[1]), side: methodSide))
-            return .nilValue
-        default: return try inspectionPrimitive(selector, args) ?? changesBrowserPrimitive(selector, args)
+        default: return try inspectionPrimitive(selector, args) ?? changeHistoryPrimitive(selector, args)
         }
     }
 

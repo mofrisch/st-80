@@ -33,7 +33,6 @@ final class SmalltalkRuntime {
     var capturingTestPhase = false
     var toolRequests: [NativeToolRequest] = []
     var objectInspectors: [UUID: Value] = [:]
-    var changesBrowser: Value?
     var mvcBindingIndex = MVCBindingIndex()
     var recordingChanges = false
     var bootstrapError: String?

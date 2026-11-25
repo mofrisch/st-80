@@ -59,7 +59,7 @@ The VM builds and validates a separate session before replacing the active one. 
 
 **Reset Session** starts a fresh session in the running app. In a workspace, **⌘S** saves the source text as `.st`.
 
-The JSON image format (`format: st80-image`, `version: 5`) stores an object table, bytecode for methods and blocks, source positions, and source references. Use a fresh session when upgrading from an earlier image version. The core API `imageData` produces a portable image with embedded method sources. Each image can contain up to 32 MiB and 40,000 reachable reference objects.
+The JSON image format (`format: st80-image`, `version: 6`) stores an object table, bytecode for methods and blocks, source positions, and source references. Use a fresh session when upgrading from an earlier image version. The core API `imageData` produces a portable image with embedded method sources. Each image can contain up to 32 MiB and 40,000 reachable reference objects.
 
 ### Sources and changes
 
@@ -75,7 +75,7 @@ The original sources live in `Sources/SmalltalkCore/Library/*.st`. Xcode and Swi
 
 Accepting code writes and syncs the changes entry before installing the method in the live image. This also applies to `SomeClass compile:` and `SomeClass compileClass:` in a workspace. A write failure prevents installation. Before the first image save, the log lives in `~/Library/Application Support/Smalltalk80/Changes/`. The Code Changes window shows its path. **Smalltalk → Open Changes File …** can import a log for review even if its session never saved an image. The import checks the size and entry limits before appending the entries in one write, then rolls back the write if it fails.
 
-**Smalltalk → Code Changes …** opens the history. The image’s `ChangesBrowser` builds the window, holds its filters and selection, and asks the VM to retrieve or restore journal entries. **Versions …** in the browser filters the history to the selected method and shows its shipped baseline from the sources archive. **Restore Version** compiles the selected source and logs the restoration as a new change. Entries after the saved image checkpoint are marked and are never replayed automatically on load. To restore a new class, restore its definition before its methods. The log records accepted code changes. Arbitrary object mutations and unaccepted editor contents belong to the live session.
+**Smalltalk → Code Changes …** opens the history. The `ChangesBrowser` window holds its controls, filters, and selection in the image’s object graph and asks the VM to retrieve or restore journal entries. **Versions …** in the browser opens this window directly and filters the history to the selected method, including its shipped baseline from the sources archive. **Restore Version** compiles the selected source and logs the restoration as a new change. Entries after the saved image checkpoint are marked and are never replayed automatically on load. To restore a new class, restore its definition before its methods. The log records accepted code changes. Arbitrary object mutations and unaccepted editor contents belong to the live session.
 
 An open Code Changes window retains its last view state in the image. Loading and snapshots display that state without executing Smalltalk; the next evaluation or tool action refreshes it from the journal. Older images without this cached view build it on the next evaluation or when Code Changes is opened again.
 

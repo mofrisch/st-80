@@ -15,6 +15,40 @@ struct ChangesBrowserPersistenceTests {
         }
     }
 
+    @Test func closedChangesWindowRetainsItsOwnHistoryAcrossCollectionAndImageLoad() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("st80-changes-reopen-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let image = directory.appendingPathComponent("History.stimage")
+        let session = SmalltalkSession()
+        #expect(await session.compile("value ^ 41", in: "Counter").error == nil)
+        #expect(await session.compile("otherVersion ^ 12", in: "Counter").error == nil)
+        let opened = await session.windowAction(.showChanges(className: "Counter", selector: "value", side: .instance))
+        let window = try #require(opened.windows.first { $0.kind == .changes })
+        #expect(await session.evaluate("(Desktop windowOfKind: #changes) class name").value == "#ChangesBrowser")
+        let list = try #require(element("changesList", in: window.content))
+        let record = try #require(list.historyEntries.first)
+        #expect(record.title == "Counter » value")
+        let selected = await session.uiAction(.select(windowID: window.id, elementID: list.id, value: record.id))
+        #expect(selected.error == nil)
+        let closed = await session.windowAction(.close(window.id))
+        #expect(!closed.windows.contains { $0.kind == .changes })
+        _ = await session.collectGarbage()
+        try await session.saveImage(to: image, workspace: "", transcript: "")
+
+        let restored = SmalltalkSession()
+        let loaded = try await restored.loadImage(from: image)
+        #expect(loaded.evaluation.error == nil)
+        #expect(!loaded.evaluation.windows.contains { $0.kind == .changes })
+        let reopened = await restored.windowAction(.open(.changes))
+        #expect(reopened.error == nil)
+        let reopenedWindow = try #require(reopened.windows.first { $0.kind == .changes })
+        let history = try #require(element("changesList", in: reopenedWindow.content))
+        #expect(history.selection == record.id)
+        #expect(history.historyEntries.map(\.title) == ["Counter » value", "Counter » value"])
+        #expect(element("changeSource", in: reopenedWindow.content)?.children.first?.text == "value ^ 41")
+    }
+
     @Test(arguments: [false, true])
     func loadingAndSnapshotsNeverRunChangesBrowserMethods(fileImage: Bool) async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("st80-changes-load-\(UUID().uuidString)")
@@ -25,7 +59,7 @@ struct ChangesBrowserPersistenceTests {
             loadEffects := 0.
             Desktop openChanges.
             ChangesBrowser compile: 'initialize loadEffects := loadEffects + 100. self buildContent'.
-            ChangesBrowser compile: 'synchronize loadEffects := loadEffects + 1'
+            ChangesBrowser compile: 'synchronizeHistory loadEffects := loadEffects + 1'
             """)
         #expect(configured.error == nil)
         await original.worker.submit { $0.globals["loadEffects"] = .integer(0) }
@@ -53,29 +87,6 @@ struct ChangesBrowserPersistenceTests {
         // and uses the restored browser rather than sending initialize again.
         #expect(await restored.evaluate("nil").error == nil)
         #expect(await effects(in: restored) == "1")
-    }
-
-    @Test func olderImagesWithoutCachedHistoryLoadWithoutInitializingTheBrowser() async throws {
-        let original = SmalltalkSession()
-        #expect(await original.evaluate("""
-            loadEffects := 0.
-            Desktop openChanges.
-            ChangesBrowser compile: 'initialize loadEffects := loadEffects + 100. self buildContent'.
-            ChangesBrowser compile: 'synchronize loadEffects := loadEffects + 1'
-            """).error == nil)
-        var archive = try JSONDecoder().decode(ImageArchive.self, from: await original.imageData())
-        archive.changesBrowser = nil
-        archive.globals["loadEffects"] = .integer(0)
-        let restored = SmalltalkSession()
-        let loaded = try await restored.loadImage(JSONEncoder().encode(archive))
-        #expect(loaded.evaluation.error == nil)
-        #expect(loaded.evaluation.windows.contains { $0.kind == .changes })
-        _ = await restored.snapshot()
-        #expect(await effects(in: restored) == "0")
-        let opened = await restored.windowAction(.showChanges(className: nil, selector: nil, side: .instance))
-        #expect(opened.error == nil)
-        #expect(element("changesList", in: opened.windows.first { $0.kind == .changes }?.content) != nil)
-        #expect(await effects(in: restored) == "101")
     }
 
     @Test func restoredHistoryControlsStillSelectSourcesAndRefreshAfterAnEdit() async throws {

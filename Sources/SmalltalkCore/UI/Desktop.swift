@@ -131,7 +131,11 @@ extension SmalltalkRuntime {
                 let selectors: [ToolKind: String] = [.workspace: "openWorkspace", .browser: "openBrowser", .transcript: "openTranscript", .custom: "openWindow", .changes: "openChanges"]
                 _ = try send(desktop, selectors[kind]!, [])
             case .showChanges(let className, let selector, let side):
-                try showChanges(className: className, selector: selector, side: side, on: desktop)
+                _ = try send(desktop, "showChangesFor:selector:side:", [
+                    className.map(Value.string) ?? .nilValue,
+                    selector.map(Value.string) ?? .nilValue,
+                    selector == nil ? .nilValue : .symbol(side.rawValue),
+                ])
             case .close(let id): _ = try send(desktop, "requestClose:", [window(id)])
             case .activate(let id): _ = try send(desktop, "activate:", [window(id)])
             case .text(let id, let text): _ = try send(window(id), "text:", [.string(text)])
@@ -141,6 +145,22 @@ extension SmalltalkRuntime {
             }
             return finishEvaluation()
         } catch { return finishEvaluation(error: error.localizedDescription) }
+    }
+
+    func synchronizeChangeHistory() throws {
+        guard let windows = desktopWindows, windows.elements.count <= Self.desktopWindowLimit,
+              let desktop = globals["Desktop"],
+              lookupMethod("synchronizeChanges", on: desktop) != nil else { return }
+        // History updates use a separate budget and never step into tool code.
+        let previousSteps = steps
+        let previousDebugger = debugger
+        steps = 0
+        debugger = nil
+        defer {
+            steps = previousSteps
+            debugger = previousDebugger
+        }
+        _ = try send(desktop, "synchronizeChanges", [])
     }
 
     func performWindowEvents(_ events: [NativeWindowEvent]) -> EvaluationResult {
@@ -261,9 +281,7 @@ extension SmalltalkRuntime {
                 warning = "Desktop contains an invalid window. Check its instance variables."; continue
             }
             var content: UIElementInfo?
-            if let changes = changesBrowserContent(for: object) {
-                do { content = try projectContent(changes) } catch { warning = error.localizedDescription }
-            } else if object.fields["content"] != nil || kind == .custom {
+            if object.fields["content"] != nil || kind == .custom {
                 do { content = try projectWindowContent(object) } catch { warning = error.localizedDescription }
             }
             let method = selectedBrowserMethod(in: object)

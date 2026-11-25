@@ -189,8 +189,6 @@ final class AppController {
             switch request {
             case .saveImage:
                 Task { [weak self] in await self?.saveImage() }
-            case .showVersions(let className, let selector, let side):
-                Task { [weak self] in await self?.showChanges(className: className, selector: selector, side: side) }
             case .openInspector(let snapshot):
                 openInspector(snapshot)
             case .debugWorkspace(let id, let identity, let source):
@@ -376,8 +374,8 @@ final class AppController {
         controlEdits = ControlEdits()
     }
 
-    func showChanges(className: String? = nil, selector: String? = nil, side: MethodSide = .instance) async {
-        await sendWindowAction(.showChanges(className: className, selector: selector, side: side))
+    func showChanges() async {
+        await sendWindowAction(.showChanges(className: nil, selector: nil, side: .instance))
     }
 
     func applyControlResult(_ evaluation: EvaluationResult, windowID: Int64) {

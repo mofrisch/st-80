@@ -171,7 +171,7 @@ struct ImageTests {
         let decoded = try JSONSerialization.jsonObject(with: data)
         let archive = try #require(decoded as? [String: Any])
         var unsupportedVersion = archive
-        unsupportedVersion["version"] = 99
+        unsupportedVersion["version"] = ImageCodec.version - 1
         var wrongFormat = archive
         wrongFormat["format"] = "another-image-format"
         var danglingReference = archive

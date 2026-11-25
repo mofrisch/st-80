@@ -426,7 +426,8 @@ BrowserWindow compile: 'acceptDefinition
     self result: outcome'.
 
 BrowserWindow compile: 'showVersions
-    (selector notNil and: [ self primitiveSelected not ]) ifTrue: [ ToolVM requestVersionsFor: className selector: selector side: methodSide ]'.
+    (selector notNil and: [ self primitiveSelected not ]) ifTrue: [
+        Desktop showChangesFor: className selector: selector side: methodSide ]'.
 
 BrowserWindow compile: 'refreshOrganizationActions
     renameCategoryItem enabled: category ~= ''All''.

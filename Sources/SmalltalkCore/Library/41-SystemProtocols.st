@@ -104,7 +104,8 @@ BrowserOrganization compile: 'shippedProtocols
             (''Initialization'' (''initialize''))
             (''Window Registry'' (''windows'' ''append:'' ''nextID'' ''windowAt:'' ''windowOfKind:'' ''activeWindow''))
             (''Opening Tools'' (''createKind:title:'' ''windowClassFor:'' ''openWorkspace'' ''showWorkspace''
-                ''openBrowser'' ''openTranscript'' ''openChanges'' ''openWindow''))
+                ''openBrowser'' ''openTranscript'' ''openChanges'' ''showChangesFor:selector:side:'' ''openWindow''))
+            (''Tool Synchronization'' (''synchronizeChanges''))
             (''Window Lifecycle'' (''open:'' ''requestClose:'' ''close:'' ''minimize:''))
             (''Focus and Ordering'' (''chooseActive'' ''bringToFront:'' ''activate:'' ''observeActivation:'' ''observeMinimized:value:''))
             (''Displays and Placement'' (''screens'' ''screenFor:'' ''screensChanged:'' ''constrain:'' ''restoreWindows'' ''arrangeTools''))))
@@ -177,7 +178,7 @@ BrowserOrganization compile: 'shippedProtocols
             (''Applying Edits'' (''chooseDestination:'' ''apply'' ''cancel''))))
         (''ChangesBrowser'' (
             (''Layout'' (''initialize'' ''buildContent''))
-            (''History'' (''showClass:selector:side:'' ''allChanges'' ''synchronize'' ''reload''))
+            (''History'' (''showClass:selector:side:'' ''allChanges'' ''synchronizeHistory'' ''reload''))
             (''Version Selection'' (''select:'' ''restoreSelected''))))
         (''InspectorModel'' (
             (''Opening'' (''openOn:'' ''levelFor:named:'' ''currentLevel''))

@@ -12,9 +12,6 @@ struct ImageArchive: Codable {
     var transcript: String
     var executableMethods: [String: [String: MethodCode]]?
     var executableClassMethods: [String: [String: MethodCode]]?
-    // Retain the last projected view so loading an open history window never
-    // needs to construct or synchronize it by executing restored methods.
-    var changesBrowser: ImageValue?
 }
 
 struct ImageClass: Codable {

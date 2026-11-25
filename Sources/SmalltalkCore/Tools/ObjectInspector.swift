@@ -169,17 +169,11 @@ extension SmalltalkRuntime {
             throw SmalltalkError("Close an Object Inspector before opening another one.")
         }
         let id = UUID()
-        let enclosingSteps = steps
-        let enclosingDepth = depth
         let enclosingDebugger = debugger
-        steps = 0
-        depth = 0
         debugger = nil
-        defer {
-            steps = enclosingSteps
-            depth = enclosingDepth
-            debugger = enclosingDebugger
-        }
+        // Creating an inspector is part of the current evaluation. Suppress
+        // debugger presentation frames without refilling its execution budget.
+        defer { debugger = enclosingDebugger }
         try withRoots([value]) { roots in
             let model = try send(.classObject(inspectorModelClass()), "new", [])
             roots.add(model)

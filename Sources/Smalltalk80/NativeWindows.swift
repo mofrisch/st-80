@@ -7,6 +7,51 @@ import SwiftUI
 @MainActor
 final class NativeWindowBackend {
     @MainActor
+    private final class ToolbarHostingView: NSHostingView<AnyView> {
+        private var fittedSize: NSSize?
+        private var resizeScheduled = false
+
+        required init(rootView: AnyView) {
+            super.init(rootView: rootView)
+        }
+
+        required init?(coder: NSCoder) { fatalError("ToolbarHostingView is created in code") }
+
+        func update(_ content: AnyView) {
+            rootView = AnyView(content.fixedSize())
+            resizeToFit()
+            scheduleResize()
+        }
+
+        override func invalidateIntrinsicContentSize() {
+            super.invalidateIntrinsicContentSize()
+            // SwiftUI can invalidate its size while publishing a new snapshot.
+            // Measure after that update finishes, rather than changing native
+            // titlebar geometry from inside SwiftUI's layout pass.
+            scheduleResize()
+        }
+
+        private func scheduleResize() {
+            guard !resizeScheduled else { return }
+            resizeScheduled = true
+            Task { [weak self] in
+                guard let self else { return }
+                resizeScheduled = false
+                resizeToFit()
+            }
+        }
+
+        private func resizeToFit() {
+            let size = fittingSize
+            guard fittedSize != size else { return }
+            fittedSize = size
+            // AppKit may give the accessory the full titlebar height. Remember
+            // the measured content size so that adjustment cannot cause a loop.
+            setFrameSize(size)
+        }
+    }
+
+    @MainActor
     private final class Entry {
         let window: NSWindow
         let delegate: WindowDelegate
@@ -162,9 +207,12 @@ final class NativeWindowBackend {
 
     private func updateTitlebar(for entry: Entry, info: ToolWindowInfo) {
         if let content = toolbar(info) {
-            guard entry.titlebarAccessory == nil else { return }
-            let host = NSHostingView(rootView: content.fixedSize())
-            host.setFrameSize(host.fittingSize)
+            if let host = entry.titlebarAccessory?.view as? ToolbarHostingView {
+                host.update(content)
+                return
+            }
+            let host = ToolbarHostingView(rootView: AnyView(content.fixedSize()))
+            host.update(content)
             let accessory = NSTitlebarAccessoryViewController()
             accessory.layoutAttribute = .right
             accessory.view = host

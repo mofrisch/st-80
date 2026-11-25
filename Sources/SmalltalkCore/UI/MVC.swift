@@ -8,6 +8,7 @@ extension SmalltalkRuntime {
         do {
             try refreshToolWindowsIfNeeded()
             try synchronizeMVCBindings()
+            try synchronizeChangesBrowser()
         } catch {
             failure = failure ?? error.localizedDescription
         }

@@ -18,6 +18,9 @@ struct ImageArchive: Codable {
     var transcript: String
     var executableMethods: [String: [String: MethodCode]]?
     var executableClassMethods: [String: [String: MethodCode]]?
+    // Retain the last projected view so loading an open history window never
+    // needs to construct or synchronize it by executing restored methods.
+    var changesBrowser: ImageValue?
 }
 
 struct ImageClass: Codable {
@@ -146,6 +149,7 @@ enum ImageCodec {
 
         var globals: [String: ImageValue] = [:]
         for name in runtime.globals.keys.sorted() { globals[name] = try value(runtime.globals[name]!) }
+        let changesBrowser = try runtime.changesBrowser.map(value)
         var nodes: [ImageNode] = []
         var index = 0
         while index < pending.count {
@@ -176,7 +180,7 @@ enum ImageCodec {
         }
         let code = includesCode ? runtime.classes.mapValues { $0.methods.mapValues(MethodCode.init) }.filter { !$0.value.isEmpty } : nil
         let classCode = includesCode ? runtime.classes.mapValues { $0.classMethods.mapValues(MethodCode.init) }.filter { !$0.value.isEmpty } : [:]
-        return ImageArchive(classes: classes, globals: globals, nodes: nodes, workspace: workspace, transcript: transcript, executableMethods: code, executableClassMethods: classCode.isEmpty ? nil : classCode)
+        return ImageArchive(classes: classes, globals: globals, nodes: nodes, workspace: workspace, transcript: transcript, executableMethods: code, executableClassMethods: classCode.isEmpty ? nil : classCode, changesBrowser: changesBrowser)
     }
 
     static func decode(_ data: Data) throws -> (SmalltalkRuntime, LoadedImage) {
@@ -266,7 +270,7 @@ enum ImageCodec {
                 let object = try runtime.object(stClass)
                 shells.append(.value(.object(object)))
             case .array(let values):
-                shells.append(.value(try runtime.array(Array(repeating: .nilValue, count: values.count))))
+                shells.append(.value(try runtime.array(count: values.count)))
             case .environment:
                 shells.append(.environment(try runtime.environment()))
             case .block(let record):
@@ -350,6 +354,13 @@ enum ImageCodec {
         }
         guard Set(globals.keys).isDisjoint(with: ["nil", "true", "false", "self", "super", "thisContext"]) else { throw invalid("Reserved global variable.") }
         runtime.globals = globals
+        if let savedBrowser = image.changesBrowser {
+            let browser = try value(savedBrowser)
+            guard case .object(let object) = browser, runtime.isUIClass(object.stClass, named: "ChangesBrowser") else {
+                throw invalid("Invalid Code Changes browser.")
+            }
+            runtime.changesBrowser = browser
+        }
         guard case .object(let desktop)? = globals["Desktop"], runtime.isUIClass(desktop.stClass, named: "DesktopManager"),
               case .object(let model)? = desktop.fields["model"], runtime.isUIClass(model.stClass, named: "DesktopModel") else {
             throw invalid("The image has no valid window manager.")

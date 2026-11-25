@@ -20,6 +20,21 @@ public struct ChangeInfo: Identifiable, Codable, Sendable {
 /// independently recoverable record; an interrupted final write is ignored.
 final class SourceJournal {
     struct Header: Codable { var format = "st80-changes"; var version = 1; let id: String }
+    private struct FileStamp: Equatable {
+        let device: dev_t
+        let inode: ino_t
+        let size: off_t
+        let modifiedSeconds: Int
+        let modifiedNanoseconds: Int
+        let changedSeconds: Int
+        let changedNanoseconds: Int
+
+        init(_ status: stat) {
+            device = status.st_dev; inode = status.st_ino; size = status.st_size
+            modifiedSeconds = status.st_mtimespec.tv_sec; modifiedNanoseconds = status.st_mtimespec.tv_nsec
+            changedSeconds = status.st_ctimespec.tv_sec; changedNanoseconds = status.st_ctimespec.tv_nsec
+        }
+    }
     static let maxBytes = 64 * 1024 * 1024
     let id: String
     private(set) var records: [ChangeInfo]
@@ -27,6 +42,7 @@ final class SourceJournal {
     private var physicalSize: UInt64 = 0
     private var validSize: UInt64 = 0
     private var memoryBytes: Int = 0
+    private var validatedFileStamp: FileStamp?
     var savedSequence: Int64 = 0
     var sequence: Int64 { records.last?.sequence ?? 0 }
 
@@ -55,6 +71,12 @@ final class SourceJournal {
     /// Keep cooperating writers out between validating the companion and
     /// committing an image that relies on its current records.
     func withValidatedFile<T>(_ operation: () throws -> T) throws -> T {
+        try withValidatedFileHandle { _ in try operation() }
+    }
+
+    /// Append and image commits validate the same records while holding the
+    /// lock on the exact file descriptor the operation will use.
+    private func withValidatedFileHandle<T>(_ operation: (FileHandle) throws -> T) throws -> T {
         guard let url else { throw SmalltalkError("The changes log is not attached to a file.") }
         let file = try FileHandle(forUpdating: url)
         defer { try? file.close() }
@@ -66,46 +88,61 @@ final class SourceJournal {
         guard fstat(file.fileDescriptor, &opened) == 0, stat(url.path, &current) == 0,
               opened.st_dev == current.st_dev, opened.st_ino == current.st_ino,
               try file.seekToEnd() == physicalSize else { throw Self.modifiedFile() }
-        try file.seek(toOffset: 0)
-        let stored = try Self.decode(Self.readBounded(file, maximum: Self.maxBytes), at: url)
-        guard stored.id == id, stored.validSize == validSize,
-              try stored.data() == data() else { throw Self.modifiedFile() }
+        let stamp = FileStamp(opened)
+        // A stable, already validated file needs no repeated whole-log decode.
+        // Any inode, size, mtime or ctime change requires a full record check.
+        if validatedFileStamp != stamp {
+            try file.seek(toOffset: 0)
+            let stored = try Self.decode(Self.readBounded(file, maximum: Self.maxBytes), at: url)
+            guard stored.id == id, stored.validSize == validSize,
+                  try stored.data() == data() else { throw Self.modifiedFile() }
+        }
         // An editor may replace a pathname without honoring flock. Detect a
         // replacement or content change that happened while reading the log.
-        guard stat(url.path, &current) == 0,
-              opened.st_dev == current.st_dev, opened.st_ino == current.st_ino,
-              opened.st_size == current.st_size,
-              opened.st_mtimespec.tv_sec == current.st_mtimespec.tv_sec,
-              opened.st_mtimespec.tv_nsec == current.st_mtimespec.tv_nsec,
-              opened.st_ctimespec.tv_sec == current.st_ctimespec.tv_sec,
-              opened.st_ctimespec.tv_nsec == current.st_ctimespec.tv_nsec else { throw Self.modifiedFile() }
-        return try operation()
+        guard stat(url.path, &current) == 0, stamp == FileStamp(current) else { throw Self.modifiedFile() }
+        validatedFileStamp = stamp
+        return try operation(file)
     }
 
     private static func modifiedFile() -> SmalltalkError {
         SmalltalkError("The changes log was modified outside this session. Reload the image.")
     }
     @discardableResult
-    func append(kind: ChangeInfo.Kind, className: String, selector: String? = nil, superclass: String? = nil, fields: [String]? = nil, side: MethodSide = .instance, source: String) throws -> ChangeInfo {
+    func append(kind: ChangeInfo.Kind, className: String, selector: String? = nil, superclass: String? = nil, fields: [String]? = nil, side: MethodSide = .instance, source: String,
+                writing: (FileHandle, Data) throws -> Void = { try $0.write(contentsOf: $1) }) throws -> ChangeInfo {
         guard records.count < 100_000 else { throw SmalltalkError("The changes log contains too many entries.") }
         let record = ChangeInfo(id: UUID().uuidString, sequence: sequence + 1, timestamp: Date(), kind: kind, className: className, selector: selector, superclass: superclass, fields: fields, source: source, methodSide: side == .classSide ? side : nil)
         let bytes = try Self.line(record)
         guard validSize + UInt64(bytes.count) <= Self.maxBytes, memoryBytes + bytes.count <= Self.maxBytes else { throw SmalltalkError("The changes log exceeds the 64 MiB limit.") }
-        if let url {
-            let file = try FileHandle(forUpdating: url)
-            defer { try? file.close() }
-            guard flock(file.fileDescriptor, LOCK_EX | LOCK_NB) == 0 else { throw SmalltalkError("Another session is writing to the changes log.") }
-            defer { flock(file.fileDescriptor, LOCK_UN) }
-            guard try file.seekToEnd() == physicalSize else { throw SmalltalkError("The changes log was modified outside this session. Reload the image.") }
-            if physicalSize != validSize { try file.truncate(atOffset: validSize) }
-            do {
-                try file.write(contentsOf: bytes)
-                try file.synchronize()
-            } catch {
-                try? file.truncate(atOffset: validSize)
-                throw error
+        if url != nil {
+            try withValidatedFileHandle { file in
+                do {
+                    if physicalSize != validSize {
+                        try file.truncate(atOffset: validSize)
+                        physicalSize = validSize
+                    }
+                    try file.seek(toOffset: validSize)
+                    try writing(file, bytes)
+                    try file.synchronize()
+                    var written = stat(), current = stat()
+                    guard let url, fstat(file.fileDescriptor, &written) == 0, stat(url.path, &current) == 0,
+                          FileStamp(written) == FileStamp(current),
+                          written.st_size >= 0, UInt64(written.st_size) == validSize + UInt64(bytes.count) else {
+                        throw Self.modifiedFile()
+                    }
+                    validatedFileStamp = FileStamp(written)
+                } catch {
+                    do {
+                        try file.truncate(atOffset: validSize)
+                        // A repaired incomplete tail is now gone even when
+                        // this append fails. A retry must validate that size.
+                        physicalSize = validSize
+                    } catch { /* Keep the original write/validation error. */ }
+                    validatedFileStamp = nil
+                    throw error
+                }
+                validSize += UInt64(bytes.count); physicalSize = validSize
             }
-            validSize += UInt64(bytes.count); physicalSize = validSize
         }
         records.append(record)
         memoryBytes += bytes.count

@@ -650,8 +650,14 @@ final class AppController {
             let workspaceID = opened.activeWindowID
             let wasOpen = workspaceID.flatMap { presentedWindow($0) } != nil
             apply(opened)
-            guard opened.executionError == nil, !wasOpen, let workspaceID,
-                  presentedWindow(workspaceID)?.info.kind == .workspace else { return }
+            guard opened.executionError == nil else { return }
+            guard !wasOpen, let workspaceID,
+                  presentedWindow(workspaceID)?.info.kind == .workspace else {
+                error = opened.windows.count >= 128
+                    ? "Could not open the workspace: the desktop is limited to 128 windows. Close a window and try again."
+                    : "Could not open the workspace: Smalltalk did not create a new workspace window."
+                return
+            }
             let loaded = await session.windowAction(.text(workspaceID, source))
             apply(loaded)
             if loaded.executionError == nil {

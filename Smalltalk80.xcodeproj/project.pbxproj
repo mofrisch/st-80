@@ -608,6 +608,16 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "258C6E322B23C690C2F921BF";
 		};
+		"2B93D1CF8557A14492B02436" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "ChangesBrowserPersistenceTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"1579A5A25B2BF14E40146204" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "2B93D1CF8557A14492B02436";
+		};
 		"725E2DB5222249B4DF23AA33" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -648,6 +658,16 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "7F7CE86638232BD31425AD12";
 		};
+		"E5070D06F9DD391DD5EC716F" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "ImageArrayLimitTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"D014AB623FA4B15DD55484D7" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "E5070D06F9DD391DD5EC716F";
+		};
 		"B672C5C6C3A27ED8629F2AAA" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -677,6 +697,16 @@
 		"6CA9A429D19BAEEAF9E463C9" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "7BA730601CD9F92A8A7E853F";
+		};
+		"43366EDA9F98830D932776A8" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "JournalForkRegressionTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"E995170C75447ACC852BA00E" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "43366EDA9F98830D932776A8";
 		};
 		"06772079F02C738B3572F69D" = {
 			"isa" = "PBXFileReference";
@@ -738,6 +768,16 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "894D7ECDBE3AE25C03BD97A0";
 		};
+		"8D1F50DFE521F63D14DE73E4" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "SourceJournalAppendIntegrityTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"4093F733033E77D13B988909" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "8D1F50DFE521F63D14DE73E4";
+		};
 		"85E77B69A81A854FE85BC17D" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -747,6 +787,16 @@
 		"031402F3A05548F8288FF4FD" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "85E77B69A81A854FE85BC17D";
+		};
+		"52BFCBBAD41B6858AD96F211" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "ToolExecutionBudgetTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"57313E29F8F55E3502F83D39" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "52BFCBBAD41B6858AD96F211";
 		};
 		"7DE11676F1250BBDE1165174" = {
 			"isa" = "PBXFileReference";
@@ -823,20 +873,25 @@
 			"children" = (
 				"AD011F3B8A335C5EEDC53A39",
 				"258C6E322B23C690C2F921BF",
+				"2B93D1CF8557A14492B02436",
 				"725E2DB5222249B4DF23AA33",
 				"1B5E8E1604B64E1086373D61",
 				"6657EA69D3229CC166305898",
 				"7F7CE86638232BD31425AD12",
+				"E5070D06F9DD391DD5EC716F",
 				"B672C5C6C3A27ED8629F2AAA",
 				"127C95D75127AE13BBBCC54F",
 				"7BA730601CD9F92A8A7E853F",
+				"43366EDA9F98830D932776A8",
 				"06772079F02C738B3572F69D",
 				"04838382F820C13C4F3079D7",
 				"559EFA3C53E7DA890AB56725",
 				"72A11E28D54C5A3B5D6CAE14",
 				"E0A5D27593EB899D38A221C7",
 				"894D7ECDBE3AE25C03BD97A0",
+				"8D1F50DFE521F63D14DE73E4",
 				"85E77B69A81A854FE85BC17D",
+				"52BFCBBAD41B6858AD96F211",
 				"7DE11676F1250BBDE1165174",
 				"3A423049B79C559E376FB2EB",
 				"50E0198DC2FBBD4E9FE346DB",
@@ -856,20 +911,25 @@
 			"files" = (
 				"E077212A0E925B1549BDD836",
 				"80BBB8E36C3EDC08C486357B",
+				"1579A5A25B2BF14E40146204",
 				"D338F58966F48520F51D6E0A",
 				"DAF0125CEE4E6CEAC45746F9",
 				"7E39317AEF4D6FD8CBB3FE3E",
 				"9292C86D9B2DA64DE1F99DDF",
+				"D014AB623FA4B15DD55484D7",
 				"B4F99AFD2AD9C1DA28C65915",
 				"AC43619999BD0CEDB9824534",
 				"6CA9A429D19BAEEAF9E463C9",
+				"E995170C75447ACC852BA00E",
 				"E4EC72AC248FDF75A7CF0674",
 				"0EAAD5E86B3D8B71D9319A04",
 				"47200F8B2E05A58DAA526A69",
 				"C99138D26F169FB90998BE77",
 				"21A2FEEA544AE92A9EC7B83F",
 				"D05EB3D169E95B9E944D17C4",
+				"4093F733033E77D13B988909",
 				"031402F3A05548F8288FF4FD",
+				"57313E29F8F55E3502F83D39",
 				"F1570CD1B7C7D76CD8541674",
 				"DE17CA547D3A93CA6CB49E16",
 				"3876C40BEBE579D67034E0EA",

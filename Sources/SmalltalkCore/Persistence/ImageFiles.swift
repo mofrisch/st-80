@@ -54,6 +54,9 @@ enum ImageFiles {
         try validatePaths(image: url, changes: changesURL, sources: sourcesURL, activeJournal: journal.url)
         let usesActiveJournal = journal.url.map { aliases($0, changesURL) } ?? false
         if usesActiveJournal { try journal.withValidatedFile {} }
+        // Save As branches before backfilling sources from a portable image.
+        // Those records belong to the destination, even if its write fails.
+        let candidate = usesActiveJournal ? journal : SourceJournal(records: journal.records)
         var memory = try ImageCodec.capture(runtime, workspace: workspace, transcript: transcript, includesCode: false)
         // A portable image may have been loaded without a changes journal.
         // Capture its class definitions before attaching the method sources.
@@ -62,8 +65,8 @@ enum ImageFiles {
         for cls in runtime.classes.values.sorted(by: { depth($0) == depth($1) ? $0.name < $1.name : depth($0) < depth($1) }) where !SmalltalkRuntime.builtinNames.contains(cls.name) {
             let base = definitions[cls.name]
             if base?.superclass == cls.superclass?.name && base?.fields == cls.ownFields { continue }
-            if !journal.records.contains(where: { $0.kind == .classDefinition && $0.className == cls.name && $0.superclass == cls.superclass?.name && $0.fields == cls.ownFields }) {
-                try journal.append(kind: .classDefinition, className: cls.name, superclass: cls.superclass?.name, fields: cls.ownFields, source: "\(cls.superclass!.name) subclass: #\(cls.name) instanceVariableNames: '\(cls.ownFields.joined(separator: " "))'")
+            if !candidate.records.contains(where: { $0.kind == .classDefinition && $0.className == cls.name && $0.superclass == cls.superclass?.name && $0.fields == cls.ownFields }) {
+                try candidate.append(kind: .classDefinition, className: cls.name, superclass: cls.superclass?.name, fields: cls.ownFields, source: "\(cls.superclass!.name) subclass: #\(cls.name) instanceVariableNames: '\(cls.ownFields.joined(separator: " "))'")
             }
         }
         var methods: [ImageFileArchive.CodeRecord] = []
@@ -72,8 +75,8 @@ enum ImageFiles {
                 for method in cls[side].values.sorted(by: { $0.selector < $1.selector }) {
                     var changeID: String?
                     if library.sources[side][cls.name]?[method.selector] != method.source {
-                        if let existing = journal.records.last(where: { $0.kind == .method && $0.className == cls.name && $0.side == side && $0.selector == method.selector && $0.source == method.source }) { changeID = existing.id }
-                        else { changeID = try journal.append(kind: .method, className: cls.name, selector: method.selector, side: side, source: method.source).id }
+                        if let existing = candidate.records.last(where: { $0.kind == .method && $0.className == cls.name && $0.side == side && $0.selector == method.selector && $0.source == method.source }) { changeID = existing.id }
+                        else { changeID = try candidate.append(kind: .method, className: cls.name, selector: method.selector, side: side, source: method.source).id }
                     }
                     methods.append(.init(className: cls.name, code: MethodCode(method), changeID: changeID, methodSide: side == .classSide ? side : nil))
                 }
@@ -83,9 +86,6 @@ enum ImageFiles {
             memory.classes[index].methods = [:]
             memory.classes[index].classMethods = nil
         }
-        let candidate: SourceJournal
-        if usesActiveJournal { candidate = journal }
-        else { candidate = SourceJournal(records: journal.records) }
         let archive = ImageFileArchive(memory: memory, methods: methods, sourcesFile: sourcesName, sourcesID: library.identifier, changesFile: changesURL.lastPathComponent, changesID: candidate.id, checkpoint: candidate.sequence)
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
         let bytes = try encoder.encode(archive)

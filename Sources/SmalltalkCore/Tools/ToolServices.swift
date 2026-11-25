@@ -80,17 +80,11 @@ extension SmalltalkRuntime {
                 if selector == "inspectSource:", source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     throw SmalltalkError("Enter an expression to inspect.")
                 }
-                let enclosingDepth = depth
-                let enclosingSteps = steps
+                // Tool source is nested in the current command. Its caller's
+                // work and native stack frames still count toward the limits.
                 evaluatingToolSource = true
-                steps = 0
-                depth = 0
                 catalogDirty = true
-                defer {
-                    evaluatingToolSource = false
-                    steps = enclosingSteps
-                    depth = enclosingDepth
-                }
+                defer { evaluatingToolSource = false }
                 let value = try evaluate(source)
                 if selector == "inspectSource:" {
                     try requestInspection(value)

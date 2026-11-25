@@ -304,6 +304,15 @@ final class SmalltalkRuntime {
         }
     }
 
+    func array(count: Int) throws -> Value {
+        // Validate sizes from an image before constructing the placeholder
+        // storage, including sizes that cannot fit in a host allocation.
+        guard (0...arrayLimit).contains(count) else {
+            throw SmalltalkError("Arrays are limited to \(arrayLimit.formatted(.number.locale(Locale(identifier: "en_US")))) elements.")
+        }
+        return try array(Array(repeating: .nilValue, count: count))
+    }
+
     func run(_ source: String, inspectingResult: Bool = false) -> EvaluationResult {
         transcript = ""
         steps = 0
@@ -575,15 +584,13 @@ final class SmalltalkRuntime {
     }
 
     func snapshot(value: String? = nil, error: String? = nil, requests: [NativeToolRequest] = []) -> EvaluationResult {
-        var presentationError: String?
-        do { try synchronizeChangesBrowser() } catch { presentationError = error.localizedDescription }
         let infos = classes.values.sorted { $0.name < $1.name }.map { stClass in
             ClassInfo(name: stClass.name, superclass: stClass.superclass?.name, fields: stClass.fields,
                       methods: reflectedMethods(on: stClass, side: .instance), classMethods: reflectedMethods(on: stClass, side: .classSide))
         }
         let bindings = bindingInfos()
         let desktop = projectWindows()
-        return EvaluationResult(value: value, error: error ?? desktop.error ?? presentationError, executionError: error,
+        return EvaluationResult(value: value, error: error ?? desktop.error, executionError: error,
                                 windowProjectionError: desktop.error, transcript: transcript, classes: infos,
                                 bindings: bindings, windows: desktop.windows, activeWindowID: desktop.activeID,
                                 windowCommands: projectWindowCommands(desktop.windows, active: desktop.activeID, valid: desktop.error == nil),

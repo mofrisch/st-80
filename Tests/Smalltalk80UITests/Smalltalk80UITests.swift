@@ -3,6 +3,106 @@ import XCTest
 
 @MainActor
 final class Smalltalk80UITests: XCTestCase {
+    func testOpeningWorkspaceAtTheWindowLimitReportsFailureAndPreservesTheDraft() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("Incoming.st")
+        try "6 * 7".write(to: file, atomically: true, encoding: .utf8)
+        let app = launchFreshApp()
+        defer { app.terminate() }
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        // Fill the actual desktop limit with lightweight, minimized windows.
+        // Their models need no editor trees or extra visible native content.
+        replaceText(in: editor, with: """
+        capacityWindows := Array new: 128.
+        1 to: 3 do: [ :index | capacityWindows at: index put: (Desktop windows at: index) ].
+        4 to: 128 do: [ :index |
+            capacityWindows at: index put: (SystemWindow new id: index; minimized: true; yourself) ].
+        Desktop model windows: capacityWindows.
+        Desktop model nextID: 129.
+        Desktop windows size
+        """)
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(workspace.staticTexts["128"].waitForExistence(timeout: 10))
+        let draft = "'Keep this existing workspace draft'"
+        replaceText(in: editor, with: draft)
+        editor.typeKey("o", modifierFlags: .command)
+        let open = app.buttons["OKButton"]
+        XCTAssertTrue(open.waitForExistence(timeout: 5))
+        navigateFilePanel(in: app, to: file.path)
+        open.click()
+
+        let message = "The desktop is limited to 128 windows."
+        let failure = workspace.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@ OR value CONTAINS[c] %@", message, message)).firstMatch
+        XCTAssertTrue(failure.waitForExistence(timeout: 5), workspace.debugDescription)
+        XCTAssertEqual(editor.value as? String, draft)
+        XCTAssertTrue(editor.isHittable)
+        XCTAssertFalse(app.windows["toolWindow-129"].exists)
+    }
+
+    func testWindowToolbarResizesForChangedLabelsAndControls() {
+        let app = launchFreshApp()
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        let execute = workspace.buttons["executeButton"]
+        XCTAssertTrue(execute.waitForExistence(timeout: 10))
+        let initialWidth = execute.frame.width
+        let longTitle = "Evaluate the selected Smalltalk source"
+        // AppKit's accessibility button bounds can include a border just beyond
+        // the hosting view's correctly fitted frame, including pixel rounding.
+        let titlebarFrameTolerance: CGFloat = 2
+        replaceText(in: editor, with: """
+        toolbarProbe := ((Desktop windowAt: 1) content children at: 1).
+        executeProbe := toolbarProbe children at: 1.
+        executeProbe title: '\(longTitle)'
+        """)
+        editor.typeKey("d", modifierFlags: .command)
+        let actions = workspace.descendants(matching: .any).matching(identifier: "workspaceActions").firstMatch
+
+        func checkToolbar(_ predicate: NSPredicate, object: Any? = nil, phase: String) -> Bool {
+            let expected = XCTNSPredicateExpectation(predicate: predicate, object: object)
+            let completed = XCTWaiter.wait(for: [expected], timeout: 5) == .completed
+            XCTAssertTrue(completed, """
+                Toolbar \(phase): label=\(execute.label), frame=\(execute.frame), initialWidth=\(initialWidth), hittable=\(execute.isHittable).
+                Actions exists=\(actions.exists), frame=\(actions.exists ? actions.frame : .zero). Workspace frame=\(workspace.frame).
+                Editor=\(editor.value as? String ?? "<missing>")
+                \(workspace.debugDescription)
+                """)
+            return completed
+        }
+        guard checkToolbar(NSPredicate(format: "label == %@", longTitle), object: execute, phase: "label update") else { return }
+        guard checkToolbar(NSPredicate { _, _ in
+            execute.frame.width > initialWidth + 80
+                && execute.isHittable && actions.isHittable
+                && actions.frame.maxX <= workspace.frame.maxX + titlebarFrameTolerance
+        }, phase: "expansion") else { return }
+
+        replaceText(in: editor, with: """
+        executeProbe title: 'Run'.
+        toolbarProbe removeAll; add: executeProbe;
+            add: (UIButton new identifier: 'extraToolbarAction'; title: 'Additional toolbar action';
+                action: [ executeProbe title: 'Toolbar action fired' ]; yourself)
+        """)
+        editor.typeKey("d", modifierFlags: .command)
+        let extra = workspace.buttons["extraToolbarAction"]
+        guard checkToolbar(NSPredicate { _, _ in
+            extra.exists && extra.isHittable && extra.frame.maxX <= workspace.frame.maxX + titlebarFrameTolerance
+        }, phase: "added control") else { return }
+        XCTAssertFalse(actions.exists)
+        extra.click()
+        let clicked = expectation(for: NSPredicate(format: "label == %@", "Toolbar action fired"), evaluatedWith: execute)
+        wait(for: [clicked], timeout: 5)
+
+        replaceText(in: editor, with: "toolbarProbe removeAll; add: executeProbe. executeProbe title: 'Run'")
+        editor.typeKey("d", modifierFlags: .command)
+        guard checkToolbar(NSPredicate { _, _ in
+            execute.label == "Run" && !extra.exists && execute.isHittable
+                && execute.frame.width < initialWidth + 20
+                && workspace.frame.maxX - execute.frame.maxX < 60
+        }, phase: "contraction") else { return }
+    }
+
     func testShowWorkspaceCreatesARepairEditorWhenAllWorkspacesWereClosed() {
         let app = launchFreshApp()
         let workspace = app.windows["toolWindow-1"]

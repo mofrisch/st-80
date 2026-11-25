@@ -26,6 +26,7 @@ final class SmalltalkRuntime {
         ("Transcript", "Object"),
     ]
     static let builtinNames = Set(builtinHierarchy.map(\.name))
+    static let executionStepLimit = 100_000
 
     var journal = SourceJournal()
     var catalogDirty = false
@@ -43,6 +44,7 @@ final class SmalltalkRuntime {
     var globals: [String: Value] = [:]
     var transcript = ""
     var steps = 0
+    private var stepLimit: Int
     var depth = 0
     var nextHome = 0
     var activeHomes: Set<Int> = []
@@ -62,6 +64,7 @@ final class SmalltalkRuntime {
 
     init(bootstrap: Bool = true, compilationMode: Bool = false, memory: ObjectMemory? = nil) {
         self.compilationMode = compilationMode
+        self.stepLimit = compilationMode ? 24_000_000 : Self.executionStepLimit
         self.memory = memory ?? ObjectMemory(hardLimit: compilationMode ? 1_000_000 : 100_000,
                                              initialThreshold: compilationMode ? 32_768 : 4096)
         for (name, superclass) in Self.builtinHierarchy {
@@ -85,9 +88,27 @@ final class SmalltalkRuntime {
     func tick() throws {
         try debuggerCancellation?.checkStop()
         steps += 1
-        guard steps <= (compilationMode ? 24_000_000 : 100_000) else {
-            throw SmalltalkError(compilationMode ? "The Smalltalk compiler reached its execution limit." : "Execution stopped after 100,000 steps. Check loops and recursion.")
+        guard steps <= stepLimit else {
+            if compilationMode { throw SmalltalkError("The Smalltalk compiler reached its execution limit.") }
+            let limit = stepLimit.formatted(.number.locale(Locale(identifier: "en_US")))
+            throw SmalltalkError("Execution stopped after \(limit) steps. Check loops and recursion.")
         }
+    }
+
+    /// Run tool maintenance between user commands without spending that command's budget.
+    func withToolExecutionBudget(_ limit: Int = SmalltalkRuntime.executionStepLimit, _ work: () throws -> Void) rethrows {
+        let previousSteps = steps
+        let previousLimit = stepLimit
+        let previousDebugger = debugger
+        steps = 0
+        stepLimit = limit
+        debugger = nil
+        defer {
+            steps = previousSteps
+            stepLimit = previousLimit
+            debugger = previousDebugger
+        }
+        try work()
     }
 
     func enter() throws {

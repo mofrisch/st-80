@@ -6,12 +6,12 @@ import Testing
 struct WindowRecoveryPresentationTests {
     @Test func aNewValidWorkspaceCanBeAdoptedWhenNoRepairEditorWasRetained() async throws {
         let session = SmalltalkSession()
-        _ = await session.windowAction(.close(1))
-        let initial = await session.snapshot()
+        let initial = await session.windowAction(.open(.browser))
+        let browser = try #require(initial.windows.first { $0.kind == .browser })
         var presentation = WindowPresentation()
         presentation.update(from: initial, replacingWindows: true)
         #expect(presentation.workspace == nil)
-        let damaged = await session.evaluate("heldBrowser := (Desktop windowAt: 2) content. (Desktop windowAt: 2) content: 7")
+        let damaged = await session.evaluate("heldBrowser := (Desktop windowAt: \(browser.id)) content. (Desktop windowAt: \(browser.id)) content: 7")
         #expect(!damaged.hasCompleteWindowProjection)
         presentation.update(from: damaged, replacingWindows: false)
         #expect(presentation.workspace == nil)
@@ -21,7 +21,7 @@ struct WindowRecoveryPresentationTests {
         let workspace = try #require(presentation.workspace?.info)
         #expect(presentation.isRecovering)
         #expect(presentation.activeID == workspace.id)
-        let repaired = await session.recoverWorkspace(source: "(Desktop windowAt: 2) content: heldBrowser. 42", action: .evaluate,
+        let repaired = await session.recoverWorkspace(source: "(Desktop windowAt: \(browser.id)) content: heldBrowser. 42", action: .evaluate,
                                                       windowID: workspace.id, identity: workspace.identity,
                                                       epoch: opened.windowCommands.epoch)
         #expect(repaired.error == nil)
@@ -33,7 +33,7 @@ struct WindowRecoveryPresentationTests {
 
     @Test func invalidProjectionPreservesWindowsDocumentsDraftsAndSelectionUntilRepair() async throws {
         let session = SmalltalkSession()
-        let initial = await session.snapshot()
+        let initial = await session.windowAction(.open(.workspace))
         let workspace = try #require(initial.windows.first { $0.kind == .workspace })
         let editor = try #require(workspace.content?.firstVisible { $0.accessibilityID == "workspaceEditor" })
         var presentation = WindowPresentation()
@@ -88,7 +88,8 @@ struct WindowRecoveryPresentationTests {
 
     @Test func partialProjectionCannotRemoveTheDamagedWindowOrPublishItsBrokenControls() async throws {
         let session = SmalltalkSession()
-        let initial = await session.snapshot()
+        _ = await session.windowAction(.open(.browser))
+        let initial = await session.windowAction(.open(.workspace))
         let workspace = try #require(initial.windows.first { $0.kind == .workspace })
         var presentation = WindowPresentation()
         presentation.update(from: initial, replacingWindows: true)
@@ -105,7 +106,7 @@ struct WindowRecoveryPresentationTests {
 
     @Test func ordinaryExecutionErrorsAndValidWindowClosuresRemainAuthoritative() async throws {
         let session = SmalltalkSession()
-        let initial = await session.snapshot()
+        let initial = await session.windowAction(.open(.workspace))
         let workspace = try #require(initial.windows.first { $0.kind == .workspace })
         var presentation = WindowPresentation()
         presentation.update(from: initial, replacingWindows: true)
@@ -126,7 +127,7 @@ struct WindowRecoveryPresentationTests {
     @Test func replacementNeverRetainsThePreviousWorldsWindows() async throws {
         let session = SmalltalkSession()
         var presentation = WindowPresentation()
-        presentation.update(from: await session.snapshot(), replacingWindows: true)
+        presentation.update(from: await session.windowAction(.open(.workspace)), replacingWindows: true)
         let invalid = await session.evaluate("Desktop model windows: nil")
         presentation.update(from: invalid, replacingWindows: true)
         #expect(presentation.isRecovering)

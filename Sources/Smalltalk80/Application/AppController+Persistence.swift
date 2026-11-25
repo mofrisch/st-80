@@ -13,10 +13,10 @@ extension AppController {
             do {
                 let replacement = try await session.reset(startingChangeLogAt: unsavedChangeLogURL())
                 installReplacement(replacement)
-                await arrangeInitialTools()
                 setSavedImageURL(nil)
             } catch {
                 persistenceError = "Could not reset the session: \(error.localizedDescription)"
+                presentErrorWithoutActiveWindow(error.localizedDescription, title: "Could not reset the session")
             }
         }
     }
@@ -39,8 +39,12 @@ extension AppController {
                     associateWorkspace(workspace.id, with: url, afterOpening: true)
                 case .failure(let failure):
                     error = failure.localizedDescription
+                    presentErrorWithoutActiveWindow(failure.localizedDescription, title: "Could not open the workspace")
                 }
-            } catch { self.error = error.localizedDescription }
+            } catch {
+                self.error = error.localizedDescription
+                presentErrorWithoutActiveWindow(error.localizedDescription, title: "Could not open the workspace")
+            }
         }
     }
 
@@ -94,7 +98,13 @@ extension AppController {
 
     @discardableResult
     func saveImage(asNewFile: Bool = false) async -> ImageSaveResult {
-        await runOperation { await saveImageWhileRunning(asNewFile: asNewFile) } ?? .cancelled
+        await runOperation {
+            let result = await saveImageWhileRunning(asNewFile: asNewFile)
+            if case .failed(let reason) = result {
+                presentErrorWithoutActiveWindow(reason, title: "Could not save the image")
+            }
+            return result
+        } ?? .cancelled
     }
 
     private func saveImageWhileRunning(asNewFile: Bool = false) async -> ImageSaveResult {

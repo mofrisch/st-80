@@ -78,14 +78,7 @@ final class AppController {
             do { try await startUnsavedChangeLog() }
             catch { persistenceError = "Changes cannot be recorded on disk: \(error.localizedDescription)" }
             apply(await session.snapshot(), replacingWindows: true)
-            await arrangeInitialTools()
         }
-    }
-
-    func arrangeInitialTools() async {
-        // Presenting the first snapshot supplies the native display facts.
-        guard await synchronizeWindowEvents() else { return }
-        apply(await session.windowAction(.arrangeTools))
     }
 
     private func received(_ event: NativeWindowEvent) {
@@ -326,15 +319,16 @@ final class AppController {
         }
     }
 
-    func openTool(_ kind: ToolKind) async { await sendWindowAction(.open(kind)) }
-
-    func showWorkspace() async {
-        if windowPresentation.isRecovering, let workspace = windowPresentation.workspace {
+    func openTool(_ kind: ToolKind) async {
+        guard !isRunning else { return }
+        if kind != .workspace || !windowPresentation.isRecovering {
+            await sendWindowAction(.open(kind))
+        } else if let workspace = windowPresentation.workspace {
             windowPresentation.activeID = workspace.info.id
             nativeWindows?.activateWindowForRecovery(workspace.info.id, identity: workspace.info.identity)
-            return
+        } else {
+            await sendWindowAction(.showWorkspace)
         }
-        await sendWindowAction(.showWorkspace)
     }
 
     var canClearTranscript: Bool { transcriptClearControl != nil }
@@ -345,10 +339,12 @@ final class AppController {
     }
 
     private var transcriptClearControl: (windowID: Int64, buttonID: String)? {
-        guard let transcript = windowPresentation.windows.last(where: { $0.info.kind == .transcript }),
-              let button = transcript.info.content?.firstVisible(where: { $0.command == "clearTranscript" && $0.enabled })
-        else { return nil }
-        return (transcript.info.id, button.id)
+        for transcript in windowPresentation.windows.reversed() where transcript.info.kind == .transcript {
+            if let button = transcript.info.content?.firstVisible(where: { $0.command == "clearTranscript" && $0.enabled }) {
+                return (transcript.info.id, button.id)
+            }
+        }
+        return nil
     }
 
     func arrangeTools() async { await sendWindowAction(.arrangeTools) }
@@ -356,9 +352,19 @@ final class AppController {
     private func sendWindowAction(_ action: WindowAction) async {
         await runOperation {
             await attemptToFlushWindowState()
-            apply(await session.windowAction(action))
+            let evaluation = await session.windowAction(action)
+            apply(evaluation)
+            presentErrorWithoutActiveWindow(evaluation.error, title: "Could not complete the Smalltalk command")
             imageHasChanges = true
         }
+    }
+
+    func presentErrorWithoutActiveWindow(_ message: String?, title: String) {
+        guard let message, windowPresentation.activeWindow?.info.minimized != false else { return }
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.runModal()
     }
 
     func installReplacement(_ evaluation: EvaluationResult) {

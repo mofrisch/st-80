@@ -129,7 +129,12 @@ extension SmalltalkRuntime {
                 _ = try send(desktop, "arrangeTools", [])
             case .open(let kind):
                 let selectors: [ToolKind: String] = [.workspace: "openWorkspace", .browser: "openBrowser", .transcript: "openTranscript", .custom: "openWindow", .changes: "openChanges"]
-                _ = try send(desktop, selectors[kind]!, [])
+                let selector = selectors[kind]!
+                try upgradeSingletonOpener(selector, kind: kind, on: desktop)
+                let opened = try send(desktop, selector, [])
+                if case .nilValue = opened, (desktopWindows?.elements.count ?? 0) >= Self.desktopWindowLimit {
+                    throw SmalltalkError("The desktop is limited to \(Self.desktopWindowLimit) windows. Close a window and try again.")
+                }
             case .showChanges(let className, let selector, let side):
                 _ = try send(desktop, "showChangesFor:selector:side:", [
                     className.map(Value.string) ?? .nilValue,
@@ -147,6 +152,25 @@ extension SmalltalkRuntime {
         } catch { return finishEvaluation(error: error.localizedDescription) }
     }
 
+    /// Upgrade the shipped singleton policy on first use, preserving authored
+    /// methods and leaving the saved world untouched during image loading.
+    private func upgradeSingletonOpener(_ selector: String, kind: ToolKind, on desktop: Value) throws {
+        guard kind == .browser || kind == .transcript,
+              let (method, owner, _) = lookupMethod(selector, on: desktop), owner === classes["DesktopManager"] else { return }
+        let title = kind == .browser ? "System Browser" : "Transcript"
+        let legacySource = """
+        \(selector)
+            | existing | existing := self windowOfKind: #\(kind.rawValue).
+            existing notNil ifTrue: [ ^ self activate: existing ].
+            ^ self createKind: #\(kind.rawValue) title: '\(title)'
+        """
+        guard method.source == legacySource else { return }
+        guard let source = try SystemLibrary.shared.get().sources.methods["DesktopManager"]?[selector] else {
+            throw SmalltalkError("The bundled \(selector) method is missing.")
+        }
+        try compile(source, in: owner)
+    }
+
     func notifyDesktopOfCatalogChange() throws {
         guard catalogDirty else { return }
         catalogDirty = false
@@ -154,37 +178,34 @@ extension SmalltalkRuntime {
               case .object(let desktop)? = globals["Desktop"] else { return }
         let receiver = Value.object(desktop)
         let selector = "catalogChanged"
-        if lookupMethod(selector, on: receiver) != nil {
-            _ = try send(receiver, selector, [])
+        let library = try? SystemLibrary.shared.get()
+        let source = library?.sources.methods["DesktopManager"]?[selector]
+        // The bundled hook refreshes each window. Its total budget scales with
+        // the bounded desktop size, while an image's own hook has the usual limit.
+        let stockLimit = max(Self.executionStepLimit, 50_000 * windows.elements.count)
+        if let (method, owner, _) = lookupMethod(selector, on: receiver) {
+            let limit = owner === classes["DesktopManager"] && method.source == source ? stockLimit : Self.executionStepLimit
+            try withToolExecutionBudget(limit) { _ = try send(receiver, selector, []) }
             return
         }
 
         // An earlier image can run the bundled hook at the execution boundary
         // without installing methods or changing the saved class dictionary.
         guard isUIClass(desktop.stClass, named: "DesktopManager") else { return }
-        let library = try SystemLibrary.shared.get()
-        guard let code = library.seed.methods["DesktopManager"]?[selector],
-              let source = library.sources.methods["DesktopManager"]?[selector] else {
+        guard let code = library?.seed.methods["DesktopManager"]?[selector], let source else {
             throw SmalltalkError("The bundled catalog update is missing.")
         }
         let method = try code.validatedMethod(selector: selector, source: source, fields: desktop.stClass.fields)
-        _ = try invoke(method, owner: desktop.stClass, receiver: receiver, arguments: [], side: .instance)
+        try withToolExecutionBudget(stockLimit) {
+            _ = try invoke(method, owner: desktop.stClass, receiver: receiver, arguments: [], side: .instance)
+        }
     }
 
     func synchronizeChangeHistory() throws {
         guard let windows = desktopWindows, windows.elements.count <= Self.desktopWindowLimit,
               let desktop = globals["Desktop"],
               lookupMethod("synchronizeChanges", on: desktop) != nil else { return }
-        // History updates use a separate budget and never step into tool code.
-        let previousSteps = steps
-        let previousDebugger = debugger
-        steps = 0
-        debugger = nil
-        defer {
-            steps = previousSteps
-            debugger = previousDebugger
-        }
-        _ = try send(desktop, "synchronizeChanges", [])
+        try withToolExecutionBudget { _ = try send(desktop, "synchronizeChanges", []) }
     }
 
     func performWindowEvents(_ events: [NativeWindowEvent]) -> EvaluationResult {

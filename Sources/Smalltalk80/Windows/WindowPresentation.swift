@@ -33,7 +33,7 @@ struct WindowPresentation {
         // A partial projection does not authorize removing windows or drafts.
         // Never carry the previous world's windows across a session replacement.
         if isRecovering && !replacingWindows {
-            // Show Workspace must still be able to create a repair editor when
+            // Tools > Workspace must still be able to create a repair editor when
             // all prior workspaces were closed before another tool broke.
             if workspace == nil, let repair = evaluation.windows.first(where: { candidate in
                 candidate.kind == .workspace && candidate.content?.firstVisible(where: {

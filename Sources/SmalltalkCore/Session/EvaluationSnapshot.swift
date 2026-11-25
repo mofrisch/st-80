@@ -46,12 +46,9 @@ extension SmalltalkRuntime {
     /// accessors. snapshot(), drawing and image loading remain read-only.
     func finishEvaluation(value: String? = nil, error: String? = nil) -> EvaluationResult {
         var failure = error
-        do {
-            try notifyDesktopOfCatalogChange()
-            try synchronizeMVCBindings()
-            try synchronizeChangeHistory()
-        } catch {
-            failure = failure ?? error.localizedDescription
+        for synchronize in [notifyDesktopOfCatalogChange, synchronizeMVCBindings, synchronizeChangeHistory] {
+            do { try synchronize() }
+            catch { failure = failure ?? error.localizedDescription }
         }
         let requests = toolRequests
         toolRequests.removeAll()

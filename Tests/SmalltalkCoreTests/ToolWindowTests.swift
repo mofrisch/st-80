@@ -34,7 +34,7 @@ struct ToolWindowTests {
 
     @Test func workspacePublishesApplicationCommandsIndependentlyOfTheEditorMenu() async throws {
         let session = SmalltalkSession()
-        let snapshot = await session.snapshot()
+        let snapshot = try await openTools(.workspace, in: session)
         let workspace = try #require(snapshot.windows.first { $0.kind == .workspace })
         let editor = try #require(element("workspaceEditor", in: workspace.content))
         let menu = try #require(workspace.content?.children.first { $0.role == "applicationCommands" })
@@ -51,7 +51,7 @@ struct ToolWindowTests {
 
     @Test func workspaceContextMenuDispatchesTheSelectedSourceAndSurvivesImageLoad() async throws {
         let session = SmalltalkSession()
-        let snapshot = await session.snapshot()
+        let snapshot = try await openTools(.workspace, in: session)
         let workspace = try #require(snapshot.windows.first { $0.kind == .workspace })
         let editor = try #require(element("workspaceEditor", in: workspace.content))
         let menu = try #require(editor.contextMenuItems)
@@ -160,7 +160,7 @@ struct ToolWindowTests {
 
     @Test func browserFiltersClassesAndMethodsThroughFourPanes() async throws {
         let session = SmalltalkSession()
-        let snapshot = await session.snapshot()
+        let snapshot = try await openTools(.browser, in: session)
         let browser = try #require(snapshot.windows.first(where: { $0.kind == .browser }))
         let navigation = try #require(element("browserNavigation", in: browser.content))
         #expect(navigation.children.map { $0.children.last?.accessibilityID } == ["categoryList", "classList", "protocolList", "methodList"])
@@ -201,7 +201,7 @@ struct ToolWindowTests {
 
     @Test func browserSwitchesSidesWithoutLosingDraftsOrMixingProtocols() async throws {
         let session = SmalltalkSession()
-        let snapshot = await session.snapshot()
+        let snapshot = try await openTools(.browser, in: session)
         let browser = try #require(snapshot.windows.first { $0.kind == .browser })
         var content = try #require(browser.content)
 
@@ -259,6 +259,7 @@ struct ToolWindowTests {
 
     @Test func browserBytecodeReflectsTheSelectedCompiledMethod() async throws {
         let session = SmalltalkSession()
+        _ = try await openTools(.browser, in: session)
         let prepared = await session.compile("value ^ 73", in: "Counter", side: .classSide)
         #expect(prepared.error == nil)
         let browser = try #require(prepared.windows.first { $0.kind == .browser })
@@ -316,7 +317,7 @@ struct ToolWindowTests {
 
     @Test func rejectingABrowserDraftKeepsTheInstalledCodeAndJournalUnchanged() async throws {
         let session = SmalltalkSession()
-        let initial = await session.snapshot()
+        let initial = try await openTools(.browser, in: session)
         let browser = try #require(initial.windows.first { $0.kind == .browser })
         let methods = try #require(element("methodList", in: browser.content))
         let chosen = await session.uiAction(.select(windowID: browser.id, elementID: methods.id, value: "value"))
@@ -351,7 +352,7 @@ struct ToolWindowTests {
 
     @Test func transcriptKeepsAUnicodeSuffixAcrossAnImageRoundTripAndClearsThroughItsMenu() async throws {
         let session = SmalltalkSession()
-        let initial = await session.snapshot()
+        let initial = try await openTools(.transcript, in: session)
         let initialWindow = try #require(initial.windows.first { $0.kind == .transcript })
         let initialText = try #require(element("transcriptOutput", in: initialWindow.content)?.text)
         let firstHalf = await session.evaluate("""
@@ -383,9 +384,8 @@ struct ToolWindowTests {
 
     @Test func browserOrganizationEditsSurviveClosingTheBrowserAndLoadingAnImage() async throws {
         let session = SmalltalkSession()
-        let snapshot = await session.evaluate("Desktop createKind: #browser title: 'Second Browser'")
-        try #require(snapshot.error == nil)
-        let browser = try #require(snapshot.windows.first { $0.kind == .browser && $0.title == "System Browser" })
+        let snapshot = try await openTools(.browser, .browser, in: session)
+        let browser = try #require(snapshot.windows.first { $0.kind == .browser })
         let otherBrowser = try #require(snapshot.windows.first { $0.kind == .browser && $0.id != browser.id })
         var content = try #require(browser.content)
         var otherContent = try #require(otherBrowser.content)
@@ -482,7 +482,7 @@ struct ToolWindowTests {
 
     @Test func toolLayoutsAndActionsRunFromTheImage() async throws {
         let session = SmalltalkSession()
-        let snapshot = await session.snapshot()
+        let snapshot = try await openTools(.workspace, .browser, .transcript, in: session)
         #expect(snapshot.error == nil)
         let workspace = try #require(snapshot.windows.first(where: { $0.kind == .workspace }))
         let browser = try #require(snapshot.windows.first(where: { $0.kind == .browser }))
@@ -524,6 +524,7 @@ struct ToolWindowTests {
 
     @Test func browserEditsTheSelectedClassDefinitionAndPreservesLiveInstances() async throws {
         let session = SmalltalkSession()
+        _ = try await openTools(.browser, in: session)
         let setup = await session.evaluate("""
             Object subclass: #DefinitionParent instanceVariableNames: 'inherited'.
             Object subclass: #DefinitionExample instanceVariableNames: 'count'.

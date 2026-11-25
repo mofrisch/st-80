@@ -103,7 +103,7 @@ final class Smalltalk80UITests: XCTestCase {
         }, phase: "contraction") else { return }
     }
 
-    func testShowWorkspaceCreatesARepairEditorWhenAllWorkspacesWereClosed() {
+    func testOpeningWorkspaceCreatesARepairEditorWhenAllWorkspacesWereClosed() {
         let app = launchFreshApp()
         let workspace = app.windows["toolWindow-1"]
         let editor = workspace.textViews["workspaceEditor"]
@@ -121,8 +121,7 @@ final class Smalltalk80UITests: XCTestCase {
         custom.buttons["breakBrowser"].click()
         let failure = custom.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Invalid interface.", "Invalid interface.")).firstMatch
         XCTAssertTrue(failure.waitForExistence(timeout: 5))
-        app.menuBars.menuBarItems["Smalltalk"].click()
-        app.menuItems["Show Workspace"].click()
+        openTool("Workspace", in: app)
         let repair = app.windows["toolWindow-5"]
         let repairEditor = repair.textViews["workspaceEditor"]
         XCTAssertTrue(repairEditor.waitForExistence(timeout: 5))
@@ -166,8 +165,7 @@ final class Smalltalk80UITests: XCTestCase {
         wait(for: [saved], timeout: 5)
         XCTAssertEqual(try String(contentsOf: exported, encoding: .utf8), "1 + 2")
         XCTAssertTrue(failure.exists)
-        app.menuBars.menuBarItems["Smalltalk"].click()
-        app.menuItems["Show Workspace"].click()
+        openTool("Workspace", in: app)
         XCTAssertTrue(editor.isHittable)
 
         let repair = "Desktop model windows: heldWindows. 6 * 7"
@@ -206,7 +204,8 @@ final class Smalltalk80UITests: XCTestCase {
     }
 
     func testFreshImageRunsTheBundledSmalltalkSuiteInTheWorkspace() {
-        let app = launchFreshApp()
+        let app = launchFreshApp(withStandardTools: false)
+        openTool("Workspace", in: app)
         let workspace = app.windows["toolWindow-1"]
         let editor = workspace.textViews["workspaceEditor"]
         replaceText(in: editor, with: "TestRunner runAll summary")
@@ -217,7 +216,89 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertTrue(result.waitForExistence(timeout: 5), workspace.debugDescription)
     }
 
-    func testFreshToolsPlaceBrowserLeftAndStackWorkspaceAndTranscriptRight() {
+    func testFreshDesktopOpensAndRestoresMultipleWindowsOfEveryTool() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let app = launchFreshApp(withStandardTools: false)
+        defer { app.terminate() }
+        assertDesktopEmpty(in: app)
+
+        openTool("Workspace", in: app)
+        let firstWorkspace = app.windows["toolWindow-1"]
+        let firstEditor = firstWorkspace.textViews["workspaceEditor"]
+        let logMessage = "Written before opening a Transcript"
+        let firstSource = "Transcript show: '\(logMessage)'; cr. 6 * 7"
+        replaceText(in: firstEditor, with: firstSource)
+        firstWorkspace.buttons["executeButton"].click()
+        XCTAssertTrue(firstWorkspace.staticTexts["42"].waitForExistence(timeout: 5))
+
+        openTool("Workspace", in: app)
+        let secondEditor = app.windows["toolWindow-2"].textViews["workspaceEditor"]
+        let secondSource = "'An independent draft'"
+        replaceText(in: secondEditor, with: secondSource)
+
+        openTool("Browser", in: app)
+        let firstBrowser = app.windows["toolWindow-3"]
+        let valueMethod = firstBrowser.staticTexts["value"].firstMatch
+        XCTAssertTrue(valueMethod.waitForExistence(timeout: 5))
+        valueMethod.click()
+        let firstBrowserEditor = firstBrowser.textViews["methodEditor"]
+        let valueSource = "value\n    ^ count"
+        let selectedValue = expectation(for: NSPredicate(format: "value == %@", valueSource), evaluatedWith: firstBrowserEditor)
+        wait(for: [selectedValue], timeout: 5)
+
+        openTool("Browser", in: app)
+        let secondBrowser = app.windows["toolWindow-4"]
+        let increment = secondBrowser.staticTexts["increment"].firstMatch
+        XCTAssertTrue(increment.waitForExistence(timeout: 5))
+        increment.click()
+        let secondBrowserEditor = secondBrowser.textViews["methodEditor"]
+        let selectedIncrement = expectation(for: NSPredicate(format: "value BEGINSWITH %@", "increment\n"), evaluatedWith: secondBrowserEditor)
+        wait(for: [selectedIncrement], timeout: 5)
+        let incrementSource = try XCTUnwrap(secondBrowserEditor.value as? String)
+
+        openTool("Transcript", in: app)
+        let firstTranscript = app.windows["toolWindow-5"]
+        XCTAssertTrue(firstTranscript.staticTexts["transcriptOutput"].waitForExistence(timeout: 5))
+        openTool("Transcript", in: app)
+        let secondTranscript = app.windows["toolWindow-6"]
+        XCTAssertTrue(secondTranscript.staticTexts["transcriptOutput"].waitForExistence(timeout: 5))
+
+        func assertToolState() {
+            XCTAssertEqual(app.windows.count, 6)
+            XCTAssertEqual(firstEditor.value as? String, firstSource)
+            XCTAssertEqual(secondEditor.value as? String, secondSource)
+            XCTAssertEqual(firstBrowserEditor.value as? String, valueSource)
+            XCTAssertEqual(secondBrowserEditor.value as? String, incrementSource)
+            for transcript in [firstTranscript, secondTranscript] {
+                let output = transcript.staticTexts["transcriptOutput"]
+                XCTAssertTrue((output.value as? String ?? output.label).contains(logMessage))
+            }
+        }
+        assertToolState()
+
+        openTool("Transcript", in: app)
+        let temporaryTranscript = app.windows["toolWindow-7"]
+        XCTAssertTrue(temporaryTranscript.staticTexts["transcriptOutput"].waitForExistence(timeout: 5))
+        temporaryTranscript.buttons[XCUIIdentifierCloseWindow].click()
+        let closed = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: temporaryTranscript)
+        wait(for: [closed], timeout: 5)
+        assertToolState()
+        saveImage(in: app, editor: app, directory: directory)
+
+        app.terminate()
+        app.launch()
+        assertDesktopEmpty(in: app)
+        openImage(directory.appendingPathComponent("Smalltalk.stimage"), in: app)
+        XCTAssertTrue(secondTranscript.staticTexts["transcriptOutput"].waitForExistence(timeout: 10))
+        assertToolState()
+        XCTAssertFalse(temporaryTranscript.exists)
+
+        requestReset(in: app)
+        assertDesktopEmpty(in: app)
+    }
+
+    func testArrangeToolsPlacesBrowserLeftAndStacksWorkspaceAndTranscriptRight() {
         let app = launchFreshApp()
         let browser = app.windows["toolWindow-2"]
         let workspace = app.windows["toolWindow-1"]
@@ -264,7 +345,6 @@ final class Smalltalk80UITests: XCTestCase {
         let workspace = app.windows["toolWindow-1"]
         let editor = workspace.textViews["workspaceEditor"]
         XCTAssertTrue(editor.waitForExistence(timeout: 10))
-        let initialSource = try XCTUnwrap(editor.value as? String)
         replaceText(in: editor, with: "kept := 42. kept")
         workspace.buttons["executeButton"].click()
         XCTAssertTrue(workspace.staticTexts["42"].waitForExistence(timeout: 5))
@@ -306,8 +386,7 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertTrue(app.buttons["OKButton"].waitForExistence(timeout: 5))
         navigateFilePanel(in: app, to: directory.path)
         app.buttons["OKButton"].click()
-        let fresh = expectation(for: NSPredicate(format: "value == %@", initialSource), evaluatedWith: editor)
-        wait(for: [fresh], timeout: 10)
+        assertDesktopEmpty(in: app)
         XCTAssertTrue(FileManager.default.fileExists(atPath: image.path))
 
         openImage(image, in: app)
@@ -385,6 +464,7 @@ final class Smalltalk80UITests: XCTestCase {
         app.launchEnvironment["ST80_PREFERENCES_SUITE"] = suite
         app.launchEnvironment["ST80_CHANGES_DIRECTORY"] = logs.path
         app.launch()
+        openStandardTools(in: app)
         let workspace = app.windows["toolWindow-1"]
         let editor = workspace.textViews["workspaceEditor"]
         replaceText(in: editor, with: "kept := 42. kept")
@@ -417,6 +497,7 @@ final class Smalltalk80UITests: XCTestCase {
         app.launchEnvironment["ST80_PREFERENCES_SUITE"] = suite
         app.launchEnvironment["ST80_CHANGES_DIRECTORY"] = logs.path
         app.launch()
+        openStandardTools(in: app)
         let workspace = app.windows["toolWindow-1"]
         let editor = workspace.textViews["workspaceEditor"]
         let message = "Changes cannot be recorded on disk"
@@ -431,8 +512,8 @@ final class Smalltalk80UITests: XCTestCase {
         requestReset(in: app)
         XCTAssertTrue(app.buttons["Don't Save"].waitForExistence(timeout: 5))
         app.buttons["Don't Save"].click()
-        let recovered = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: failure)
-        wait(for: [recovered], timeout: 10)
+        assertDesktopEmpty(in: app)
+        openTool("Workspace", in: app)
         replaceText(in: editor, with: "Counter compile: 'answer ^ 43'. Counter new answer")
         workspace.buttons["executeButton"].click()
         XCTAssertTrue(workspace.staticTexts["43"].waitForExistence(timeout: 5))
@@ -453,13 +534,12 @@ final class Smalltalk80UITests: XCTestCase {
         app.launchEnvironment["ST80_PREFERENCES_SUITE"] = suite
         app.launch()
         let editor = app.windows["toolWindow-1"].textViews["workspaceEditor"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 10))
-        let initialSource = try XCTUnwrap(editor.value as? String)
+        assertDesktopEmpty(in: app)
         app.typeKey("q", modifierFlags: .command)
         XCTAssertTrue(app.wait(for: .notRunning, timeout: 5))
 
         app.launch()
-        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        openTool("Workspace", in: app)
         let source = "Do not evaluate this draft"
         replaceText(in: editor, with: source)
         let save = app.buttons["Save"]
@@ -507,8 +587,7 @@ final class Smalltalk80UITests: XCTestCase {
         // An earlier version remembered this path in the launch preferences.
         preferences.set(image.path, forKey: "lastImagePath")
         app.launch()
-        XCTAssertTrue(editor.waitForExistence(timeout: 10))
-        XCTAssertEqual(editor.value as? String, initialSource)
+        assertDesktopEmpty(in: app)
         openImage(image, in: app)
         let restoredSource = expectation(for: NSPredicate(format: "value == %@", source), evaluatedWith: editor)
         wait(for: [restoredSource], timeout: 10)
@@ -535,7 +614,7 @@ final class Smalltalk80UITests: XCTestCase {
         replaceText(in: workspaceEditor, with: "live := Counter new add: 9; yourself. live value")
         workspace.buttons["executeButton"].click()
         XCTAssertTrue(workspace.staticTexts["9"].waitForExistence(timeout: 5))
-        workspaceEditor.typeKey("2", modifierFlags: .command)
+        focusWindow("System Browser", in: app)
 
         let browser = app.windows["toolWindow-2"]
         let editor = browser.textViews["methodEditor"]
@@ -557,7 +636,7 @@ final class Smalltalk80UITests: XCTestCase {
         editor.typeKey("s", modifierFlags: .command)
         XCTAssertTrue(browser.staticTexts["Counter definition accepted."].waitForExistence(timeout: 5))
         XCTAssertEqual(editor.value as? String, definition)
-        editor.typeKey("1", modifierFlags: .command)
+        focusWindow("Workspace", in: app)
         replaceText(in: workspaceEditor, with: "live value + Counter new value")
         workspace.buttons["executeButton"].click()
         XCTAssertTrue(workspace.staticTexts["9"].waitForExistence(timeout: 5))
@@ -568,7 +647,7 @@ final class Smalltalk80UITests: XCTestCase {
         let workspace = app.windows["toolWindow-1"]
         let workspaceEditor = workspace.textViews["workspaceEditor"]
         XCTAssertTrue(workspaceEditor.waitForExistence(timeout: 10))
-        workspaceEditor.typeKey("2", modifierFlags: .command)
+        focusWindow("System Browser", in: app)
 
         let browser = app.windows["toolWindow-2"]
         XCTAssertTrue(browser.buttons["classMethodSide"].waitForExistence(timeout: 5))
@@ -586,7 +665,7 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertEqual(source.value as? String, "value\n    ^ 70")
         replaceText(in: source, with: "value\n    ^ 73")
         source.typeKey("s", modifierFlags: .command)
-        source.typeKey("1", modifierFlags: .command)
+        focusWindow("Workspace", in: app)
         replaceText(in: workspaceEditor, with: "Counter value + Counter new value")
         workspace.buttons["executeButton"].click()
         XCTAssertTrue(workspace.staticTexts["73"].waitForExistence(timeout: 5))
@@ -596,7 +675,7 @@ final class Smalltalk80UITests: XCTestCase {
         let app = launchFreshApp()
         let workspace = app.windows["toolWindow-1"].textViews["workspaceEditor"]
         XCTAssertTrue(workspace.waitForExistence(timeout: 10))
-        workspace.typeKey("2", modifierFlags: .command)
+        focusWindow("System Browser", in: app)
 
         let browser = app.windows["toolWindow-2"]
         let source = browser.textViews["methodEditor"]
@@ -684,7 +763,7 @@ final class Smalltalk80UITests: XCTestCase {
         replaceText(in: workspaceEditor, with: "Object subclass: #ClassContextExample instanceVariableNames: 'count'")
         workspace.buttons["executeButton"].click()
         XCTAssertTrue(workspace.staticTexts["ClassContextExample"].waitForExistence(timeout: 5))
-        workspaceEditor.typeKey("2", modifierFlags: .command)
+        focusWindow("System Browser", in: app)
 
         let browser = app.windows["toolWindow-2"]
         let filter = browser.textFields["classFilter"]
@@ -710,7 +789,7 @@ final class Smalltalk80UITests: XCTestCase {
         let workspace = app.windows["toolWindow-1"]
         let editor = workspace.textViews["workspaceEditor"]
         XCTAssertTrue(editor.waitForExistence(timeout: 10))
-        editor.typeKey("2", modifierFlags: .command)
+        focusWindow("System Browser", in: app)
         let browser = app.windows["toolWindow-2"]
         XCTAssertTrue(browser.waitForExistence(timeout: 5))
 
@@ -738,13 +817,19 @@ final class Smalltalk80UITests: XCTestCase {
     func testWorkspaceAndLiveMethodEditing() {
         let app = launchFreshApp()
         let workspace = app.windows["toolWindow-1"]
-        XCTAssertTrue(workspace.waitForExistence(timeout: 10))
+        let workspaceEditor = workspace.textViews["workspaceEditor"]
+        replaceText(in: workspaceEditor, with: """
+        counter := Counter new.
+        5 timesRepeat: [ counter increment ].
+        Transcript show: 'The counter is at '; show: counter value; cr.
+        counter value
+        """)
         workspace.buttons["executeButton"].click()
         XCTAssertTrue(workspace.staticTexts["5"].waitForExistence(timeout: 5))
         let transcript = app.windows["toolWindow-3"]
         XCTAssertTrue(transcript.staticTexts.containing(NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@", "The counter is at 5", "The counter is at 5")).firstMatch.exists)
 
-        workspace.textViews["workspaceEditor"].typeKey("2", modifierFlags: .command)
+        focusWindow("System Browser", in: app)
         let browser = app.windows["toolWindow-2"]
         XCTAssertTrue(browser.waitForExistence(timeout: 5))
         let panes = ["Class Categories", "Classes", "Protocols", "Methods"].map { browser.staticTexts[$0] }
@@ -761,8 +846,7 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertGreaterThan(method.frame.minY, panes[0].frame.maxY)
         replaceText(in: method, with: "value\n    ^ count + 10")
         method.typeKey("s", modifierFlags: .command)
-        let editor = workspace.textViews["workspaceEditor"]
-        editor.typeKey("1", modifierFlags: .command)
+        focusWindow("Workspace", in: app)
         workspace.buttons["executeButton"].click()
         XCTAssertTrue(workspace.staticTexts["15"].waitForExistence(timeout: 5))
     }
@@ -1283,7 +1367,7 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertEqual(counter.title, "Smalltalk Inspector")
         XCTAssertEqual(counter.frame.width, 640, accuracy: 2)
 
-        app.typeKey("1", modifierFlags: .command)
+        focusWindow("Workspace", in: app)
         replaceText(in: editor, with: "#(1 2)")
         editor.typeKey("i", modifierFlags: .command)
         let array = inspector(for: "Array")
@@ -1339,6 +1423,7 @@ final class Smalltalk80UITests: XCTestCase {
         let url = directory.appendingPathComponent("Smalltalk.stimage")
         app.launchEnvironment["ST80_PREFERENCES_SUITE"] = suite
         app.launch()
+        openStandardTools(in: app)
         let first = app.windows["toolWindow-1"]
         let firstEditor = first.textViews["workspaceEditor"]
         XCTAssertTrue(firstEditor.waitForExistence(timeout: 10))
@@ -1422,7 +1507,6 @@ final class Smalltalk80UITests: XCTestCase {
         let workspace = app.windows["toolWindow-1"]
         let editor = workspace.textViews["workspaceEditor"]
         XCTAssertTrue(editor.waitForExistence(timeout: 10))
-        let initialDraft = try XCTUnwrap(editor.value as? String)
         replaceText(in: editor, with: "resetProbe := Counter new add: 41; yourself. resetProbe value")
         workspace.buttons["executeButton"].click()
         XCTAssertTrue(workspace.staticTexts["41"].waitForExistence(timeout: 5))
@@ -1446,9 +1530,9 @@ final class Smalltalk80UITests: XCTestCase {
         app.menuItems["Reset Session"].click()
         XCTAssertTrue(app.buttons["Don't Save"].waitForExistence(timeout: 5))
         app.buttons["Don't Save"].click()
-        let fresh = expectation(for: NSPredicate(format: "value == %@", initialDraft), evaluatedWith: editor)
-        let closed = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: inspector)
-        wait(for: [fresh, closed], timeout: 10)
+        assertDesktopEmpty(in: app)
+        XCTAssertFalse(inspector.exists)
+        openTool("Workspace", in: app)
         replaceText(in: editor, with: "resetProbe")
         workspace.buttons["executeButton"].click()
         let unknownBinding = expectation(for: NSPredicate(format: "label == %@", "Error"),
@@ -1537,7 +1621,7 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertEqual(field.value as? String, "Retained draft")
         XCTAssertTrue(form.staticTexts["Ready"].exists)
 
-        submit.typeKey("1", modifierFlags: .command)
+        focusWindow("Workspace", in: app)
         replaceText(in: editor, with: "heldField enabled: true")
         workspace.buttons["executeButton"].click()
         let enabled = expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: field)
@@ -1559,6 +1643,7 @@ final class Smalltalk80UITests: XCTestCase {
         }
         app.launchEnvironment["ST80_PREFERENCES_SUITE"] = suite
         app.launch()
+        openStandardTools(in: app)
         let editor = app.windows["toolWindow-1"].textViews["workspaceEditor"]
         replaceText(in: editor, with: """
         UIWindow subclass: #FormWindow instanceVariableNames: 'firstName surname greeting'.
@@ -1635,7 +1720,7 @@ final class Smalltalk80UITests: XCTestCase {
         // and evaluating a repair of a malformed UI tree.
         let workspace = app.windows["toolWindow-1"]
         let workspaceEditor = workspace.textViews["workspaceEditor"]
-        restored.textFields["First Name"].typeKey("1", modifierFlags: .command)
+        focusWindow("Workspace", in: app)
         replaceText(in: workspaceEditor, with: "broken := UIColumn new. form content: broken. broken add: broken")
         workspace.buttons["executeButton"].click()
         let error = workspace.staticTexts.containing(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Invalid interface", "Invalid interface")).firstMatch
@@ -1658,6 +1743,7 @@ final class Smalltalk80UITests: XCTestCase {
         }
         app.launchEnvironment["ST80_PREFERENCES_SUITE"] = suite
         app.launch()
+        openStandardTools(in: app)
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let source = try String(contentsOf: root.appendingPathComponent("Examples/GreetingWindow.st"), encoding: .utf8)
         let workspace = app.windows["toolWindow-1"]
@@ -1686,7 +1772,7 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertTrue(second.staticTexts["Hello, Dr. Moritz!"].waitForExistence(timeout: 5))
         XCTAssertEqual(field.value as? String, "Dr. Moritz")
 
-        field.typeKey("1", modifierFlags: .command)
+        focusWindow("Workspace", in: app)
         replaceText(in: editor, with: "greetingModel name: 'Ada'")
         workspace.buttons["executeButton"].click()
         XCTAssertTrue(first.staticTexts["Hello, Ada!"].waitForExistence(timeout: 5))
@@ -1696,7 +1782,7 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertTrue(first.staticTexts["No greeting yet."].waitForExistence(timeout: 5))
         XCTAssertEqual(field.value as? String, "")
 
-        second.textFields["Name"].typeKey("1", modifierFlags: .command)
+        focusWindow("Workspace", in: app)
         replaceText(in: editor, with: "GreetingController compile: 'nameChanged: aString ^ 1 / 0'")
         workspace.buttons["executeButton"].click()
         field.click()
@@ -1718,7 +1804,7 @@ final class Smalltalk80UITests: XCTestCase {
         app.buttons["OK"].click()
         XCTAssertEqual(field.value as? String, "Recoverable")
 
-        field.typeKey("1", modifierFlags: .command)
+        focusWindow("Workspace", in: app)
         replaceText(in: editor, with: "GreetingController compile: 'nameChanged: aString model name: aString'")
         workspace.buttons["executeButton"].click()
         XCTAssertTrue(second.staticTexts["Hello, Recoverable!"].waitForExistence(timeout: 5))
@@ -1782,7 +1868,7 @@ final class Smalltalk80UITests: XCTestCase {
         let app = launchFreshApp()
         let workspace = app.windows["toolWindow-1"].textViews["workspaceEditor"]
         XCTAssertTrue(workspace.waitForExistence(timeout: 10))
-        workspace.typeKey("2", modifierFlags: .command)
+        focusWindow("System Browser", in: app)
 
         let browser = app.windows["toolWindow-2"]
         let method = browser.staticTexts["value"].firstMatch
@@ -1853,6 +1939,7 @@ final class Smalltalk80UITests: XCTestCase {
         }
         app.launchEnvironment["ST80_PREFERENCES_SUITE"] = suite
         app.launch()
+        openStandardTools(in: app)
         let workspace = app.windows["toolWindow-1"]
         let editor = workspace.textViews["workspaceEditor"]
         XCTAssertTrue(editor.waitForExistence(timeout: 10))
@@ -1891,19 +1978,58 @@ final class Smalltalk80UITests: XCTestCase {
         let attachment = XCTAttachment(screenshot: history.screenshot())
         attachment.name = "Recovered method from the durable changes journal"
         attachment.lifetime = .keepAlways; add(attachment)
-        record.typeKey("1", modifierFlags: .command)
+        focusWindow("Workspace", in: app)
         replaceText(in: restoredEditor, with: "Counter new recovered")
         restored.buttons["executeButton"].click()
         XCTAssertTrue(restored.staticTexts["73"].waitForExistence(timeout: 5))
         XCTAssertFalse(restored.staticTexts["ERROR"].exists)
     }
 
-    private func launchFreshApp() -> XCUIApplication {
+    private func launchFreshApp(withStandardTools: Bool = true) -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchEnvironment["ST80_PREFERENCES_SUITE"] = "dev.moritz.Smalltalk80UITests.\(UUID().uuidString)"
         app.launch()
+        if withStandardTools { openStandardTools(in: app) }
         return app
+    }
+
+    private func openStandardTools(in app: XCUIApplication) {
+        for (index, title) in ["Workspace", "Browser", "Transcript"].enumerated() {
+            openTool(title, in: app)
+            XCTAssertTrue(app.windows["toolWindow-\(index + 1)"].waitForExistence(timeout: 10))
+        }
+        choose("Arrange Tools", from: "Smalltalk", in: app)
+        focusWindow("Workspace", in: app)
+    }
+
+    private func openTool(_ name: String, in app: XCUIApplication) {
+        choose(name, from: "Tools", in: app)
+    }
+
+    private func focusWindow(_ title: String, in app: XCUIApplication) {
+        choose(title, from: "Window", in: app)
+    }
+
+    private func choose(_ title: String, from menu: String, in app: XCUIApplication) {
+        enabledMenuItem(title, from: menu, in: app).click()
+    }
+
+    private func enabledMenuItem(_ title: String, from menu: String, in app: XCUIApplication) -> XCUIElement {
+        let menuBarItem = app.menuBars.menuBarItems[menu]
+        XCTAssertTrue(menuBarItem.waitForExistence(timeout: 10))
+        menuBarItem.click()
+        let item = menuBarItem.menuItems[title].firstMatch
+        let enabled = expectation(for: NSPredicate(format: "exists == true AND enabled == true"), evaluatedWith: item)
+        wait(for: [enabled], timeout: 10)
+        return item
+    }
+
+    private func assertDesktopEmpty(in app: XCUIApplication) {
+        _ = enabledMenuItem("Workspace", from: "Tools", in: app)
+        app.typeKey(.escape, modifierFlags: [])
+        let empty = expectation(for: NSPredicate { _, _ in app.windows.count == 0 }, evaluatedWith: nil)
+        wait(for: [empty], timeout: 10)
     }
 
     private func temporaryDirectory() throws -> URL {
@@ -1973,12 +2099,7 @@ final class Smalltalk80UITests: XCTestCase {
     }
 
     private func openImage(_ image: URL, in app: XCUIApplication, decision: String? = "Don't Save") {
-        let workspace = app.windows["toolWindow-1"]
-        let editor = workspace.textViews["workspaceEditor"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 10))
-        let ready = expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: workspace.buttons["executeButton"])
-        wait(for: [ready], timeout: 5)
-        editor.typeKey("o", modifierFlags: [.command, .shift])
+        choose("Open Image …", from: "File", in: app)
         let open = app.buttons["OKButton"]
         XCTAssertTrue(open.waitForExistence(timeout: 5))
         navigateFilePanel(in: app, to: image.path)

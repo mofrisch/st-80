@@ -179,10 +179,19 @@ DesktopManager compile: 'createKind: aKind title: aTitle
     window := self windowClassFor: aKind.
     window := window new.
     window kind: aKind; title: aTitle.
-    aKind = #workspace ifTrue: [ window moveToX: 100 + (self windows size * 24) y: 200 + (self windows size * 24) ].
     (aKind = #browser or: [ aKind = #changes ]) ifTrue: [ window moveToX: 850 y: 200; resizeWidth: 850 height: 650 ].
     aKind = #transcript ifTrue: [ window moveToX: 100 y: 40; resizeWidth: 720 height: 200 ].
+    self cascadeTool: window.
     ^ self open: window'.
+DesktopManager compile: 'cascadeTool: aWindow
+    | previous |
+    previous := nil.
+    self windows do: [ :each |
+        (each kind = aWindow kind and: [ each minimized not ]) ifTrue: [ previous := each ] ].
+    previous isNil ifTrue: [ ^ self ].
+    aWindow moveToX: previous x + 24 y: previous y - 24.
+    (aWindow x = previous x and: [ aWindow y = previous y ]) ifTrue: [
+        aWindow moveToX: previous x - 24 y: previous y + 24 ]'.
 DesktopManager compile: 'windowClassFor: aKind
     aKind = #workspace ifTrue: [ ^ WorkspaceWindow ].
     aKind = #browser ifTrue: [ ^ BrowserWindow ].
@@ -207,12 +216,8 @@ DesktopManager compile: 'showWorkspace
     existing isNil ifTrue: [ ^ self openWorkspace ].
     ^ self activate: existing'.
 DesktopManager compile: 'openBrowser
-    | existing | existing := self windowOfKind: #browser.
-    existing notNil ifTrue: [ ^ self activate: existing ].
     ^ self createKind: #browser title: ''System Browser'''.
 DesktopManager compile: 'openTranscript
-    | existing | existing := self windowOfKind: #transcript.
-    existing notNil ifTrue: [ ^ self activate: existing ].
     ^ self createKind: #transcript title: ''Transcript'''.
 DesktopManager compile: 'openChanges
     | existing | existing := self windowOfKind: #changes.

@@ -33,9 +33,4 @@ final class ApplicationDelegate: NSObject, NSApplicationDelegate {
         }
         return .terminateLater
     }
-
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag { Task { await controller.showWorkspace() } }
-        return true
-    }
 }

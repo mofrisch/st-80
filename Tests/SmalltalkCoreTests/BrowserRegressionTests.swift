@@ -14,7 +14,7 @@ struct BrowserRegressionTests {
     }
 
     private func browser(in session: SmalltalkSession, side: MethodSide) async throws -> (Int64, EvaluationResult) {
-        let initial = await session.snapshot()
+        let initial = try await openTools(.browser, in: session)
         let window = try #require(initial.windows.first { $0.kind == .browser })
         guard side == .classSide else { return (window.id, initial) }
         let button = try control("classMethodSide", in: initial, windowID: window.id)

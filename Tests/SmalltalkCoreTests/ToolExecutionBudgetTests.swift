@@ -77,7 +77,7 @@ struct ToolExecutionBudgetTests {
 
     @Test func normalWorkspaceExecutionKeepsAnAmpleSourceBudget() async throws {
         let session = SmalltalkSession()
-        let initial = await session.snapshot()
+        let initial = await session.windowAction(.open(.workspace))
         let workspace = try #require(initial.windows.first { $0.kind == .workspace })
         let editor = try #require(element("workspaceEditor", in: workspace.content))
         let execute = try #require(element("executeButton", in: workspace.content))
@@ -87,5 +87,41 @@ struct ToolExecutionBudgetTests {
         #expect(executed.executionError == nil)
         #expect(element("evaluationResult", in: executed.windows.first { $0.id == workspace.id }?.content)?.text == "3000")
         #expect(await session.evaluate("withinBudget").value == "3000")
+    }
+
+    @Test func catalogRefreshUpdatesEveryOpenBrowserWithoutSpendingTheWorkspaceBudget() async throws {
+        let session = SmalltalkSession()
+        let browserCount = 24
+        for _ in 0..<browserCount {
+            let opened = await session.windowAction(.open(.browser))
+            try #require(opened.error == nil)
+        }
+
+        let evaluation = await session.evaluate("6 * 7")
+        #expect(evaluation.value == "42")
+        #expect(evaluation.error == nil)
+
+        let compiled = await session.compile("catalogBudgetProbe ^ 42", in: "Counter")
+        #expect(compiled.error == nil)
+        let browsers = compiled.windows.filter { $0.kind == .browser }
+        try #require(browsers.count == browserCount)
+        for browser in browsers {
+            let methods = try #require(element("methodList", in: browser.content))
+            #expect(methods.items.contains("catalogBudgetProbe"))
+        }
+    }
+
+    @Test func aFailingAuthoredCatalogHookStillLetsClosedViewsDisconnect() async throws {
+        let session = SmalltalkSession()
+        let opened = await session.windowAction(.open(.transcript))
+        let transcript = try #require(opened.windows.first { $0.kind == .transcript })
+        let authored = await session.compile("catalogChanged [ true ] whileTrue: []", in: "DesktopManager")
+        #expect(authored.executionError?.contains("100,000 steps") == true)
+
+        let closed = await session.evaluate("(Desktop windowAt: \(transcript.id)) close. 42")
+        #expect(closed.value == "42")
+        #expect(closed.executionError?.contains("100,000 steps") == true)
+        #expect(closed.windows.isEmpty)
+        #expect(await session.evaluate("TranscriptBuffer dependents size").value == "0")
     }
 }

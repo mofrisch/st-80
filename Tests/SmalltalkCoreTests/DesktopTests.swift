@@ -2,6 +2,15 @@ import Foundation
 import Testing
 @testable import SmalltalkCore
 
+func openTools(_ kinds: ToolKind..., in session: SmalltalkSession) async throws -> EvaluationResult {
+    var snapshot = await session.snapshot()
+    for kind in kinds {
+        snapshot = await session.windowAction(.open(kind))
+        try #require(snapshot.error == nil)
+    }
+    return snapshot
+}
+
 @MainActor
 struct DesktopTests {
     private func value(_ source: String, in session: SmalltalkSession) async -> String? {
@@ -49,6 +58,7 @@ struct DesktopTests {
 
     @Test func imagesWithoutTheCatalogHookUseTheBundledSmalltalkPolicy() async throws {
         let original = SmalltalkSession()
+        _ = try await openTools(.browser, in: original)
         await original.worker.submit { runtime in
             runtime.classes["DesktopManager"]?.methods["catalogChanged"] = nil
         }
@@ -66,33 +76,30 @@ struct DesktopTests {
         #expect(!desktopClass.methods.contains { $0.selector == "catalogChanged" })
     }
 
-    @Test func desktopIsAnEditableSmalltalkObjectWithThreeInitialTools() async throws {
+    @Test func freshDesktopIsEmptyAndItsOpenCommandsDispatchThroughSmalltalk() async throws {
         let session = SmalltalkSession()
         let snapshot = await session.snapshot()
-        #expect(snapshot.windows.count == 3)
-        #expect(Set(snapshot.windows.map(\.id)).count == 3)
-        #expect(snapshot.windows.allSatisfy { $0.id > 0 })
-        #expect(snapshot.windows.filter { $0.kind == .workspace }.count == 1)
-        #expect(snapshot.windows.filter { $0.kind == .browser }.count == 1)
-        #expect(snapshot.windows.filter { $0.kind == .transcript }.count == 1)
-        let workspace = try #require(snapshot.windows.first { $0.kind == .workspace })
-        #expect(snapshot.activeWindowID == workspace.id)
-        #expect(workspace.text == SmalltalkExamples.workspace)
+        #expect(snapshot.error == nil)
+        #expect(snapshot.windows.isEmpty)
+        #expect(snapshot.activeWindowID == nil)
+        let loaded = try await SmalltalkSession().loadImage(session.imageData())
+        #expect(loaded.evaluation.windows.isEmpty)
+        #expect(loaded.evaluation.activeWindowID == nil)
         #expect(await value("Desktop class name", in: session) == "#DesktopManager")
-        #expect(await value("Desktop windows size", in: session) == "3")
+        #expect(await value("Desktop windows size", in: session) == "0")
 
         // Native menu commands must dispatch the live Smalltalk method as well.
         #expect(await value("DesktopManager compile: 'openWorkspace ^ self openBrowser'", in: session) == "#openWorkspace")
         let redirected = await session.windowAction(.open(.workspace))
         #expect(redirected.error == nil)
-        #expect(redirected.windows.count == 3)
+        #expect(redirected.windows.count == 1)
         let browser = try #require(redirected.windows.first { $0.kind == .browser })
         #expect(redirected.activeWindowID == browser.id)
     }
 
     @Test func workspacesKeepIndependentBuffersAndShareTheObjectSpace() async throws {
         let session = SmalltalkSession()
-        let initial = await session.snapshot()
+        let initial = try await openTools(.workspace, in: session)
         let first = try #require(initial.windows.first { $0.kind == .workspace })
         _ = await session.windowAction(.text(first.id, "shared := 40. shared"))
         let opened = await session.windowAction(.open(.workspace))
@@ -109,7 +116,7 @@ struct DesktopTests {
 
     @Test func workspaceImportUsesTheNewWindowReturnedBySmalltalk() async throws {
         let session = SmalltalkSession()
-        let initial = await session.snapshot()
+        let initial = try await openTools(.workspace, in: session)
         let existing = try #require(initial.windows.first { $0.kind == .workspace })
         let configured = await session.compile("""
         openWorkspace
@@ -138,7 +145,7 @@ struct DesktopTests {
 
     @Test func workspaceImportRejectsAnExistingWindowWithoutOverwritingIt() async throws {
         let session = SmalltalkSession()
-        let initial = await session.snapshot()
+        let initial = try await openTools(.workspace, in: session)
         let existing = try #require(initial.windows.first { $0.kind == .workspace })
         let configured = await session.compile("openWorkspace ^ self windowAt: \(existing.id)", in: "DesktopManager")
         try #require(configured.error == nil)
@@ -156,7 +163,7 @@ struct DesktopTests {
 
     @Test func activationRestoresMinimizedWindowsAndClosingPreservesOtherTools() async throws {
         let session = SmalltalkSession()
-        let initial = await session.snapshot()
+        let initial = try await openTools(.browser, .transcript, .workspace, in: session)
         let workspace = try #require(initial.windows.first { $0.kind == .workspace })
         let extra = await session.windowAction(.open(.workspace))
         let second = try #require(extra.windows.first { $0.kind == .workspace && $0.id != workspace.id })
@@ -175,21 +182,39 @@ struct DesktopTests {
         #expect(closed.activeWindowID != workspace.id)
     }
 
-    @Test func browserAndTranscriptCommandsReuseTheirExistingWindows() async throws {
+    @Test(arguments: [ToolKind.workspace, .browser, .transcript])
+    func openingAToolTwiceCreatesTwoDistinctWindows(_ kind: ToolKind) async throws {
         let session = SmalltalkSession()
-        let initial = await session.snapshot()
-        let browser = try #require(initial.windows.first { $0.kind == .browser })
-        let transcript = try #require(initial.windows.first { $0.kind == .transcript })
-        for _ in 0..<3 {
-            let shown = await session.windowAction(.open(.browser))
-            #expect(shown.error == nil)
-            #expect(shown.activeWindowID == browser.id)
-            #expect(shown.windows.filter { $0.kind == .browser }.count == 1)
-            let output = await session.windowAction(.open(.transcript))
-            #expect(output.activeWindowID == transcript.id)
-            #expect(output.windows.filter { $0.kind == .transcript }.count == 1)
-            #expect(output.windows.count == 3)
-        }
+        let initial = try await openTools(kind, in: session)
+        let first = try #require(initial.windows.first)
+        let opened = try await openTools(kind, in: session)
+        let second = try #require(opened.windows.first { $0.id == opened.activeWindowID })
+        #expect(opened.windows.map(\.kind) == [kind, kind])
+        #expect(second.id != first.id)
+        #expect(second.frame != first.frame)
+        let closed = await session.windowAction(.close(first.id))
+        #expect(closed.windows.map(\.id) == [second.id])
+    }
+
+    @Test func legacyOpenersUpgradeOnFirstUseWithoutReplacingAuthoredMethods() async throws {
+        let original = SmalltalkSession()
+        _ = try await openTools(.browser, .transcript, in: original)
+        let configured = await original.evaluate("""
+        DesktopManager compile: 'openBrowser
+            | existing | existing := self windowOfKind: #browser.
+            existing notNil ifTrue: [ ^ self activate: existing ].
+            ^ self createKind: #browser title: ''System Browser'''.
+        DesktopManager compile: 'openTranscript ^ self activate: (self windowOfKind: #transcript)'.
+        """)
+        try #require(configured.error == nil)
+        let restored = SmalltalkSession()
+        let loaded = try await restored.loadImage(original.imageData())
+        #expect(loaded.evaluation.windows.map(\.id) == configured.windows.map(\.id))
+        #expect(loaded.evaluation.changes.isEmpty)
+        let opened = try await openTools(.browser, .transcript, .browser, in: restored)
+        #expect(opened.windows.filter { $0.kind == .browser }.count == 3)
+        #expect(opened.windows.filter { $0.kind == .transcript }.count == 1)
+        #expect(opened.changes.map(\.selector) == ["openBrowser"])
     }
 
     @Test func nativeGeometryAndSmalltalkWindowMessagesSurviveImageRestart() async throws {
@@ -223,6 +248,7 @@ struct DesktopTests {
 
     @Test func invalidSavedWindowsDoNotReplaceTheCurrentSession() async throws {
         let donor = SmalltalkSession()
+        _ = try await openTools(.workspace, .browser, .transcript, in: donor)
         let bytes = try await donor.imageData()
         let original = try JSONDecoder().decode(ImageArchive.self, from: bytes)
         let windowIndices = original.nodes.indices.filter { index in
@@ -292,8 +318,8 @@ struct DesktopTests {
         #expect(redirected.windows.filter { $0.kind == .workspace }.isEmpty)
         let transcript = try #require(redirected.windows.first { $0.kind == .transcript })
         #expect(redirected.activeWindowID == transcript.id)
-        let reused = await restored.windowAction(.open(.workspace))
-        #expect(reused.windows.count == 2)
-        #expect(reused.activeWindowID == transcript.id)
+        let next = await restored.windowAction(.open(.workspace))
+        #expect(next.windows.filter { $0.kind == .transcript }.count == 2)
+        #expect(next.activeWindowID != transcript.id)
     }
 }

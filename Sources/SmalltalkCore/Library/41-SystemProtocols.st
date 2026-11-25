@@ -108,7 +108,7 @@ BrowserOrganization compile: 'shippedProtocols
             (''Tool Synchronization'' (''catalogChanged'' ''synchronizeChanges''))
             (''Window Lifecycle'' (''open:'' ''requestClose:'' ''close:'' ''minimize:''))
             (''Focus and Ordering'' (''chooseActive'' ''bringToFront:'' ''activate:'' ''observeActivation:'' ''observeMinimized:value:''))
-            (''Displays and Placement'' (''screens'' ''screenFor:'' ''screensChanged:'' ''constrain:'' ''restoreWindows'' ''arrangeTools''))))
+            (''Displays and Placement'' (''screens'' ''screenFor:'' ''screensChanged:'' ''constrain:'' ''restoreWindows'' ''cascadeTool:'' ''arrangeTools''))))
         (''UIElement'' (
             (''Initialization'' (''initialize''))
             (''Identity and Appearance'' (''identifier:'' ''role:''))

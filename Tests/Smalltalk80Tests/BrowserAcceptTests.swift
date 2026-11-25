@@ -6,10 +6,9 @@ import Testing
 struct BrowserAcceptTests {
     private func selectMethod(in controller: AppController) async throws -> (windowID: Int64, editor: UIElementInfo, accept: UIElementInfo) {
         let session = controller.session
-        let initial = await session.snapshot()
+        let initial = await session.windowAction(.open(.browser))
         let browser = try #require(initial.windows.first { $0.kind == .browser })
         let methods = try #require(browser.content?.firstVisible { $0.accessibilityID == "methodList" })
-        _ = await session.windowAction(.activate(browser.id))
         let selected = await session.uiAction(.select(windowID: browser.id, elementID: methods.id, value: "value"))
         try #require(selected.error == nil)
         controller.apply(selected, replacingWindows: true)

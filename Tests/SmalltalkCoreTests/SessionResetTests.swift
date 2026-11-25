@@ -33,12 +33,14 @@ struct SessionResetTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let log = directory.appendingPathComponent("Fresh.changes")
         let session = SmalltalkSession()
-        _ = await session.evaluate("kept := 42. Counter compile: 'value ^ 99'")
+        _ = await session.evaluate("kept := 42. Counter compile: 'value ^ 99'. Desktop openWorkspace")
 
         let reset = try await session.reset(startingChangeLogAt: log)
         #expect(reset.error == nil)
         #expect(reset.changesPath == log.path)
         #expect(reset.changes.isEmpty)
+        #expect(reset.windows.isEmpty)
+        #expect(reset.activeWindowID == nil)
         #expect(await session.evaluate("Counter new value").value == "0")
         #expect(await session.evaluate("kept").executionError != nil)
         #expect(await session.compile("answer ^ 17", in: "Counter").error == nil)

@@ -20,7 +20,7 @@ struct WorkspaceRecoveryTests {
     }
 
     private func breakWindowList(in session: SmalltalkSession) async throws -> EvaluationResult {
-        let original = await session.snapshot()
+        let original = try await openTools(.workspace, in: session)
         let broken = await session.evaluate("savedWindows := Desktop windows. Desktop model windows: nil")
         try #require(broken.error?.contains("valid window list") == true)
         return original
@@ -48,7 +48,7 @@ struct WorkspaceRecoveryTests {
 
     @Test func aRetainedWorkspaceCanRestoreItsInvalidControlTree() async throws {
         let session = SmalltalkSession()
-        let original = await session.snapshot()
+        let original = try await openTools(.workspace, in: session)
         let window = try workspace(in: original)
         let broken = await session.evaluate("""
             savedWorkspace := Desktop windowAt: \(window.id).
@@ -118,7 +118,7 @@ struct WorkspaceRecoveryTests {
 
     @Test func aValidWorkspaceShowsRecoveryErrorsWithAFreshPresentationBudget() async throws {
         let session = SmalltalkSession()
-        let original = await session.snapshot()
+        let original = try await openTools(.workspace, in: session)
         let failed = try await recover("[ true ] whileTrue: [ ]", in: session, from: original)
         #expect(failed.executionError?.contains("100,000 steps") == true)
         #expect(try element("evaluationResult", in: workspace(in: failed).content)?.text.contains("100,000 steps") == true)
@@ -129,13 +129,13 @@ struct WorkspaceRecoveryTests {
 
     @Test func staleEpochsAndClosedWorkspacesCannotExecuteRecoverySource() async throws {
         let session = SmalltalkSession()
-        let original = await session.snapshot()
+        let original = try await openTools(.workspace, in: session)
         _ = await session.reset()
         _ = await session.evaluate("recoverySentinel := 73")
         _ = try await recover("recoverySentinel := 0", in: session, from: original)
         #expect(await session.evaluate("recoverySentinel").value == "73")
 
-        let current = await session.snapshot()
+        let current = try await openTools(.workspace, in: session)
         let window = try workspace(in: current)
         _ = await session.windowAction(.close(window.id))
         _ = try await recover("recoverySentinel := 0", in: session, from: current)
@@ -145,7 +145,7 @@ struct WorkspaceRecoveryTests {
     @Test func detectableSameIDReplacementsCannotExecuteRecoverySourceEvenWhenInvalid() async throws {
         let session = SmalltalkSession()
         _ = await session.evaluate("recoverySentinel := 73")
-        let original = await session.snapshot()
+        let original = try await openTools(.workspace, in: session)
         let old = try workspace(in: original)
         let replaced = await session.evaluate("""
             (Desktop windowAt: \(old.id)) close.

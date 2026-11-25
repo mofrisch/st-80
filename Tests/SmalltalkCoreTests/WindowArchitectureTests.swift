@@ -12,7 +12,7 @@ struct WindowArchitectureTests {
 
     @Test func toolsArrangeIntoColumnsWithinTheAvailableDisplay() async throws {
         let session = SmalltalkSession()
-        let initial = await session.snapshot()
+        let initial = try await openTools(.browser, .transcript, .workspace, in: session)
         let display = screen("offset", -1440, 120, 1440, 900)
         let connected = await session.windowEvents([event(initial, 1, .screens([display]))])
         #expect(connected.error == nil)
@@ -45,6 +45,7 @@ struct WindowArchitectureTests {
 
     @Test func arrangingAnOlderImageInstallsOnlyTheMissingMethodOnce() async throws {
         let original = SmalltalkSession()
+        _ = try await openTools(.workspace, .browser, .transcript, in: original)
         let customFrame = WindowRect(x: 220, y: 180, width: 640, height: 420)
         _ = await original.windowAction(.frame(1, x: customFrame.x, y: customFrame.y, width: customFrame.width, height: customFrame.height))
         var archive = try JSONDecoder().decode(ImageArchive.self, from: await original.imageData())
@@ -75,6 +76,7 @@ struct WindowArchitectureTests {
 
     @Test func arrangeToolsHonorsAnExistingCustomMethod() async throws {
         let session = SmalltalkSession()
+        _ = try await openTools(.workspace, in: session)
         let custom = await session.evaluate("DesktopManager compile: 'arrangeTools self activeWindow title: ''My arrangement'''")
         #expect(custom.error == nil)
         let arranged = await session.windowAction(.arrangeTools)
@@ -86,7 +88,7 @@ struct WindowArchitectureTests {
 
     @Test func smalltalkOwnsScreenSelectionLimitsAndRemovedDisplayRecovery() async throws {
         let session = SmalltalkSession()
-        let initial = await session.snapshot()
+        let initial = try await openTools(.workspace, in: session)
         let screens = [screen("left", -1600, 0, 1600, 1000), screen("main", 0, 0, 1440, 900)]
         let connected = await session.windowEvents([event(initial, 1, .screens(screens))])
         #expect(connected.error == nil)
@@ -131,6 +133,8 @@ struct WindowArchitectureTests {
 
     @Test func nativeFactsDoNotInvokeRequestsAndStaleRepliesCannotUndoNewGeometry() async throws {
         let session = SmalltalkSession()
+        _ = try await openTools(.workspace, .browser, in: session)
+        _ = await session.windowAction(.activate(1))
         let initial = await session.evaluate("""
         requests := 0.
         DesktopManager compile: 'activate: aWindow requests := requests + 1. model requestFocus. ^ self bringToFront: aWindow'.
@@ -158,7 +162,7 @@ struct WindowArchitectureTests {
 
     @Test func anInvalidNativeEventDoesNotBlockLaterEventsInTheBatch() async throws {
         let session = SmalltalkSession()
-        let initial = await session.snapshot()
+        let initial = try await openTools(.workspace, .browser, in: session)
         let workspace = try #require(initial.windows.first { $0.kind == .workspace })
         let browser = try #require(initial.windows.first { $0.kind == .browser })
         let invalid = WindowRect(x: 100, y: 120, width: 0, height: 600)
@@ -181,6 +185,7 @@ struct WindowArchitectureTests {
 
     @Test func windowAndDesktopModelsNotifyOrdinarySmalltalkObservers() async throws {
         let session = SmalltalkSession()
+        _ = try await openTools(.workspace, in: session)
         let result = await session.evaluate("""
         Object subclass: #WindowObserver instanceVariableNames: 'updates'.
         WindowObserver compile: 'initialize updates := 0'.
@@ -203,7 +208,7 @@ struct WindowArchitectureTests {
 
     @Test func replacingTheDesktopCannotRetargetCallbacksFromOldWindowObjects() async throws {
         let session = SmalltalkSession()
-        let initial = await session.snapshot()
+        let initial = try await openTools(.workspace, in: session)
         let old = try #require(initial.windows.first { $0.id == 1 })
         let replacement = await session.evaluate("Desktop := DesktopManager new. Desktop openWorkspace")
         let current = try #require(replacement.windows.first)

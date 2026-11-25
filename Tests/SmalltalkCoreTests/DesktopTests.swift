@@ -10,6 +10,62 @@ struct DesktopTests {
         return evaluation.value
     }
 
+    @Test func desktopDecidesWhichToolsRefreshAtTheEvaluationBoundary() async throws {
+        let session = SmalltalkSession()
+        let configured = await session.evaluate("""
+        catalogNotifications := 0.
+        UIWindow subclass: #CatalogProbe instanceVariableNames: ''.
+        CatalogProbe compile: 'refreshTools self text: self text , ''r'''.
+        selectedTool := CatalogProbe new title: 'Selected Tool'; yourself.
+        otherTool := CatalogProbe new title: 'Other Tool'; yourself.
+        selectedTool open.
+        otherTool open.
+        DesktopManager compile: 'catalogChanged
+            catalogNotifications := catalogNotifications + 1.
+            selectedTool refreshTools'.
+        """)
+        try #require(configured.error == nil)
+        #expect(configured.bindings.first { $0.name == "catalogNotifications" }?.value == "1")
+        #expect(configured.windows.first { $0.title == "Selected Tool" }?.text == "r")
+        #expect(configured.windows.first { $0.title == "Other Tool" }?.text == "")
+
+        let changed = await session.evaluate("Counter compile: 'catalogFirst ^ 1'; compile: 'catalogSecond ^ 2'")
+        try #require(changed.error == nil)
+        #expect(changed.bindings.first { $0.name == "catalogNotifications" }?.value == "2")
+        #expect(changed.windows.first { $0.title == "Selected Tool" }?.text == "rr")
+        #expect(changed.windows.first { $0.title == "Other Tool" }?.text == "")
+
+        let restored = SmalltalkSession()
+        let loaded = try await restored.loadImage(session.imageData())
+        #expect(loaded.evaluation.bindings.first { $0.name == "catalogNotifications" }?.value == "2")
+        let snapshot = await restored.snapshot()
+        #expect(snapshot.bindings.first { $0.name == "catalogNotifications" }?.value == "2")
+        #expect(snapshot.windows.first { $0.title == "Selected Tool" }?.text == "rr")
+        let next = await restored.compile("catalogThird ^ 3", in: "Counter")
+        #expect(next.bindings.first { $0.name == "catalogNotifications" }?.value == "3")
+        #expect(next.windows.first { $0.title == "Selected Tool" }?.text == "rrr")
+        #expect(next.windows.first { $0.title == "Other Tool" }?.text == "")
+    }
+
+    @Test func imagesWithoutTheCatalogHookUseTheBundledSmalltalkPolicy() async throws {
+        let original = SmalltalkSession()
+        await original.worker.submit { runtime in
+            runtime.classes["DesktopManager"]?.methods["catalogChanged"] = nil
+        }
+        let restored = SmalltalkSession()
+        let loaded = try await restored.loadImage(original.imageData())
+        #expect(loaded.evaluation.error == nil)
+        let browser = try #require(loaded.evaluation.windows.first { $0.kind == .browser })
+
+        let changed = await restored.compile("addedAfterLoading ^ 42", in: "Counter")
+        #expect(changed.error == nil)
+        let updated = try #require(changed.windows.first { $0.id == browser.id })
+        let methods = try #require(updated.content?.firstVisible { $0.accessibilityID == "methodList" })
+        #expect(methods.items.contains("addedAfterLoading"))
+        let desktopClass = try #require(changed.classes.first { $0.name == "DesktopManager" })
+        #expect(!desktopClass.methods.contains { $0.selector == "catalogChanged" })
+    }
+
     @Test func desktopIsAnEditableSmalltalkObjectWithThreeInitialTools() async throws {
         let session = SmalltalkSession()
         let snapshot = await session.snapshot()

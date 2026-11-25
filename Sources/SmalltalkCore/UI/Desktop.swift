@@ -147,6 +147,30 @@ extension SmalltalkRuntime {
         } catch { return finishEvaluation(error: error.localizedDescription) }
     }
 
+    func notifyDesktopOfCatalogChange() throws {
+        guard catalogDirty else { return }
+        catalogDirty = false
+        guard let windows = desktopWindows, windows.elements.count <= Self.desktopWindowLimit,
+              case .object(let desktop)? = globals["Desktop"] else { return }
+        let receiver = Value.object(desktop)
+        let selector = "catalogChanged"
+        if lookupMethod(selector, on: receiver) != nil {
+            _ = try send(receiver, selector, [])
+            return
+        }
+
+        // An earlier image can run the bundled hook at the execution boundary
+        // without installing methods or changing the saved class dictionary.
+        guard isUIClass(desktop.stClass, named: "DesktopManager") else { return }
+        let library = try SystemLibrary.shared.get()
+        guard let code = library.seed.methods["DesktopManager"]?[selector],
+              let source = library.sources.methods["DesktopManager"]?[selector] else {
+            throw SmalltalkError("The bundled catalog update is missing.")
+        }
+        let method = try code.validatedMethod(selector: selector, source: source, fields: desktop.stClass.fields)
+        _ = try invoke(method, owner: desktop.stClass, receiver: receiver, arguments: [], side: .instance)
+    }
+
     func synchronizeChangeHistory() throws {
         guard let windows = desktopWindows, windows.elements.count <= Self.desktopWindowLimit,
               let desktop = globals["Desktop"],

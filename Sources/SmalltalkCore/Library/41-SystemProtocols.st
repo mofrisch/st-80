@@ -105,7 +105,7 @@ BrowserOrganization compile: 'shippedProtocols
             (''Window Registry'' (''windows'' ''append:'' ''nextID'' ''windowAt:'' ''windowOfKind:'' ''activeWindow''))
             (''Opening Tools'' (''createKind:title:'' ''windowClassFor:'' ''openWorkspace'' ''showWorkspace''
                 ''openBrowser'' ''openTranscript'' ''openChanges'' ''showChangesFor:selector:side:'' ''openWindow''))
-            (''Tool Synchronization'' (''synchronizeChanges''))
+            (''Tool Synchronization'' (''catalogChanged'' ''synchronizeChanges''))
             (''Window Lifecycle'' (''open:'' ''requestClose:'' ''close:'' ''minimize:''))
             (''Focus and Ordering'' (''chooseActive'' ''bringToFront:'' ''activate:'' ''observeActivation:'' ''observeMinimized:value:''))
             (''Displays and Placement'' (''screens'' ''screenFor:'' ''screensChanged:'' ''constrain:'' ''restoreWindows'' ''arrangeTools''))))

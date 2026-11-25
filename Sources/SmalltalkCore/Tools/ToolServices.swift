@@ -45,6 +45,9 @@ extension SmalltalkRuntime {
                 .symbol("reclaimed"), .integer(Int64(stats.totalReclaimed)),
                 .symbol("lastPauseNanoseconds"), .integer(Int64(clamping: stats.lastPauseNanoseconds))
             ])
+        case "noteCatalogChange":
+            catalogDirty = true
+            return .nilValue
         case "classNames": return try array(classes.keys.sorted().map(Value.string))
         case "classNamed:": return try classes[string(args[0])].map(Value.classObject) ?? .nilValue
         case "classNameOf:": return try .string(target(args[0]).name)
@@ -188,17 +191,5 @@ extension SmalltalkRuntime {
             }
         }
         return finishEvaluation(value: value, error: failure)
-    }
-
-    func refreshToolWindowsIfNeeded() throws {
-        guard catalogDirty else { return }
-        catalogDirty = false
-        guard let windows = desktopWindows else { return }
-        let elements = windows.elements
-        try withRoots(elements) { _ in
-            for case .object(let window) in elements where window.stClass.lookup("refreshTools") != nil {
-                _ = try send(.object(window), "refreshTools", [])
-            }
-        }
     }
 }

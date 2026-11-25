@@ -359,15 +359,19 @@ struct ToolWindowTests {
 
     @Test func browserOrganizationEditsSurviveClosingTheBrowserAndLoadingAnImage() async throws {
         let session = SmalltalkSession()
-        let snapshot = await session.snapshot()
-        let browser = try #require(snapshot.windows.first(where: { $0.kind == .browser }))
+        let snapshot = await session.evaluate("Desktop createKind: #browser title: 'Second Browser'")
+        try #require(snapshot.error == nil)
+        let browser = try #require(snapshot.windows.first { $0.kind == .browser && $0.title == "System Browser" })
+        let otherBrowser = try #require(snapshot.windows.first { $0.kind == .browser && $0.id != browser.id })
         var content = try #require(browser.content)
+        var otherContent = try #require(otherBrowser.content)
 
         func perform(_ identifier: String, _ action: (String) -> UIAction) async throws {
             let control = try #require(element(identifier, in: content))
             let result = await session.uiAction(action(control.id))
             try #require(result.error == nil, "\(identifier): \(result.error ?? "")")
             content = try #require(result.windows.first(where: { $0.id == browser.id })?.content)
+            otherContent = try #require(result.windows.first(where: { $0.id == otherBrowser.id })?.content)
         }
 
         func click(_ identifier: String) async throws {
@@ -391,6 +395,7 @@ struct ToolWindowTests {
         try await submitName("Domain")
         #expect(element("categoryList", in: content)?.selection == "Domain")
         #expect(element("classList", in: content)?.items == [])
+        #expect(element("categoryList", in: otherContent)?.items.contains("Domain") == true)
 
         try await click("newCategory")
         try await submitName("Domain")
@@ -411,6 +416,7 @@ struct ToolWindowTests {
         try await submitName("Reading")
         #expect(element("protocolList", in: content)?.selection == "Reading")
         #expect(element("methodList", in: content)?.items == [])
+        #expect(element("protocolList", in: otherContent)?.items.contains("Reading") == true)
         try await click("newMethod")
         try await edit("methodEditor", "answer ^ 42")
         try await click("executeButton")
@@ -433,6 +439,7 @@ struct ToolWindowTests {
         try await submitName("Editing")
         #expect(element("methodList", in: content)?.items == [])
 
+        _ = await session.windowAction(.close(otherBrowser.id))
         let closed = await session.windowAction(.close(browser.id))
         #expect(closed.windows.allSatisfy { $0.kind != .browser })
         let restored = SmalltalkSession()

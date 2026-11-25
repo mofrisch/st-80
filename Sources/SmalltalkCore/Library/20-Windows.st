@@ -226,6 +226,9 @@ DesktopManager compile: 'showChangesFor: aClass selector: aSelector side: aSide
     (window respondsTo: #showClass:selector:side:) ifTrue: [
         window showClass: aClass selector: aSelector side: aSide ].
     ^ window'.
+DesktopManager compile: 'catalogChanged
+    self windows do: [ :window |
+        (window respondsTo: #refreshTools) ifTrue: [ window refreshTools ] ]'.
 DesktopManager compile: 'synchronizeChanges
     self windows do: [ :window |
         (window respondsTo: #synchronizeHistory) ifTrue: [ window synchronizeHistory ] ]'.

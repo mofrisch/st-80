@@ -122,6 +122,8 @@ A fresh session places the System Browser on the left, with the Workspace above 
 
 Smalltalk implements window management. The global `Desktop` holds the `DesktopManager` controller. Its `DesktopModel` tracks the window list, order, active window, and display information. `SystemWindow` is a subclass of `Model` that reports state changes through the standard observer protocol.
 
+When an operation marks the catalog as changed, the VM sends `catalogChanged` to `Desktop` at the end of the operation. The manager chooses which tools to refresh. Snapshots and image loading read the resulting state without running this hook.
+
 `Library/20-Windows.st` implements opening, closing, activation, minimization, size limits, placement, display selection, and restoration. You can edit these methods in the browser. The display with the largest overlap wins, with distance breaking ties. When a monitor is disconnected, windows are constrained to the remaining visible display areas. Logical minimum sizes are preserved even if a small display temporarily requires smaller native limits.
 
 `NativeWindowBackend` manages the individual AppKit windows, reports available display areas and native events, and displays SwiftUI content. Smalltalk owns the size and placement rules. A native close attempt asks `canClose`. Moves, resizes, and focus changes report events that have already occurred. The backend acknowledges revisioned Smalltalk requests with the native geometry it applied. Session identifiers, event sequence numbers, and acknowledgements prevent stale events from overriding new requests or a newly loaded image. Native events are processed promptly while the editors stay usable.

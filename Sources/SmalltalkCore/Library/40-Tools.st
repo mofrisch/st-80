@@ -474,9 +474,7 @@ BrowserWindow compile: 'organizationEdited: failure
         outcome at: 1 put: false; at: 2 put: failure.
         ^ self result: outcome ].
     organizationForm cancel.
-    self refreshTools.
-    Desktop windows do: [ :window |
-        ((window == self) not and: [ window respondsTo: #refreshTools ]) ifTrue: [ window refreshTools ] ].
+    ToolVM noteCatalogChange.
     self result: (ToolVM success: ''Organization updated.'')'.
 
 BrowserWindow compile: 'newCategory

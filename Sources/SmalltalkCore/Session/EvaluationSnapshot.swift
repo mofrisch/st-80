@@ -47,7 +47,7 @@ extension SmalltalkRuntime {
     func finishEvaluation(value: String? = nil, error: String? = nil) -> EvaluationResult {
         var failure = error
         do {
-            try refreshToolWindowsIfNeeded()
+            try notifyDesktopOfCatalogChange()
             try synchronizeMVCBindings()
             try synchronizeChangeHistory()
         } catch {

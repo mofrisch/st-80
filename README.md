@@ -35,7 +35,7 @@ Local builds use ad hoc signing, so you can run the app without a development te
 - **⌘N** opens an independent workspace.
 - **⌘1 / ⌘2 / ⌘3** brings a workspace, the System Browser, or the Transcript to the front.
 - **⌘O** opens UTF-8 source code in a new workspace. In a workspace, **⌘S** saves the source as a `.st` file.
-- **Smalltalk → Examples** opens sample code for counters, arrays and blocks, class definitions, native windows, and custom interfaces.
+- **Smalltalk → Examples** opens sample code for counters, arrays and blocks, class definitions, native windows, and custom interfaces. Edit the sources and menu entries on the class side of `WorkspaceExamples` in the **Examples** category. The welcome workspace uses the same catalog.
 
 The Object Inspector shows a value's class, instance variables, and one-based array elements. Open a row to follow its value, use **Back** to return, and use **Refresh** after another workspace changes the object. Long arrays are shown one page at a time. Smalltalk code can also open the window with `ToolVM inspect: anObject`.
 

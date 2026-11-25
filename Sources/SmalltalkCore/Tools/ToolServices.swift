@@ -122,14 +122,12 @@ extension SmalltalkRuntime {
         case "success:": return try array([.boolean(true), .string(string(args[0]))])
         case "lineBreak": return .string("\n")
         case "exampleAt:":
-            switch try symbol(args[0]) {
-            case "workspace": return .string(SmalltalkExamples.workspace)
-            case "collections": return .string(SmalltalkExamples.collections)
-            case "classes": return .string(SmalltalkExamples.classes)
-            case "windows": return .string("window := Desktop openWorkspace.\nwindow title: 'My Workspace'.\nwindow text: '6 * 7'")
-            case "userInterface": return .string(SmalltalkExamples.userInterface)
-            default: throw SmalltalkError("Unknown workspace example.")
+            let key = Value.symbol(try symbol(args[0]))
+            if let catalog = classes["WorkspaceExamples"] {
+                return try send(.classObject(catalog), "sourceAt:", [key])
             }
+            // Stored workspaces may still send the original tool message.
+            return .string(try SmalltalkExamples.bundledSource("sourceAt:", arguments: [key]))
         case "bytecodeOf:in:side:":
             let stClass = try target(args[1])
             guard let method = try stClass[side(args[2])][string(args[0])] else { return .string("Bytecode unavailable.") }

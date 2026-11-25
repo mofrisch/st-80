@@ -8,6 +8,30 @@ struct ToolWindowTests {
         return root.children.lazy.compactMap { element(id, in: $0) }.first
     }
 
+    @Test func examplesMenuUsesTheCatalogStoredInTheImage() async throws {
+        let original = SmalltalkSession()
+        let edited = await original.evaluate("""
+        WorkspaceExamples compileClass: 'workspace ^ ''exampleWasRun := true. 6 * 7'''.
+        WorkspaceExamples compileClass: 'menuEntries ^ #((#workspace ''Edited Counter''))'.
+        Desktop openWorkspace
+        """)
+        try #require(edited.error == nil)
+        let lastWorkspace = try #require(edited.windows.first { $0.id == edited.activeWindowID && $0.kind == .workspace })
+        let restored = SmalltalkSession()
+        let loaded = try await restored.loadImage(original.imageData())
+        let window = try #require(loaded.evaluation.windows.first { $0.id == lastWorkspace.id })
+        let menu = try #require(window.content?.children.first { $0.role == "applicationMenu" })
+        #expect(menu.children.map(\.text) == ["Edited Counter"])
+
+        let example = try #require(menu.children.first)
+        let opened = await restored.uiAction(.click(windowID: window.id, elementID: example.id))
+        try #require(opened.error == nil)
+        let workspace = try #require(opened.windows.first { $0.id == opened.activeWindowID && $0.kind == .workspace })
+        #expect(workspace.id != window.id)
+        #expect(workspace.text == "exampleWasRun := true. 6 * 7")
+        #expect(!opened.bindings.contains { $0.name == "exampleWasRun" })
+    }
+
     @Test func workspacePublishesApplicationCommandsIndependentlyOfTheEditorMenu() async throws {
         let session = SmalltalkSession()
         let snapshot = await session.snapshot()
@@ -158,7 +182,7 @@ struct ToolWindowTests {
         #expect(element("classList", in: kernel)?.items.contains("Object") == true)
         #expect(element("classList", in: kernel)?.selection == nil)
         let examples = await select(categories, "Examples")
-        #expect(element("classList", in: examples)?.items == ["Counter"])
+        #expect(element("classList", in: examples)?.items == ["Counter", "WorkspaceExamples"])
         let counter = await select(classes, "Counter")
         #expect(element("protocolList", in: counter)?.items == ["All", "Initialization", "Accessing", "Counting"])
         let counting = await select(protocols, "Counting")

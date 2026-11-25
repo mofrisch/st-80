@@ -131,7 +131,7 @@ BrowserOrganization compile: 'defaultCategoryOf: name
        ''UIElement'' ''UILabel'' ''UIButton'' ''UITextField'' ''UIContainer'' ''UIColumn'' ''UIRow'' ''UISpacer''
        ''UIWindow'' ''UICodeEditor'' ''UIList'' ''UIHistoryList'' ''UISourceView'' ''UIValueTable'' ''UISplit'' ''UIScroll'' ''UIMenu'' ''UIDivider'') includes: name)
         ifTrue: [ ^ ''Interface'' ].
-    name = ''Counter'' ifTrue: [ ^ ''Examples'' ].
+    (#(''Counter'' ''WorkspaceExamples'') includes: name) ifTrue: [ ^ ''Examples'' ].
     (#(''CounterTest'' ''CollectionsTest'' ''BindingTestModel'' ''UIBindingTest'') includes: name) ifTrue: [ ^ ''Tests'' ].
     ^ ''User Classes'''.
 

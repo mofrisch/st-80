@@ -3,7 +3,7 @@ ToolVM := ToolServices new.
 TranscriptBuffer := TranscriptModel new.
 SystemOrganization := BrowserOrganization new.
 Desktop := DesktopManager new.
-(Desktop openWorkspace) text: (ToolVM exampleAt: #workspace).
+(Desktop openWorkspace) text: WorkspaceExamples workspace.
 Desktop openBrowser.
 Desktop openTranscript.
 Desktop arrangeTools.

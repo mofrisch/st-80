@@ -140,18 +140,16 @@ WorkspaceWindow compile: 'debugIt: selected
 WorkspaceWindow compile: 'examplesMenu
     | menu |
     menu := UIMenu new title: ''Examples''; role: #applicationMenu; yourself.
-    menu add: (self exampleButton: ''Counter'' key: #workspace).
-    menu add: (self exampleButton: ''Arrays and Blocks'' key: #collections).
-    menu add: (self exampleButton: ''Create a Class'' key: #classes).
-    menu add: (self exampleButton: ''Open Windows'' key: #windows).
-    menu add: (self exampleButton: ''Custom Interface'' key: #userInterface).
+    WorkspaceExamples menuEntries do: [ :entry |
+        menu add: (self exampleButton: (entry at: 2) key: (entry at: 1)) ].
     ^ menu'.
 
 WorkspaceWindow compile: 'exampleButton: aTitle key: exampleKey
     ^ UIButton new title: aTitle; action: [
-        | workspace |
+        | source workspace |
+        source := WorkspaceExamples sourceAt: exampleKey.
         workspace := Desktop openWorkspace.
-        workspace notNil ifTrue: [ workspace text: (ToolVM exampleAt: exampleKey) ] ]; yourself'.
+        workspace notNil ifTrue: [ workspace text: source ] ]; yourself'.
 
 DevelopmentWindow subclass: #BrowserWindow instanceVariableNames: 'categoryList classList protocolList methodList queryField editor category className protocolName selector originalSource header hint accept versions versionMenu organizationForm renameCategoryItem moveClassItem newProtocolItem renameProtocolItem moveMethodItem methodSide instanceSideButton classSideButton otherSideState editingDefinition definitionButton bytecodeToggle bytecodeView'.
 

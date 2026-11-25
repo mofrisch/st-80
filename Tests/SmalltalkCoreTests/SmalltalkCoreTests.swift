@@ -118,6 +118,15 @@ struct SmalltalkCoreTests {
         #expect(value(SmalltalkExamples.precedence) == "'Smalltalk is running.'")
     }
 
+    @Test func legacyExampleRequestsReadTheBundledCatalog() throws {
+        let runtime = SmalltalkRuntime()
+        let services = try #require(runtime.globals["ToolVM"])
+        runtime.classes["WorkspaceExamples"] = nil
+        runtime.globals["WorkspaceExamples"] = nil
+        let source = try runtime.send(services, "exampleAt:", [.symbol("workspace")])
+        #expect(try runtime.string(source) == SmalltalkExamples.workspace)
+    }
+
     @Test func introspectionAndDynamicSend() {
         #expect(value("Counter superclass name") == "#Object")
         #expect(value("Counter new class name") == "#Counter")

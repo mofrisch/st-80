@@ -840,6 +840,34 @@ final class Smalltalk80UITests: XCTestCase {
         wait(for: [expectation(for: exampleSource, evaluatedWith: example)], timeout: 5)
     }
 
+    func testWorkspaceExamplesMenuOpensTheEditedCatalogSource() {
+        let app = launchFreshApp()
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        replaceText(in: editor, with: """
+        WorkspaceExamples compileClass: 'workspace ^ ''6 * 7'''.
+        WorkspaceExamples compileClass: 'menuEntries ^ #((#workspace ''Edited Counter''))'.
+        Desktop openWorkspace
+        """)
+        workspace.buttons["executeButton"].click()
+        let editedWorkspace = app.windows["toolWindow-4"]
+        XCTAssertTrue(editedWorkspace.textViews["workspaceEditor"].waitForExistence(timeout: 5))
+
+        app.menuBars.menuBarItems["Smalltalk"].click()
+        let examples = app.menuItems["Examples"].firstMatch
+        XCTAssertTrue(examples.waitForExistence(timeout: 5))
+        examples.hover()
+        let entry = app.menuItems["Edited Counter"].firstMatch
+        XCTAssertTrue(entry.waitForExistence(timeout: 5))
+        entry.click()
+
+        let opened = app.windows["toolWindow-5"]
+        let source = opened.textViews["workspaceEditor"]
+        let hasSource = NSPredicate(format: "value == %@", "6 * 7")
+        wait(for: [expectation(for: hasSource, evaluatedWith: source)], timeout: 5)
+        XCTAssertFalse(opened.staticTexts["42"].exists)
+    }
+
     func testWorkspaceContextMenuUsesTheSelectionForAllThreeActions() {
         let app = launchFreshApp()
         let workspace = app.windows["toolWindow-1"]

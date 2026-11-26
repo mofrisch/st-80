@@ -31,6 +31,7 @@ public struct SmalltalkError: Error, LocalizedError, Sendable {
 
 indirect enum Literal: Codable, Sendable {
     case integer(Int64), string(String), symbol(String), array([Literal])
+    case boolean(Bool), nilValue, character(UInt32), float(Double)
 }
 
 struct Expression: Codable, Sendable {

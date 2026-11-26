@@ -5,13 +5,12 @@ import Testing
 struct ImageTests {
     @Test func unevaluatedBlockCodeRetainsItsRuntimeErrorsAfterRestore() async throws {
         let original = SmalltalkSession()
-        let literal = Array(repeating: "1", count: 4_097).joined(separator: " ")
-        let compiled = await original.evaluate("deferred := [ #(\(literal)) ]")
+        let compiled = await original.evaluate("deferred := [ Array new: 65536 ]")
         #expect(compiled.error == nil)
         let restored = SmalltalkSession()
         _ = try await restored.loadImage(original.imageData())
         let invoked = await restored.evaluate("deferred value")
-        #expect(invoked.error?.contains("4,096") == true)
+        #expect(invoked.error?.contains("65535") == true)
     }
 
     private func value(_ source: String, in session: SmalltalkSession) async -> String? {
@@ -106,7 +105,7 @@ struct ImageTests {
         state := 0.
         increment := [ state := state + 1 ].
         read := [ state ].
-        makeAdder := [ :base | [ :delta | base := base + delta ] ].
+        makeAdder := [ :base | | total | total := base. [ :delta | total := total + delta ] ].
         adder := makeAdder value: 10.
         cyclic := [ cyclic ].
         cycle := cyclic.

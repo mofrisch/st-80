@@ -11,6 +11,7 @@ public enum MethodSide: String, Codable, CaseIterable, Sendable {
 
 enum Value {
     case integer(Int64), string(String), symbol(String), boolean(Bool), nilValue
+    case character(UInt32), float(Double)
     case classObject(STClass), object(STObject), block(STBlock), array(STArray), transcript
 }
 
@@ -37,8 +38,6 @@ final class STClass {
             }
         }
     }
-
-    func fields(for side: MethodSide) -> [String] { side == .instance ? fields : [] }
 
     func lookup(_ selector: String, side: MethodSide = .instance) -> (Method, STClass)? {
         if let method = self[side][selector] { return (method, self) }

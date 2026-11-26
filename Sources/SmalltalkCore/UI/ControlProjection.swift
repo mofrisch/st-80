@@ -1,6 +1,7 @@
 import Foundation
 
 extension SmalltalkRuntime {
+    static let valueTableRowLimit = 4_096
     func isUIClass(_ stClass: STClass, named name: String) -> Bool {
         guard let base = classes[name] else { return false }
         var current: STClass? = stClass
@@ -167,7 +168,7 @@ extension SmalltalkRuntime {
                 }
 
                 let headings = try strings(object.fields["headings"], count: 3)
-                guard case .array(let source)? = object.fields["rows"], source.elements.count <= 4_096 else {
+                guard case .array(let source)? = object.fields["rows"], source.elements.count <= Self.valueTableRowLimit else {
                     throw SmalltalkError("A value table requires an array of at most 4,096 rows.")
                 }
                 let rows = try source.elements.map { value in

@@ -88,6 +88,8 @@ If the image write fails, the save removes its newly created, unchanged changes 
 
 `Library/Bootstrap` contains the compiler, scanner, and compiler list. The same compiler handles **Do it**, browser **Accept**, `Class>>compile:`, and `Class>>compileClass:`. It builds syntax trees in temporary object memory. Swift validates the trees and lowers them to stack instructions. The VM executes those instructions with the same message lookup, primitives, and lexical scopes for workspace code, methods, and blocks. Each instruction carries a source position for runtime errors. Image loading validates bytecode operands, stack shape, and block scopes before installing the restored world.
 
+Integer literals accept radices from 2 to 36. Floating-point literals and all three exponent markers (`e`, `d`, `q`) use IEEE 754 binary64. Character literals such as `$A` and elements accessed with `String>>at:` are Unicode scalar values. Each scalar occupies one index in a string.
+
 After changing a numbered system source file, rebuild both bundled artifacts from the project directory.
 
 ```sh
@@ -292,7 +294,7 @@ greeter greeting
 
 ## Language support
 
-The language supports checked 64-bit integers, strings, symbols, arrays, `nil`, booleans, assignments, local variables, unary, binary, and keyword messages, cascades, lexical blocks, non-local returns with `^`, classes, instance variables, single inheritance, and `super`.
+The language supports checked 64-bit integers, binary64 floating-point numbers, characters, strings, symbols, arrays, `nil`, booleans, assignments, local variables, unary, binary, and keyword messages, cascades, lexical blocks, non-local returns with `^`, classes, instance variables, single inheritance, and `super`.
 
 Unary messages bind before binary messages, and binary messages before keyword messages. Binary messages are evaluated left to right, so `3 + 4 * 2` evaluates to `14`. The language follows Goldberg and Robson's [Smalltalk-80: The Language and Its Implementation](https://rmod-files.lille.inria.fr/FreeBooks/BlueBookHughes/BlueBookImplementationTOC.html).
 
@@ -303,10 +305,10 @@ The prototype has these limits.
 - `subclass:instanceVariableNames:` is the short form. The longer Smalltalk-80 message is accepted with empty class variables and pool dictionaries.
 - `new` sends `initialize`. With no explicit `^`, a method returns `self` and a block returns its last expression.
 - Assigning an undeclared name in a workspace creates a persistent workspace variable. `| temp |` declares a local that lasts for the evaluation.
-- Strings are Unicode values. `at:` returns a one-character string and `==` compares strings by value. `Character`, `Fraction`, `Float`, and `LargeInteger` are not implemented.
+- Strings are Unicode values and `==` compares them by value. Integer division `/` requires an integral result. Fractions, scaled decimals, and arbitrary-precision integers are still missing.
 - Value previews and `printString` produce at most 64 KiB and visit at most 4,096 values, ending with `…` when truncated. Binding previews share a 64 KiB budget per snapshot and use at most 4 KiB per binding.
 - Object memory uses the collector described above. The system does not yet include Smalltalk processes or BitBlt.
-- An evaluation can take up to 100,000 execution steps, including bytecode instructions and call entry, with 128 call levels and 32 syntactic nesting levels. The normal heap permits up to 100,000 registered nodes after collection, and arrays can hold 4,096 elements. Changes already performed survive an evaluation error.
+- An evaluation can take up to 100,000 execution steps, including bytecode instructions and call entry, with 128 call levels and 32 syntactic nesting levels. The normal heap permits up to 100,000 registered nodes after collection, and arrays can hold 65,535 elements. A class can have 127 named instance variables including inherited fields and can define 1,000 methods per side. Changes already performed survive an evaluation error.
 
 ## App icon
 
@@ -322,7 +324,7 @@ The project generator preserves the asset catalog and app icon settings for Debu
 
 ## Smalltalk tests
 
-Run `TestRunner runAll summary` in a fresh Workspace to run the six bundled tests for counters, collections, and MVC bindings. You can browse their source under **Tests** in the System Browser.
+Run `TestRunner runAll summary` in a fresh Workspace to run all bundled tests. `ANSISmalltalkTest run summary` runs the 14 tests for supported behavior from the ANSI Smalltalk draft, including literals, message dispatch, blocks, and arrays. You can browse their source under **Tests** in the System Browser.
 
 Define a subclass of `TestCase` in the Workspace or Browser. Its own parameterless instance methods named `testSomething` run in alphabetical order. Each method runs on a fresh instance. Override `setUp` and `tearDown` for fixtures.
 

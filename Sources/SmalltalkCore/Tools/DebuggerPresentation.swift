@@ -159,8 +159,9 @@ extension SmalltalkRuntime {
     }
 
     private func debuggerFrameData(_ frame: DebuggerFrame, roots: RootScope) throws -> Value {
-        let overflow = frame.variables.count > arrayLimit
-        let visible = frame.variables.prefix(overflow ? arrayLimit - 1 : arrayLimit)
+        let limit = Self.valueTableRowLimit
+        let overflow = frame.variables.count > limit
+        let visible = frame.variables.prefix(overflow ? limit - 1 : limit)
         var rows = try visible.enumerated().map { index, variable in
             let row = try array([
                 .string(String(index)), debuggerLabel(variable.name),

@@ -21,9 +21,9 @@ final class InterpreterWorker: Sendable {
         var activeCancellation: (@Sendable () -> Void)?
     }
 
-    /// Worst-case interpreter and compiler recursion must fit in this stack.
+    /// Leave room for the compiler's depth guard even with unoptimized VM frames.
     /// VMRegressionTests runs those cases on a thread of this size.
-    static let stackSize = 16 * 1_024 * 1_024
+    static let stackSize = 32 * 1_024 * 1_024
 
     private let queue: Queue
 

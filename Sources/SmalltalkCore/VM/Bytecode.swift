@@ -164,8 +164,14 @@ struct BytecodeBody: Codable, Sendable {
 
     private static func validate(_ literal: Literal, depth: Int) throws {
         guard depth <= 32 else { throw SmalltalkError("Bytecode literal is nested too deeply.") }
-        if case .array(let elements) = literal {
+        switch literal {
+        case .character(let codePoint) where Unicode.Scalar(codePoint) == nil:
+            throw SmalltalkError("Invalid character literal in bytecode.")
+        case .float(let number) where !number.isFinite:
+            throw SmalltalkError("Invalid floating-point literal in bytecode.")
+        case .array(let elements):
             for element in elements { try validate(element, depth: depth + 1) }
+        default: break
         }
     }
 
@@ -231,6 +237,10 @@ private extension Literal {
         switch self {
         case .integer(let value): return String(value)
         case .string(let value): return Self.quote(value)
+        case .boolean(let value): return String(value)
+        case .nilValue: return "nil"
+        case .character(let value): return "$" + Self.quote(Unicode.Scalar(value).map(String.init) ?? "�")
+        case .float(let value): return SmalltalkRuntime.floatLiteralText(value)
         case .symbol(let value):
             let arity = CodeValidator.arity(of: value)
             if (try? CodeValidator.checkSelector(value, arguments: arity)) != nil {

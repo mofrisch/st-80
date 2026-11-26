@@ -37,7 +37,7 @@ struct SmalltalkCoreTests {
         #expect(value("\"ignore\" 'Cafés 👋' size") == "7")
         #expect(value("'it''s ', 'alive'") == "'it''s alive'")
         #expect(value("#hello asString") == "'hello'")
-        #expect(value("'Cafés' at: 4") == "'é'")
+        #expect(value("'Cafés' at: 4") == "$é")
         #expect(value("#(one #two 'three' (4 5))") == "#(#one #two 'three' #(4 5))")
     }
 
@@ -110,6 +110,51 @@ struct SmalltalkCoreTests {
         #expect(value("#(1 2 3) collect: [ :n | n squared ]") == "#(1 4 9)")
         #expect(value("#(1 2 3 4) select: [ :n | n > 2 ]") == "#(3 4)")
         #expect(SmalltalkRuntime().run("#(1) at: 0").error?.contains("Index 0") == true)
+    }
+
+    @Test func ansiReflectiveSendsAndBlockProtocols() {
+        let runtime = SmalltalkRuntime()
+        #expect(value("[ :a :b :c | a + b + c ] argumentCount", in: runtime) == "3")
+        #expect(value("[ :a :b :c | a + b + c ] valueWithArguments: #(1 2 3)", in: runtime) == "6")
+        #expect(value("| n | n := 0. [ n := n + 1. n < 3 ] whileTrue. n", in: runtime) == "3")
+        #expect(value("1 perform: #+ withArguments: #(41)", in: runtime) == "42")
+        #expect(value("true eqv: false", in: runtime) == "false")
+        #expect(value("true xor: false", in: runtime) == "true")
+        #expect(value("false & true", in: runtime) == "false")
+        #expect(value("Counter compile: 'initialize ^ 123'. Counter new class name", in: SmalltalkRuntime()) == "#Counter")
+        #expect(value("""
+        Object subclass: #FallbackProbe instanceVariableNames: ''.
+        FallbackProbe compile: 'doesNotUnderstand: message ^ message'.
+        missed := FallbackProbe new sum: 7 with: 8.
+        missed selector
+        """, in: runtime) == "#sum:with:")
+        #expect(value("missed arguments", in: runtime) == "#(7 8)")
+    }
+
+    @Test func ansiArrayFactoriesAndIndexedAccess() {
+        let runtime = SmalltalkRuntime()
+        #expect(value("Array with: 42", in: runtime) == "#(42)")
+        #expect(value("Array with: 1 with: 2 with: 3 with: 4", in: runtime) == "#(1 2 3 4)")
+        #expect(value("| source clone | source := #(1 2). clone := Array withAll: source. clone at: 1 put: 9. source", in: runtime) == "#(1 2)")
+        #expect(value("#(1 2 3) copyFrom: 2 to: 3", in: runtime) == "#(2 3)")
+        #expect(value("#(1 2 3) copyFrom: 3 to: 2", in: runtime) == "#()")
+        #expect(value("#(1 2 3) reverse", in: runtime) == "#(3 2 1)")
+        #expect(value("#(1 2) at: 3 ifAbsent: [ 42 ]", in: runtime) == "42")
+    }
+
+    @Test func ansiBlockCleanupRunsOnTheApplicableExit() {
+        let runtime = SmalltalkRuntime()
+        #expect(value("events := 0. [ 42 ] ensure: [ events := 1 ]", in: runtime) == "42")
+        #expect(value("[ 42 ] ifCurtailed: [ events := 2 ]. events", in: runtime) == "1")
+        #expect(runtime.run("[ 1 / 0 ] ifCurtailed: [ events := 3 ]").error?.contains("Division by zero") == true)
+        #expect(value("events", in: runtime) == "3")
+        #expect(value("""
+        Counter compile: 'leave
+            [ [ ^ Array with: 42 ] ensure: [ events := events * 10 + 1 ] ] ifCurtailed: [ events := events * 10 + 2 ].
+            ^ nil'.
+        Counter new leave
+        """, in: runtime) == "#(42)")
+        #expect(value("events", in: runtime) == "312")
     }
 
     @Test func examplesExecute() {

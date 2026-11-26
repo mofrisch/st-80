@@ -22,7 +22,7 @@ STCompiler compile: 'method: input
     parameters := STCompilerList new.
     kind := self kind.
     kind = #identifier ifTrue: [ selector := self identifier ].
-    kind = #binary ifTrue: [
+    (#(binary bar) includes: kind) ifTrue: [
         selector := self tokenValue.
         self advance.
         parameters add: self identifier ].
@@ -79,9 +79,8 @@ STCompiler compile: 'identifier
 
 STCompiler compile: 'validateNames: names
     names do: [ :name |
-        ((name at: 1) isLowercase and: [
-            (#(''self'' ''super'' ''true'' ''false'' ''nil'' ''thisContext'') includes: name) not ]) ifFalse: [
-                self fail: ''Variable names must begin with a lowercase letter and cannot be pseudo-variables.'' ] ].
+        (#(''self'' ''super'' ''true'' ''false'' ''nil'' ''thisContext'') includes: name) ifTrue: [
+            self fail: ''A pseudo-variable cannot be declared.'' ] ].
     1 to: names size do: [ :index |
         1 to: index - 1 do: [ :earlier |
             (names at: index) = (names at: earlier) ifTrue: [
@@ -91,20 +90,30 @@ STCompiler compile: 'validate: names separateFrom: locals error: message
     names do: [ :name | (locals includes: name) ifTrue: [ self fail: message ] ]'.
 
 STCompiler compile: 'bodyUntil: terminator
-    | temporaries expressions |
+    | temporaries expressions returning |
     temporaries := STCompilerList new.
-    self kind = #bar ifTrue: [
-        self advance.
-        [ self kind = #identifier ] whileTrue: [ temporaries add: self identifier ].
-        self expect: #bar ].
+    (self kind = #binary and: [ self tokenValue = ''||'' ]) ifTrue: [ self advance ] ifFalse: [
+        self kind = #bar ifTrue: [
+            self advance.
+            [ self kind = #identifier ] whileTrue: [ temporaries add: self identifier ].
+            self expect: #bar ] ].
     temporaries := temporaries elements.
     self validateNames: temporaries.
     expressions := STCompilerList new.
     [ self kind ~= terminator and: [ self kind ~= #end ] ] whileTrue: [
-        expressions add: self expression.
+        returning := self kind = #caret.
+        expressions add: (returning ifTrue: [ self returnStatement ] ifFalse: [ self expression ]).
         self kind = #period ifTrue: [ self advance ] ifFalse: [
-            self kind = terminator ifFalse: [ self fail: ''Expected a period between expressions.'' ] ] ].
+            self kind = terminator ifFalse: [ self fail: ''Expected a period between expressions.'' ] ].
+        (returning and: [ self kind ~= terminator and: [ self kind ~= #end ] ]) ifTrue: [
+            self fail: ''A return must be the last statement.'' ] ].
     ^ self pair: temporaries with: expressions elements'.
+
+STCompiler compile: 'returnStatement
+    | position |
+    position := current.
+    self advance.
+    ^ self node: #returnValue at: position with: self expression with: nil'.
 
 STCompiler compile: 'expression
     | result |
@@ -117,9 +126,6 @@ STCompiler compile: 'expression
 STCompiler compile: 'expressionNode
     | position name first messages |
     position := current.
-    self kind = #caret ifTrue: [
-        self advance.
-        ^ self node: #returnValue at: position with: self expression with: nil ].
     (self kind = #identifier and: [ (lookahead at: 1) = #assign ]) ifTrue: [
         name := self identifier.
         self advance.
@@ -153,7 +159,7 @@ STCompiler compile: 'keywordMessage
 STCompiler compile: 'binaryExpression
     | receiver |
     receiver := self unaryExpression.
-    [ self kind = #binary ] whileTrue: [
+    [ #(binary bar) includes: self kind ] whileTrue: [
         receiver := self sendTo: receiver message: self binaryMessage ].
     ^ receiver'.
 
@@ -175,7 +181,7 @@ STCompiler compile: 'unaryMessage
 
 STCompiler compile: 'cascadeMessage
     self kind = #identifier ifTrue: [ ^ self unaryMessage ].
-    self kind = #binary ifTrue: [ ^ self binaryMessage ].
+    (#(binary bar) includes: self kind) ifTrue: [ ^ self binaryMessage ].
     self kind = #keyword ifTrue: [ ^ self keywordMessage ].
     self fail: ''Expected a message after ;.'''.
 
@@ -183,11 +189,17 @@ STCompiler compile: 'primary
     | position kind payload node |
     position := current.
     kind := self kind.
-    (#(integer string symbol identifier) includes: kind) ifTrue: [
+    kind = #unsupportedNumber ifTrue: [ ^ self fail: self tokenValue ].
+    kind = #float ifTrue: [
+        payload := self floatFrom: self tokenValue.
+        self advance.
+        ^ self node: #literal at: position with: payload with: nil ].
+    (#(integer string symbol identifier character) includes: kind) ifTrue: [
         payload := self tokenValue.
         self advance.
         kind = #identifier ifTrue: [ ^ self node: #variable at: position with: payload with: nil ].
         kind = #symbol ifTrue: [ payload := payload asSymbol ].
+        kind = #character ifTrue: [ payload := payload asCharacter ].
         ^ self node: #literal at: position with: payload with: nil ].
     (kind = #binary and: [ self tokenValue = ''-'' ]) ifTrue: [
         ^ self node: #literal at: position with: self negativeNumber with: nil ].
@@ -211,7 +223,10 @@ STCompiler compile: 'blockAt: position
         self advance.
         parameters add: self identifier ].
     parameters := parameters elements.
-    parameters isEmpty ifFalse: [ self expect: #bar ].
+    parameters isEmpty ifFalse: [
+        (self kind = #binary and: [ self tokenValue = ''||'' ])
+            ifTrue: [ current at: 1 put: #bar; at: 3 put: (current at: 3) + 1; at: 4 put: ''|'' ]
+            ifFalse: [ self expect: #bar ] ].
     self validateNames: parameters.
     body := self bodyUntil: #rightBracket.
     self validate: parameters separateFrom: (body at: 1) error: ''A block argument is also declared as a local variable.''.
@@ -221,6 +236,11 @@ STCompiler compile: 'blockAt: position
 STCompiler compile: 'negativeNumber
     | number |
     self advance.
+    self kind = #unsupportedNumber ifTrue: [ ^ self fail: self tokenValue ].
+    self kind = #float ifTrue: [
+        number := self floatFrom: self tokenValue.
+        self advance.
+        ^ number negated ].
     self kind = #minimumMagnitude ifTrue: [
         self advance.
         ^ ''-9223372036854775808'' asIntegerOrNil ].
@@ -228,6 +248,12 @@ STCompiler compile: 'negativeNumber
     number := self tokenValue.
     self advance.
     ^ number negated'.
+
+STCompiler compile: 'floatFrom: spelling
+    | result |
+    result := spelling parseFloatOrNil.
+    result isNil ifTrue: [ ^ self fail: ''Floating-point literal is outside the supported range.'' ].
+    ^ result'.
 
 STCompiler compile: 'arrayElements
     | elements |
@@ -239,10 +265,20 @@ STCompiler compile: 'arrayElements
 STCompiler compile: 'arrayElement
     | kind payload |
     kind := self kind.
-    (#(integer string symbol identifier keyword) includes: kind) ifTrue: [
+    kind = #unsupportedNumber ifTrue: [ ^ self fail: self tokenValue ].
+    kind = #float ifTrue: [
+        payload := self floatFrom: self tokenValue.
+        self advance.
+        ^ payload ].
+    (#(integer string symbol identifier keyword character) includes: kind) ifTrue: [
         payload := self tokenValue.
         self advance.
+        kind = #identifier ifTrue: [
+            payload = ''nil'' ifTrue: [ ^ nil ].
+            payload = ''true'' ifTrue: [ ^ true ].
+            payload = ''false'' ifTrue: [ ^ false ] ].
         (#(symbol identifier keyword) includes: kind) ifTrue: [ ^ payload asSymbol ].
+        kind = #character ifTrue: [ ^ payload asCharacter ].
         ^ payload ].
     (kind = #binary and: [ self tokenValue = ''-'' ]) ifTrue: [ ^ self negativeNumber ].
     (#(leftParen arrayStart) includes: kind) ifTrue: [ self advance. ^ self arrayElements ].

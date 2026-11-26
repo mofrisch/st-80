@@ -16,8 +16,9 @@ struct DebuggerTests {
         try #require(compiled.executionError == nil)
         let custom = await session.compile("""
         command: title id: identifier send: command enabled: available
-            command = #resume ifTrue: [ title := 'Continue from the image' ].
-            ^ UIButton new title: title; identifier: identifier; command: command; enabled: available; yourself
+            | buttonTitle |
+            buttonTitle := command = #resume ifTrue: [ 'Continue from the image' ] ifFalse: [ title ].
+            ^ UIButton new title: buttonTitle; identifier: identifier; command: command; enabled: available; yourself
         """, in: "DebuggerPresentation", side: .classSide)
         try #require(custom.executionError == nil)
         let prepared = await session.evaluate("debugCounter := Counter new")

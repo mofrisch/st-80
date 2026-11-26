@@ -110,7 +110,7 @@ public enum SmalltalkBootstrap {
                         throw SmalltalkError("Invalid method declaration for \(name).")
                     }
                     let side: MethodSide = selector == "compile:" ? .instance : .classSide
-                    let method = try compiler.compileMethod(source, fields: stClass.fields(for: side))
+                    let method = try compiler.compileMethod(source)
                     guard methods[side, default: [:]][name, default: [:]].updateValue(method, forKey: method.selector) == nil else {
                         throw SmalltalkError("Duplicate system method \(side.displayName(for: name))>>\(method.selector).")
                     }

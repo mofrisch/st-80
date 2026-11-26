@@ -11,20 +11,21 @@ extension SmalltalkRuntime {
         return body
     }
 
-    func compileMethod(_ source: String, fields: [String] = []) throws -> Method {
+    func compileMethod(_ source: String) throws -> Method {
         let method = try withCompiler(source, selector: "method:") { output in
             let parts = try CompilerOutput.parts(output, count: 3)
             let body = try CompilerOutput.body(parts[2])
-            try CodeValidator.check(body)
+            let parameters = try CompilerOutput.names(parts[1])
+            try CodeValidator.check(body, parameters: parameters)
             return Method(
                 selector: try CompilerOutput.string(parts[0]),
-                parameters: try CompilerOutput.names(parts[1]),
+                parameters: parameters,
                 body: BytecodeBody.lower(body),
                 source: source,
                 referenceBody: useASTInterpreterForTesting ? body : nil
             )
         }
-        try CodeValidator.check(method, fields: fields)
+        try CodeValidator.check(method)
         return method
     }
 
@@ -32,9 +33,11 @@ extension SmalltalkRuntime {
     func compile(_ source: String, in stClass: STClass, side: MethodSide = .instance,
                  validating validate: ((Method) throws -> Void)? = nil) throws -> String {
         guard !compilationMode else { throw SmalltalkError("Compilation is already in progress.") }
-        let method = try compileMethod(source, fields: stClass.fields(for: side))
+        let method = try compileMethod(source)
         try validate?(method)
-        guard stClass[side].count < 512 || stClass[side][method.selector] != nil else { throw SmalltalkError("Too many methods in \(side.displayName(for: stClass.name)).") }
+        guard stClass[side].count < Self.methodsPerSideLimit || stClass[side][method.selector] != nil else {
+            throw SmalltalkError("Too many methods in \(side.displayName(for: stClass.name)).")
+        }
         if recordingChanges {
             try journal.append(kind: .method, className: stClass.name, selector: method.selector, side: side, source: source)
         }
@@ -129,6 +132,10 @@ private enum CompilerOutput {
         case .integer(let number): return .integer(number)
         case .string(let text): return .string(text)
         case .symbol(let name): return .symbol(name)
+        case .boolean(let value): return .boolean(value)
+        case .nilValue: return .nilValue
+        case .character(let codePoint): return .character(codePoint)
+        case .float(let number): return .float(number)
         case .array(let array): return .array(try array.elements.map { try literal($0, depth: depth + 1) })
         default: throw invalid()
         }
@@ -141,7 +148,7 @@ private enum CompilerOutput {
 /// image. They validate shape and operands without reconstructing source text.
 enum CodeValidator {
     private static let reserved = ["self", "super", "true", "false", "nil", "thisContext"]
-    private static let binary = "+-*/\\~<>=@%,&?!"
+    private static let binary = "+-*/\\~<>=@%,&?!|"
 
     static func identifier(_ name: String) -> Bool {
         guard let first = name.first, first.isLetter || first == "_" else { return false }
@@ -150,7 +157,7 @@ enum CodeValidator {
 
     static func validNames(_ names: [String]) -> Bool {
         Set(names).count == names.count && names.allSatisfy {
-            $0.first?.isLowercase == true && identifier($0) && !reserved.contains($0)
+            identifier($0) && !reserved.contains($0)
         }
     }
 
@@ -172,45 +179,47 @@ enum CodeValidator {
         throw SmalltalkError("Invalid selector or argument count for \(selector).")
     }
 
-    static func check(_ method: Method, fields: [String]) throws {
+    static func check(_ method: Method) throws {
         try checkSelector(method.selector, arguments: method.parameters.count)
         guard validNames(method.parameters), Set(method.parameters).isDisjoint(with: method.body.temporaries) else {
             throw SmalltalkError("Invalid method arguments.")
         }
-        guard Set(method.parameters + method.body.temporaries).isDisjoint(with: fields) else {
-            throw SmalltalkError("A local variable shadows an instance variable.")
-        }
         try method.body.validate(parameters: method.parameters)
     }
 
-    static func check(_ body: Body) throws {
+    static func check(_ body: Body, parameters: [String] = [], outerArguments: Set<String> = []) throws {
         guard validNames(body.temporaries) else { throw SmalltalkError("Invalid local variables.") }
-        var pending = body.expressions
-        while let expression = pending.popLast() {
+        let arguments = outerArguments.subtracting(body.temporaries).union(parameters)
+        var pending = body.expressions.enumerated().map { ($0.element, $0.offset == body.expressions.count - 1) }
+        while let (expression, allowsReturn) = pending.popLast() {
             guard expression.position.line > 0, expression.position.column > 0 else { throw SmalltalkError("Invalid source position.") }
             switch expression.kind {
             case .block(let parameters, let body):
                 guard validNames(parameters), validNames(body.temporaries), Set(parameters).isDisjoint(with: body.temporaries) else {
                     throw SmalltalkError("Invalid block variables.")
                 }
-                pending.append(contentsOf: body.expressions)
+                try check(body, parameters: parameters, outerArguments: arguments)
             case .variable(let name):
                 guard identifier(name) else { throw SmalltalkError("Invalid variable.") }
             case .assignment(let name, let value):
                 guard identifier(name) else { throw SmalltalkError("Invalid assignment target.") }
-                pending.append(value)
+                guard !arguments.contains(name) else {
+                    throw SmalltalkError("Argument \(name) cannot be reassigned.", at: expression.position)
+                }
+                pending.append((value, false))
             case .returnValue(let value):
-                pending.append(value)
+                guard allowsReturn else { throw SmalltalkError("A return must be the last statement.", at: expression.position) }
+                pending.append((value, false))
             case .send(let receiver, let selector, let args):
                 try checkSelector(selector, arguments: args.count)
-                pending.append(receiver)
-                pending.append(contentsOf: args)
+                pending.append((receiver, false))
+                pending.append(contentsOf: args.map { ($0, false) })
             case .cascade(let receiver, let messages):
                 guard !messages.isEmpty else { throw SmalltalkError("Empty cascade.") }
-                pending.append(receiver)
+                pending.append((receiver, false))
                 for message in messages {
                     try checkSelector(message.selector, arguments: message.arguments.count)
-                    pending.append(contentsOf: message.arguments)
+                    pending.append(contentsOf: message.arguments.map { ($0, false) })
                 }
             case .literal(let value):
                 var literals = [(value, 0)]

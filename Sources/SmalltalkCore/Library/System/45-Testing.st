@@ -110,7 +110,7 @@ TestRunner compileClass: 'isTestClass: aClass
 TestRunner compileClass: 'testSelectorsFor: aClass
     ^ aClass methodNames select: [ :name |
         (name size > 4 and: [ (name includes: '':'') not ]) and: [
-            ((name at: 1) , (name at: 2) , (name at: 3) , (name at: 4)) = ''test'' ] ]'.
+            (name characters joinedStringFrom: 1 to: 4) = ''test'' ] ]'.
 
 TestRunner compileClass: 'runAll
     | classes selectors count outcomes index |

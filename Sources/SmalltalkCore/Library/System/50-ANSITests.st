@@ -1,0 +1,127 @@
+"Behavior from the ANSI Smalltalk draft (J20 revision 1.9)."
+
+Object subclass: #ANSIDispatchProbe instanceVariableNames: ''.
+
+ANSIDispatchProbe compile: 'touch
+    42'.
+
+ANSIDispatchProbe compile: 'doesNotUnderstand: aMessage
+    ^ aMessage'.
+
+TestCase subclass: #ANSISmalltalkTest instanceVariableNames: ''.
+
+ANSISmalltalkTest compile: 'testMessagePrecedence
+    self assert: 3 + 4 * 2 equals: 14.
+    self assert: 2 + 3 squared equals: 11.
+    self assert: (3 + 4 > 6 ifTrue: [ 42 ] ifFalse: [ 0 ]) equals: 42'.
+
+ANSISmalltalkTest compile: 'testCascadeUsesTheSameReceiver
+    | calls factory result |
+    calls := 0.
+    factory := [ calls := calls + 1. Array new: 2 ].
+    result := factory value at: 1 put: 7; at: 2 put: 8; yourself.
+    self assert: calls equals: 1.
+    self assert: result equals: #(7 8)'.
+
+ANSISmalltalkTest compile: 'testMethodReturnAndSuper
+    | probe |
+    probe := ANSIDispatchProbe new.
+    self assert: probe touch == probe.
+    self assert: super setUp == self'.
+
+ANSISmalltalkTest compile: 'testFailedSendCarriesSelectorAndArguments
+    | message |
+    message := ANSIDispatchProbe new missing: 7 with: 8.
+    self assert: message selector equals: #missing:with:.
+    self assert: message arguments equals: #(7 8)'.
+
+ANSISmalltalkTest compile: 'testRadixLiteralsAndFloorDivision
+    self assert: 2r1010 + 16rFF + 36rZ equals: 300.
+    self assert: -16rFF equals: -255.
+    self assert: -7 // 3 equals: -3.
+    self assert: -7 \\ 3 equals: 2'.
+
+ANSISmalltalkTest compile: 'testFloatLiteralsAndPrecisionOrdering
+    self assert: 1.25 * 2 equals: 2.5.
+    self assert: 1.25e2 equals: 125.0.
+    self assert: 1.25d2 equals: 125.0.
+    self assert: -1.25q2 equals: -125.0.
+    self assert: FloatE precision <= FloatD precision.
+    self assert: FloatD precision <= FloatQ precision'.
+
+ANSISmalltalkTest compile: 'testCharacterLiteralsAndStringElements
+    self assert: (''Az'' at: 1) equals: $A.
+    self assert: (Character codePoint: $A codePoint) equals: $A.
+    self assert: $A asLowercase equals: $a.
+    self assert: $z asUppercase asString equals: ''Z''.
+    self assert: Character space equals: ($ ).
+    self assert: $9 isDigit'.
+
+ANSISmalltalkTest compile: 'testLiteralArrayValuesAndSymbolIdentity
+    | values |
+    values := #(nil true false #nil #($A 2)).
+    self assert: (values at: 1) == nil.
+    self assert: (values at: 2) == true.
+    self assert: (values at: 3) == false.
+    self deny: (values at: 4) == nil.
+    self assert: (values at: 4) == #nil.
+    self assert: (values at: 5) equals: #($A 2)'.
+
+ANSISmalltalkTest compile: 'testLexicalBlockBindings
+    | Total increase |
+    Total := 40.
+    increase := [ :amount | Total := Total + amount ].
+    self assert: (increase value: 2) equals: 42.
+    self assert: ([ :Total | Total + 1 ] value: 6) equals: 7.
+    self assert: Total equals: 42'.
+
+ANSISmalltalkTest compile: 'testValuableProtocol
+    | block |
+    block := [ :a :b :c | a * b + c ].
+    self assert: block argumentCount equals: 3.
+    self assert: (block valueWithArguments: #(6 7 1)) equals: 43.
+    self assert: (6 perform: #* withArguments: #(7)) equals: 42'.
+
+ANSISmalltalkTest compile: 'testBooleanShortCircuitAndLoop
+    | count |
+    count := 0.
+    self deny: (false and: [ count := 99. true ]).
+    self assert: (true or: [ count := 99. false ]).
+    self assert: count equals: 0.
+    [ count := count + 1. count < 3 ] whileTrue.
+    self assert: count equals: 3.
+    self assert: true | false.
+    self deny: true & false'.
+
+ANSISmalltalkTest compile: 'testCleanupRunsInUnwindOrder
+    | order |
+    order := Array new: 2.
+    self assert: (self returnThroughCleanup: order) equals: 42.
+    self assert: order equals: #(1 2).
+    [ 0 ] ifCurtailed: [ self fail: ''Unexpected cleanup on normal return.'' ].
+    [ 0 ] ensure: [ order at: 1 put: 3 ].
+    self assert: order equals: #(3 2)'.
+
+ANSISmalltalkTest compile: 'returnThroughCleanup: order
+    [ [ ^ 42 ] ensure: [ order at: 1 put: 1 ] ]
+        ifCurtailed: [ order at: 2 put: (order at: 1) + 1 ].
+    ^ 0'.
+
+ANSISmalltalkTest compile: 'testArrayFactoriesAndIndexedCopy
+    | original copy |
+    original := Array with: 7 with: 8 with: 9.
+    copy := Array withAll: original.
+    copy at: 1 put: 42.
+    self assert: original equals: #(7 8 9).
+    self assert: (copy copyFrom: 1 to: 2) equals: #(42 8).
+    self assert: (copy at: 4 ifAbsent: [ 0 ]) equals: 0.
+    self assert: (copy at: 2 ifAbsent: [ self fail: ''Existing element reported missing.'' ]) equals: 8'.
+
+ANSISmalltalkTest compile: 'testLargeArrayIsOneBasedAndInitiallyNil
+    | array |
+    array := Array new: 65535.
+    self assert: array size equals: 65535.
+    self assert: (array at: 1) isNil.
+    self assert: (array at: 65535) isNil.
+    array at: 65535 put: 42.
+    self assert: (array at: 65535) equals: 42'.

@@ -3,13 +3,64 @@ import Testing
 @testable import SmalltalkCore
 
 struct CompilerTests {
+    @Test func ansiLiteralAndStatementRules() async {
+        let session = SmalltalkSession()
+        #expect(await session.evaluate("#(nil true false #nil #true)").value == "#(nil true false #nil #true)")
+        #expect(await session.evaluate("#($A $é)").value == "#($A $é)")
+        #expect(await session.evaluate("$A asLowercase codePoint").value == "97")
+        #expect(await session.evaluate("('é' at: 1) class == Character").value == "true")
+        #expect(await session.evaluate("(Character codePoint: 65) == $A").value == "true")
+        #expect(await session.evaluate("'e\u{301}' size").value == "2")
+        #expect(await session.evaluate("16rFF + 2r101").value == "260")
+        #expect(await session.evaluate("-16r8000000000000000").value == "-9223372036854775808")
+        #expect(await session.evaluate("2r2").error?.contains("Invalid digits") == true)
+        #expect(await session.evaluate("1. 25").value == "25")
+        #expect(await session.evaluate("1.25").value == "1.25")
+        #expect(await session.evaluate("1.25d2 + 2").value == "127.0")
+        #expect(await session.evaluate("2 * -1.25q2").value == "-250.0")
+        #expect(await session.evaluate("1.0e309").error?.contains("supported range") == true)
+        #expect(await session.evaluate("FloatE precision + FloatD precision + FloatQ precision").value == "159")
+        #expect(await session.evaluate("12s").error?.contains("Scaled decimals") == true)
+        #expect(await session.compile("badReturn ^ 42. 7", in: "Counter").error?.contains("last statement") == true)
+        #expect(await session.compile("nestedReturn ^ (^ 42)", in: "Counter").error != nil)
+        #expect(await session.evaluate("true | false").value == "true")
+        #expect(await session.evaluate("#| == #'|'").value == "true")
+        #expect(await session.evaluate("|| 42").value == "42")
+        #expect(await session.evaluate("[ :arg || temp | temp := arg + 1. temp ] value: 41").value == "42")
+        #expect(await session.compile("|| arg ^ arg + 1", in: "Counter").error == nil)
+        #expect(await session.evaluate("Counter new || 41").value == "42")
+    }
+
+    @Test func ansiCharacterAndFloatValuesAndLiteralsSurviveImageLoad() async throws {
+        let session = SmalltalkSession()
+        #expect(await session.evaluate("marker := $é. reading := 1.25e2").error == nil)
+        #expect(await session.compile("measure ^ #($é 1.25e2)", in: "Counter").error == nil)
+        let restored = SmalltalkSession()
+        _ = try await restored.loadImage(session.imageData())
+        #expect(await restored.evaluate("marker codePoint").value == "233")
+        #expect(await restored.evaluate("reading + 2").value == "127.0")
+        #expect(await restored.evaluate("Counter new measure").value == "#($é 125.0)")
+    }
+
+    @Test func ansiArgumentsAreConstantAndLocalsCanShadow() async {
+        let session = SmalltalkSession()
+        #expect(await session.evaluate("| Counter | Counter := 42. Counter").value == "42")
+        #expect(await session.compile("shadow | count | count := 42. ^ count", in: "Counter").error == nil)
+        #expect(await session.evaluate("Counter new shadow").value == "42")
+        #expect(await session.compile("assign: Arg ^ [ Arg := 1 ] value", in: "Counter").error?.contains("Argument Arg") == true)
+        #expect(await session.evaluate("[ :arg | arg := 42 ] value: 0").error?.contains("Argument arg") == true)
+        #expect(await session.evaluate("[ :arg | [ | arg | arg := 42 ] value ] value: 0").value == "42")
+    }
+
     @Test func aLiveScannerEditChangesWorkspaceAndMethodCompilationAndSurvivesReload() async throws {
         let session = SmalltalkSession()
         let scanner = """
         source: input
-            input = '6 * 7' ifTrue: [ input := '73' ].
-            input = 'answer ^ 1' ifTrue: [ input := 'answer ^ 99' ].
-            characters := input characters
+            | source |
+            source := input.
+            source = '6 * 7' ifTrue: [ source := '73' ].
+            source = 'answer ^ 1' ifTrue: [ source := 'answer ^ 99' ].
+            characters := source characters
         """
         let changed = await session.compile(scanner, in: "STScanner")
         #expect(changed.executionError == nil)

@@ -41,7 +41,25 @@ extension SmalltalkRuntime {
                 return try invoke(method, owner: owner, receiver: receiver, arguments: arguments, side: side)
             }
             if let result = try primitive(receiver, selector, arguments) { return result }
+            return try sendUnrecognized(receiver, selector, arguments, startingAt: lookup)
+        }
+    }
+
+    // Keep failed-send allocation out of the recursive dispatch stack frame.
+    private func sendUnrecognized(_ receiver: Value, _ selector: String, _ arguments: [Value],
+                                  startingAt lookup: MessageLookup) throws -> Value {
+        guard case .normal = lookup, selector != "doesNotUnderstand:",
+              let messageClass = classes["FailedMessage"],
+              let (handler, owner, side) = lookupMethod("doesNotUnderstand:", on: receiver) else {
             throw SmalltalkError("\(classOf(receiver).name) does not understand \(selector).")
+        }
+        return try withRoots { roots in
+            let argumentArray = try array(arguments)
+            roots.add(argumentArray)
+            let message = try object(messageClass)
+            message.fields["selector"] = .symbol(selector)
+            message.fields["arguments"] = argumentArray
+            return try invoke(handler, owner: owner, receiver: receiver, arguments: [.object(message)], side: side)
         }
     }
 

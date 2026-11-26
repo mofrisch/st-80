@@ -59,7 +59,7 @@ struct BytecodeTests {
         BytecodeReturnProbe new find
         """, expected: "42", using: modes)
         compare("increment value. increment value. reader value", expected: "42", using: modes)
-        compare("1 + ([ 2 + (^ 42) ] value). 0", expected: "42", using: modes)
+        compare("1 + ([ 2 + [ ^ 42 ] value ] value). 0", expected: "42", using: modes)
 
         let referenceError = modes.reference.run("escaped value").error
         let bytecodeError = modes.bytecode.run("escaped value").error

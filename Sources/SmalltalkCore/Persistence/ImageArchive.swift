@@ -34,6 +34,7 @@ struct ImageClass: Codable {
 
 enum ImageValue: Codable {
     case integer(Int64), string(String), symbol(String), boolean(Bool), nilValue
+    case character(UInt32), float(Double)
     case classObject(String), reference(Int), transcript
 }
 
@@ -72,12 +73,12 @@ struct MethodCode: Codable, Sendable {
         selector = method.selector; parameters = method.parameters; body = method.body
         sourceHash = SystemLibrary.digest(Data(method.source.utf8))
     }
-    func validatedMethod(selector expected: String, source: String, fields: [String]) throws -> Method {
+    func validatedMethod(selector expected: String, source: String) throws -> Method {
         guard expected == selector, source.utf8.count <= 262_144, SystemLibrary.digest(Data(source.utf8)) == sourceHash else {
             throw SmalltalkError("The method source and executable code do not match.")
         }
         let method = Method(selector: selector, parameters: parameters, body: body, source: source)
-        try CodeValidator.check(method, fields: fields)
+        try CodeValidator.check(method)
         return method
     }
 }

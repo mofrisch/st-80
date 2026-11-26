@@ -231,7 +231,7 @@ extension SmalltalkRuntime {
         guard let code = library?.seed.methods["DesktopManager"]?[selector], let source else {
             throw SmalltalkError("The bundled catalog update is missing.")
         }
-        let method = try code.validatedMethod(selector: selector, source: source, fields: desktop.stClass.fields)
+        let method = try code.validatedMethod(selector: selector, source: source)
         try withToolExecutionBudget(stockLimit) {
             _ = try invoke(method, owner: desktop.stClass, receiver: receiver, arguments: [], side: .instance)
         }

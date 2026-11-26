@@ -5,7 +5,7 @@ extension SmalltalkRuntime {
             throw SmalltalkError("Class names must begin with an uppercase letter.")
         }
         guard globals[name] == nil else { throw SmalltalkError("\(name) already exists.") }
-        guard classes.count < 128 else { throw SmalltalkError("A session can contain at most 128 classes.") }
+        guard classes.count < Self.classLimit else { throw SmalltalkError("A session can contain at most \(Self.classLimit) classes.") }
         let fields = source.split(whereSeparator: \.isWhitespace).map(String.init)
         try validateFields(fields, inherited: superclass.fields)
         if recordingChanges {
@@ -26,8 +26,9 @@ extension SmalltalkRuntime {
     }
 
     func validateFields(_ fields: [String], inherited: [String]) throws {
-        guard CodeValidator.validNames(fields), Set(fields).isDisjoint(with: inherited), fields.count + inherited.count <= 64 else {
-            throw SmalltalkError("Instance variable names must be valid and unique, with at most 64 variables.")
+        guard CodeValidator.validNames(fields), Set(fields).isDisjoint(with: inherited),
+              fields.count + inherited.count <= Self.namedFieldsLimit else {
+            throw SmalltalkError("Instance variable names must be valid and unique, with at most \(Self.namedFieldsLimit) variables.")
         }
     }
 
@@ -70,7 +71,6 @@ extension SmalltalkRuntime {
             let layout = inherited + own
             let removed = Set(current.fields).subtracting(layout)
             for method in current.methods.values {
-                try CodeValidator.check(method, fields: layout)
                 if !removed.isEmpty, let field = method.body.reference(to: removed, excluding: Set(method.parameters)) {
                     throw SmalltalkError("\(current.name) » \(method.selector) still uses instance variable \(field).")
                 }

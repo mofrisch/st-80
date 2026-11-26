@@ -27,6 +27,22 @@ extension SmalltalkRuntime {
         return Int(number - 1)
     }
 
+    func sequenceElements(_ value: Value) throws -> [Value] {
+        if case .array(let array) = value { return array.elements }
+        return try withRoots([value]) { roots in
+            let size = try integer(send(value, "size", []))
+            guard (0...Int64(arrayLimit)).contains(size) else { throw SmalltalkError("Invalid argument collection size.") }
+            var elements: [Value] = []
+            elements.reserveCapacity(Int(size))
+            for index in 0..<size {
+                let element = try send(value, "at:", [.integer(index + 1)])
+                roots.add(element)
+                elements.append(element)
+            }
+            return elements
+        }
+    }
+
     func isNil(_ value: Value) -> Bool { if case .nilValue = value { return true }; return false }
 
     func equal(_ a: Value, _ b: Value, identity: Bool = false) throws -> Bool {
@@ -53,6 +69,10 @@ extension SmalltalkRuntime {
                 try tick()
                 switch (left, right) {
                 case (.integer(let a), .integer(let b)): if a != b { return false }
+                case (.float(let a), .float(let b)): if a != b { return false }
+                case (.integer(let a), .float(let b)), (.float(let b), .integer(let a)):
+                    if identity || Int64(exactly: b) != a { return false }
+                case (.character(let a), .character(let b)): if a != b { return false }
                 case (.string(let a), .string(let b)), (.symbol(let a), .symbol(let b)): if a != b { return false }
                 case (.boolean(let a), .boolean(let b)): if a != b { return false }
                 case (.nilValue, .nilValue), (.transcript, .transcript): break

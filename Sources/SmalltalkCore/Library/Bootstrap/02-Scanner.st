@@ -46,7 +46,7 @@ STScanner compile: 'isIdentifierPart: character
     ^ (self isIdentifierStart: character) or: [ character notNil and: [ character isNumber ] ]'.
 
 STScanner compile: 'isBinary: character
-    ^ character notNil and: [ ''+-*/\~<>=@%,&?!'' includes: character ]'.
+    ^ character notNil and: [ ''+-*/\~<>=@%,&?!|'' includes: character ]'.
 
 STScanner compile: 'skipTrivia
     | character |
@@ -88,13 +88,46 @@ STScanner compile: 'readString
     ^ self fail: ''Unterminated string.'''.
 
 STScanner compile: 'readNumber
-    | start digits number |
+    | start digits next hasFraction |
     start := offset.
-    [ self peek notNil and: [ self peek isASCIIDigit ] ] whileTrue: [ self advance ].
+    self readDigits.
     digits := characters joinedStringFrom: start to: offset - 1.
-    digits = ''9223372036854775808'' ifTrue: [ ^ self token: #minimumMagnitude value: nil ].
-    number := digits asIntegerOrNil.
-    number isNil ifTrue: [ self fail: ''Integer exceeds the 64-bit range.'' ].
+    self peek = ''r'' ifTrue: [ ^ self readRadixInteger: digits ].
+    next := self peekAhead: 1.
+    hasFraction := self peek = ''.'' and: [ next notNil and: [ next isASCIIDigit ] ].
+    hasFraction ifTrue: [ self advance. self readDigits ].
+    self peek = ''s'' ifTrue: [
+        self advance. self readDigits.
+        ^ self token: #unsupportedNumber value: ''Scaled decimals are not implemented.'' ].
+    hasFraction ifTrue: [
+        (#(''e'' ''d'' ''q'') includes: self peek) ifTrue: [
+            self advance.
+            self peek = ''-'' ifTrue: [ self advance ].
+            (self peek notNil and: [ self peek isASCIIDigit ]) ifFalse: [ ^ self fail: ''Expected a floating-point exponent.'' ].
+            self readDigits ].
+        digits := characters joinedStringFrom: start to: offset - 1.
+        ^ self token: #float value: digits ].
+    ^ self integerToken: digits radix: 10'.
+
+STScanner compile: 'readDigits
+    [ self peek notNil and: [ self peek isASCIIDigit ] ] whileTrue: [ self advance ]'.
+
+STScanner compile: 'readRadixInteger: prefix
+    | radix start |
+    radix := prefix asIntegerOrNil.
+    (radix notNil and: [ radix >= 2 and: [ radix <= 36 ] ]) ifFalse: [
+        ^ self fail: ''Integer radix must be between 2 and 36.'' ].
+    self advance.
+    start := offset.
+    [ self isIdentifierPart: self peek ] whileTrue: [ self advance ].
+    ^ self integerToken: (characters joinedStringFrom: start to: offset - 1) radix: radix'.
+
+STScanner compile: 'integerToken: digits radix: radix
+    | number |
+    number := digits parseIntegerMagnitudeRadix: radix.
+    number = #minimumMagnitude ifTrue: [ ^ self token: #minimumMagnitude value: nil ].
+    number = #overflow ifTrue: [ ^ self token: #unsupportedNumber value: ''Integer exceeds the 64-bit range.'' ].
+    number isNil ifTrue: [ ^ self fail: ''Invalid digits for the integer radix.'' ].
     ^ self token: #integer value: number'.
 
 STScanner compile: 'readWord
@@ -139,13 +172,18 @@ STScanner compile: 'readToken
     self advance.
     character = '''''''' ifTrue: [ ^ self token: #string value: self readString ].
     character = ''#'' ifTrue: [ ^ self readSymbol ].
+    character = ''$'' ifTrue: [
+        character := self peek.
+        character isNil ifTrue: [ ^ self fail: ''Expected a character after $.'' ].
+        self advance.
+        ^ self token: #character value: character ].
     character = '':'' ifTrue: [
         self peek = ''='' ifTrue: [ self advance. ^ self token: #assign value: nil ].
         ^ self token: #colon value: nil ].
     character = ''.'' ifTrue: [ ^ self token: #period value: nil ].
     character = '';'' ifTrue: [ ^ self token: #semicolon value: nil ].
     character = ''^'' ifTrue: [ ^ self token: #caret value: nil ].
-    character = ''|'' ifTrue: [ ^ self token: #bar value: nil ].
+    (character = ''|'' and: [ (self isBinary: self peek) not ]) ifTrue: [ ^ self token: #bar value: ''|'' ].
     character = ''('' ifTrue: [ ^ self token: #leftParen value: nil ].
     character = '')'' ifTrue: [ ^ self token: #rightParen value: nil ].
     character = ''['' ifTrue: [ ^ self token: #leftBracket value: nil ].

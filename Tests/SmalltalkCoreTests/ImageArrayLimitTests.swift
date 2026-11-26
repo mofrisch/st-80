@@ -26,14 +26,14 @@ struct ImageArrayLimitTests {
         #expect(await session.evaluate("kept := 42").error == nil)
         var image = try await JSONDecoder().decode(ImageArchive.self, from: session.imageData())
         image.globals["oversized"] = .reference(image.nodes.count)
-        image.nodes.append(.array(Array(repeating: .nilValue, count: 4_097)))
+        image.nodes.append(.array(Array(repeating: .nilValue, count: 65_536)))
         let bytes = try JSONEncoder().encode(image)
 
         do {
             _ = try await session.loadImage(bytes)
             Issue.record("An oversized image array was accepted.")
         } catch let error as SmalltalkError {
-            #expect(error.message.contains("4,096"))
+            #expect(error.message.contains("65,535"))
         }
         #expect(await session.evaluate("kept + 1").value == "43")
         #expect(await session.evaluate("oversized").executionError?.contains("Unknown variable") == true)
@@ -41,11 +41,11 @@ struct ImageArrayLimitTests {
 
     @Test func largestValidImageArrayRestoresItsSizeAndLastElement() async throws {
         let original = SmalltalkSession()
-        #expect(await original.evaluate("full := Array new: 4096. full at: 4096 put: 73").error == nil)
+        #expect(await original.evaluate("full := Array new: 65535. full at: 65535 put: 73").error == nil)
         let restored = SmalltalkSession()
         _ = try await restored.loadImage(original.imageData())
-        #expect(await restored.evaluate("full size").value == "4096")
-        #expect(await restored.evaluate("full at: 4096").value == "73")
+        #expect(await restored.evaluate("full size").value == "65535")
+        #expect(await restored.evaluate("full at: 65535").value == "73")
         #expect(await restored.evaluate("full at: 1").value == "nil")
     }
 }

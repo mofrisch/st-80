@@ -19,14 +19,21 @@ final class SmalltalkRuntime {
         ("Number", "Object"),
         ("Integer", "Number"),
         ("SmallInteger", "Integer"),
+        ("Float", "Number"),
         ("String", "Object"),
+        ("Character", "Object"),
         ("Symbol", "Object"),
         ("Array", "Object"),
         ("BlockClosure", "Object"),
         ("Transcript", "Object"),
     ]
     static let builtinNames = Set(builtinHierarchy.map(\.name))
+    static let additiveBuiltinNames: Set<String> = ["Character", "Float"]
+    static let floatAliases: Set<String> = ["FloatE", "FloatD", "FloatQ"]
+    static let classLimit = 128 + additiveBuiltinNames.count
     static let executionStepLimit = 100_000
+    static let methodsPerSideLimit = 1_000
+    static let namedFieldsLimit = 127
 
     var journal = SourceJournal()
     var catalogDirty = false
@@ -56,7 +63,7 @@ final class SmalltalkRuntime {
     var debuggerCancellation: DebuggerChannel?
     var useASTInterpreterForTesting = false
     let compilationMode: Bool
-    var arrayLimit: Int { compilationMode ? 524_288 : 4_096 }
+    var arrayLimit: Int { compilationMode ? 524_288 : 65_535 }
     let memory: ObjectMemory
     var environments: [Environment] { memory.environments }
     var objects: [STObject] { memory.objects }
@@ -73,6 +80,7 @@ final class SmalltalkRuntime {
             globals[name] = .classObject(stClass)
         }
         globals["Transcript"] = .transcript
+        for name in Self.floatAliases { globals[name] = globals["Float"] }
         if bootstrap {
             do {
                 let library = try SystemLibrary.shared.get()
@@ -226,11 +234,14 @@ final class SmalltalkRuntime {
     }
 
     func assign(_ name: String, value: Value, context: Context) throws {
-        guard !["nil", "true", "false", "self", "super", "thisContext", "Transcript"].contains(name), classes[name] == nil else {
+        guard !["nil", "true", "false", "self", "super", "thisContext"].contains(name) else {
             throw SmalltalkError("\(name) cannot be reassigned.")
         }
         if let environment = context.environment.binding(name) { environment.values[name] = value; return }
         if case .object(let object) = context.receiver, object.fields[name] != nil { object.fields[name] = value; return }
+        guard name != "Transcript", classes[name] == nil, !Self.floatAliases.contains(name) else {
+            throw SmalltalkError("\(name) cannot be reassigned.")
+        }
         if context.isWorkspace || globals[name] != nil {
             guard globals.count < 1_024 || globals[name] != nil else { throw SmalltalkError("Too many workspace variables.") }
             globals[name] = value
@@ -244,6 +255,10 @@ final class SmalltalkRuntime {
         case .integer(let n): return .integer(n)
         case .string(let s): return .string(s)
         case .symbol(let s): return .symbol(s)
+        case .boolean(let b): return .boolean(b)
+        case .nilValue: return .nilValue
+        case .character(let codePoint): return .character(codePoint)
+        case .float(let number): return .float(number)
         case .array(let elements):
             return try withRoots { roots in
                 var values: [Value] = []
@@ -261,7 +276,9 @@ final class SmalltalkRuntime {
         let name: String
         switch value {
         case .integer: name = "SmallInteger"
+        case .float: name = "Float"
         case .string: name = "String"
+        case .character: name = "Character"
         case .symbol: name = "Symbol"
         case .boolean(let b): name = b ? "True" : "False"
         case .nilValue: name = "UndefinedObject"

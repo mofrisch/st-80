@@ -35,6 +35,8 @@ enum ImageCodec {
         func value(_ value: Value) throws -> ImageValue {
             switch value {
             case .integer(let n): return .integer(n)
+            case .character(let codePoint): return .character(codePoint)
+            case .float(let number): return .float(number)
             case .string(let s): return .string(s)
             case .symbol(let s): return .symbol(s)
             case .boolean(let b): return .boolean(b)
@@ -111,7 +113,8 @@ enum ImageCodec {
         guard image.format == "st80-image", image.version == ImageCodec.version, let executableMethods = image.executableMethods else {
             throw invalid("The executable method store is missing or incompatible.")
         }
-        guard image.classes.count <= 128, image.globals.count <= 1_152, image.nodes.count <= maxNodes else { throw invalid("Size limits exceeded.") }
+        guard image.classes.count <= SmalltalkRuntime.classLimit, image.globals.count <= 1_152 + SmalltalkRuntime.floatAliases.count,
+              image.nodes.count <= maxNodes else { throw invalid("Size limits exceeded.") }
         // No bootstrap, user code, initialize messages or block execution on load.
         let runtime = SmalltalkRuntime(bootstrap: false)
         // The shells are not reachable from globals until the entire graph has
@@ -132,6 +135,7 @@ enum ImageCodec {
             guard records.updateValue(record, forKey: record.name) == nil else { throw invalid("Duplicate class \(record.name).") }
         }
         for builtin in runtime.classes.values {
+            if records[builtin.name] == nil, SmalltalkRuntime.additiveBuiltinNames.contains(builtin.name) { continue }
             guard let record = records[builtin.name], record.superclass == builtin.superclass?.name, record.fields == builtin.ownFields else {
                 throw invalid("Built-in class \(builtin.name) is missing or has an invalid layout.")
             }
@@ -158,11 +162,11 @@ enum ImageCodec {
             for record in image.classes {
                 let code = executable[record.name] ?? [:]
                 let sources = record[side]
-                guard sources.count <= 512, let stClass = runtime.classes[record.name],
+                guard sources.count <= SmalltalkRuntime.methodsPerSideLimit, let stClass = runtime.classes[record.name],
                       Set(code.keys) == Set(sources.keys) else { throw invalid("Invalid method table.") }
                 for (selector, source) in sources {
                     guard let methodCode = code[selector] else { throw invalid("Executable method is missing.") }
-                    stClass[side][selector] = try methodCode.validatedMethod(selector: selector, source: source, fields: stClass.fields(for: side))
+                    stClass[side][selector] = try methodCode.validatedMethod(selector: selector, source: source)
                 }
             }
         }
@@ -203,6 +207,12 @@ enum ImageCodec {
         func value(_ record: ImageValue) throws -> Value {
             switch record {
             case .integer(let n): return .integer(n)
+            case .character(let codePoint):
+                guard Unicode.Scalar(codePoint) != nil else { throw invalid("Invalid character code point.") }
+                return .character(codePoint)
+            case .float(let number):
+                guard number.isFinite else { throw invalid("Invalid floating-point number.") }
+                return .float(number)
             case .string(let s): return .string(s)
             case .symbol(let s): return .symbol(s)
             case .boolean(let b): return .boolean(b)
@@ -255,7 +265,11 @@ enum ImageCodec {
             default: throw invalid("The object table is inconsistent.")
             }
         }
-        let globals = try image.globals.mapValues(value)
+        var globals = try image.globals.mapValues(value)
+        for name in SmalltalkRuntime.additiveBuiltinNames where records[name] == nil && globals[name] == nil {
+            if let stClass = runtime.classes[name] { globals[name] = .classObject(stClass) }
+        }
+        for name in SmalltalkRuntime.floatAliases where globals[name] == nil { globals[name] = globals["Float"] }
         for name in runtime.classes.keys {
             if name == "Transcript" {
                 guard case .transcript? = globals[name] else { throw invalid("Transcript is missing.") }

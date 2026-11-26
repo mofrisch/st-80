@@ -120,8 +120,8 @@ BrowserOrganization compile: 'initialize
 BrowserOrganization compileClass: 'shippedClassCategories
     ^ #(
         (''Kernel'' (''Object'' ''Class'' ''UndefinedObject'' ''Boolean'' ''True'' ''False''
-            ''Number'' ''Integer'' ''SmallInteger'' ''BlockClosure''))
-        (''Collections & Text'' (''Array'' ''String'' ''Symbol''))
+            ''Number'' ''Integer'' ''SmallInteger'' ''Float'' ''BlockClosure'' ''FailedMessage''))
+        (''Collections & Text'' (''Array'' ''String'' ''Character'' ''Symbol''))
         (''Compiler'' (''STCompilerList'' ''STScanner'' ''STCompiler''))
         (''MVC'' (''Model'' ''Controller'' ''UIBinding''))
         (''Desktop'' (''SystemWindow'' ''DesktopModel'' ''DisplayScreen'' ''DesktopManager'' ''UIWindow''))
@@ -139,7 +139,8 @@ BrowserOrganization compileClass: 'shippedClassCategories
         (''Recovery'' (''ToolWindowFeedback'' ''WorkspaceRecoveryCommands''))
         (''Examples'' (''Counter'' ''WorkspaceExamples''))
         (''Tests'' (''TestCase'' ''TestOutcome'' ''TestResult'' ''TestRunner''
-            ''CounterTest'' ''CollectionsTest'' ''BindingTestModel'' ''UIBindingTest'')))'.
+            ''CounterTest'' ''CollectionsTest'' ''BindingTestModel'' ''UIBindingTest''
+            ''ANSIDispatchProbe'' ''ANSISmalltalkTest'')))'.
 
 BrowserOrganization compile: 'classCategories
     ^ classCategories'.

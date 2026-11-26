@@ -87,8 +87,7 @@ struct SystemLibrary: Sendable {
                 guard let source = sources[side][name]?[selector] else {
                     throw SmalltalkError("The bundled source for \(name)>>\(selector) is missing.")
                 }
-                target[side][selector] = try code.validatedMethod(selector: selector, source: source,
-                                                                  fields: target.fields(for: side))
+                target[side][selector] = try code.validatedMethod(selector: selector, source: source)
             }
         }
         return target
@@ -107,7 +106,7 @@ struct SystemLibrary: Sendable {
                 }
                 for (selector, executable) in code {
                     guard let source = methodSources[selector] else { throw SmalltalkError("System method \(name)>>\(selector) is missing.") }
-                    stClass[side][selector] = try executable.validatedMethod(selector: selector, source: source, fields: stClass.fields(for: side))
+                    stClass[side][selector] = try executable.validatedMethod(selector: selector, source: source)
                 }
             }
         }

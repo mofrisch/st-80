@@ -32,6 +32,10 @@ struct ValuePrinter {
         guard depth < 5 else { append("…"); return }
         switch value {
         case .integer(let number): append(String(number))
+        case .float(let number): append(SmalltalkRuntime.floatLiteralText(number))
+        case .character(let codePoint):
+            append("$")
+            if let scalar = Unicode.Scalar(codePoint) { append(scalar) }
         case .string(let text):
             append("'")
             // Escape as we append. Replacing every quote first would allocate

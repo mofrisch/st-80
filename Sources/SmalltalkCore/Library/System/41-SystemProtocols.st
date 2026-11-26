@@ -4,9 +4,10 @@ BrowserOrganization compile: 'shippedProtocols
     ^ #(
         (''Object'' (
             (''Initialization'' (''initialize''))
-            (''Comparing'' (''='' ''=='' ''~=''))
+            (''Comparing'' (''='' ''=='' ''~='' ''~~''))
             (''Nil Testing'' (''isNil'' ''notNil'' ''ifNil:'' ''ifNotNil:''))
-            (''Reflection'' (''class'' ''respondsTo:'' ''perform:'' ''perform:with:''))
+            (''Reflection'' (''class'' ''respondsTo:'' ''perform:'' ''perform:with:'' ''perform:with:with:''
+                ''perform:with:with:with:'' ''perform:withArguments:''))
             (''Printing'' (''printString''))
             (''Identity'' (''yourself''))
             (''Error Reporting'' (''error:line:column:''))))
@@ -19,28 +20,40 @@ BrowserOrganization compile: 'shippedProtocols
             (''Arithmetic'' (''+'' ''-'' ''*'' ''/'' ''//'' ''\\'' ''negated'' ''abs'' ''squared''))
             (''Comparing'' (''<'' ''>'' ''<='' ''>=''))
             (''Bounds'' (''min:'' ''max:'' ''clampFrom:to:''))
+            (''Converting'' (''asCharacter'' ''asFloat'' ''asFloatE'' ''asFloatD'' ''asFloatQ''))
             (''Iteration'' (''timesRepeat:'' ''to:do:'' ''to:by:do:''))))
         (''Boolean'' (
-            (''Logical Operations'' (''not'' ''and:'' ''or:''))
+            (''Logical Operations'' (''not'' ''and:'' ''or:'' ''&'' ''|'' ''eqv:'' ''xor:''))
             (''Conditionals'' (''ifTrue:'' ''ifFalse:'' ''ifTrue:ifFalse:'' ''ifFalse:ifTrue:''))))
+        (''Float'' (
+            (''Arithmetic'' (''+'' ''-'' ''*'' ''/'' ''//'' ''\\'' ''negated'' ''abs'' ''squared''))
+            (''Comparing'' (''<'' ''>'' ''<='' ''>=''))
+            (''Converting'' (''asFloat'' ''asFloatE'' ''asFloatD'' ''asFloatQ'' ''ceiling'' ''floor'' ''truncated'' ''rounded''))
+            (''Mathematical Functions'' (''sqrt'' ''exp'' ''ln'' ''raisedTo:'' ''sin'' ''cos'' ''tan''))))
         (''String'' (
             (''Accessing'' (''size'' ''at:'' ''characters''))
             (''Combining'' ('',''))
             (''Searching'' (''includes:''))
             (''Character Testing'' (''isLetter'' ''isNumber'' ''isASCIIDigit'' ''isLowercase'' ''isWhitespace'' ''isLineBreak''))
-            (''Converting'' (''asString'' ''asSymbol'' ''asIntegerOrNil''))))
+            (''Converting'' (''asString'' ''asSymbol'' ''asCharacter'' ''asIntegerOrNil'' ''parseIntegerMagnitudeRadix:'' ''parseFloatOrNil''))))
+        (''Character'' (
+            (''Converting'' (''asString'' ''asLowercase'' ''asUppercase'' ''codePoint''))
+            (''Testing'' (''isAlphaNumeric'' ''isDigit'' ''isLetter'' ''isLowercase'' ''isUppercase''))
+            (''Identity'' (''hash'' ''identityHash''))))
         (''Symbol'' (
             (''Converting'' (''asString''))))
         (''Array'' (
-            (''Accessing'' (''size'' ''at:''))
+            (''Accessing'' (''size'' ''at:'' ''at:ifAbsent:'' ''first'' ''last''))
             (''Updating'' (''at:put:''))
             (''Enumerating'' (''do:'' ''collect:'' ''select:''))
             (''Testing'' (''isEmpty'' ''includes:''))
-            (''Copying'' (''copyWith:''))
+            (''Copying'' (''copyWith:'' ''copyFrom:to:'' ''reverse''))
             (''Converting'' (''joinedStringFrom:to:''))))
         (''BlockClosure'' (
-            (''Evaluation'' (''value'' ''value:'' ''value:value:''))
-            (''Looping'' (''whileTrue:'' ''whileFalse:''))))
+            (''Evaluation'' (''value'' ''value:'' ''value:value:'' ''argumentCount'' ''valueWithArguments:''))
+            (''Termination'' (''ensure:'' ''ifCurtailed:''))
+            (''Looping'' (''whileTrue'' ''whileFalse'' ''whileTrue:'' ''whileFalse:''))))
+        (''FailedMessage'' ((''Accessing'' (''selector'' ''arguments''))))
         (''Transcript'' (
             (''Writing'' (''show:'' ''cr''))
             (''Buffer Management'' (''clear'' ''record:''))))
@@ -57,17 +70,17 @@ BrowserOrganization compile: 'shippedProtocols
             (''Character Stream'' (''peek'' ''peekAhead:'' ''advance''))
             (''Character Classification'' (''isBinary:'' ''isIdentifierStart:'' ''isIdentifierPart:''))
             (''Tokenization'' (''nextToken'' ''readToken'' ''token:value:'' ''skipTrivia'' ''readComment''))
-            (''Literal Scanning'' (''readNumber'' ''readString'' ''readSymbol''))
+            (''Literal Scanning'' (''readNumber'' ''readDigits'' ''readRadixInteger:'' ''integerToken:radix:'' ''readString'' ''readSymbol''))
             (''Identifier Scanning'' (''readIdentifier'' ''readWord''))
             (''Error Reporting'' (''fail:''))))
         (''STSourceScanner'' ((''Highlighting'' (''nextHighlight'' ''token:value:'' ''highlight:'' ''fail:''))))
         (''STCompiler'' (
             (''Compilation'' (''initialize'' ''start:'' ''workspace:'' ''method:''))
             (''Token Handling'' (''advance'' ''expect:'' ''kind'' ''tokenValue'' ''tokenLabel:'' ''identifier''))
-            (''Body Parsing'' (''workspaceBody'' ''bodyUntil:'' ''blockAt:''))
+            (''Body Parsing'' (''workspaceBody'' ''bodyUntil:'' ''blockAt:'' ''returnStatement''))
             (''Expression Parsing'' (''expression'' ''expressionNode'' ''primary'' ''unaryExpression'' ''binaryExpression'' ''keywordExpression''))
             (''Message Parsing'' (''unaryMessage'' ''binaryMessage'' ''keywordMessage'' ''cascadeMessage''))
-            (''Literal Parsing'' (''arrayElement'' ''arrayElements'' ''negativeNumber''))
+            (''Literal Parsing'' (''arrayElement'' ''arrayElements'' ''negativeNumber'' ''floatFrom:''))
             (''Syntax Trees'' (''node:at:with:with:'' ''single:'' ''pair:with:'' ''triple:with:with:'' ''sendTo:message:''))
             (''Validation and Errors'' (''fail:'' ''validateNames:'' ''validate:separateFrom:error:''))))
         (''Model'' (
@@ -239,4 +252,14 @@ BrowserOrganization compile: 'shippedProtocols
         (''UIBindingTest'' (
             (''Fixtures'' (''setUp'' ''tearDown''))
             (''Tests'' (''testBindingReadsAndUpdatesTheLabel'' ''testUnbindingStopsUpdates''))))
+        (''ANSIDispatchProbe'' ((''Dispatch'' (''touch'' ''doesNotUnderstand:''))))
+        (''ANSISmalltalkTest'' (
+            (''Language Tests'' (''testMessagePrecedence'' ''testCascadeUsesTheSameReceiver''
+                ''testMethodReturnAndSuper'' ''testFailedSendCarriesSelectorAndArguments''
+                ''testRadixLiteralsAndFloorDivision'' ''testFloatLiteralsAndPrecisionOrdering''
+                ''testCharacterLiteralsAndStringElements'' ''testLiteralArrayValuesAndSymbolIdentity''
+                ''testLexicalBlockBindings'' ''testValuableProtocol'' ''testBooleanShortCircuitAndLoop''
+                ''testCleanupRunsInUnwindOrder''))
+            (''Collection Tests'' (''testArrayFactoriesAndIndexedCopy'' ''testLargeArrayIsOneBasedAndInitiallyNil''))
+            (''Test Support'' (''returnThroughCleanup:''))))
     )'.

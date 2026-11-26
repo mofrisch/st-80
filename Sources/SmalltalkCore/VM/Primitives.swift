@@ -7,6 +7,7 @@ extension SmalltalkRuntime {
         case "yourself": return receiver
         case "printString": return .string(printValue(receiver))
         case "=", "==": return .boolean(try equal(receiver, args[0], identity: selector == "=="))
+        case "~~": return .boolean(try !equal(receiver, args[0], identity: true))
         case "~=": return .boolean(try !equal(receiver, args[0]))
         case "isNil": return .boolean(isNil(receiver))
         case "notNil": return .boolean(!isNil(receiver))
@@ -16,7 +17,10 @@ extension SmalltalkRuntime {
             let name = try symbol(args[0])
             return .boolean(lookupMethod(name, on: receiver) != nil || primitiveSelectors(classOf(receiver)).contains(name))
         case "perform:": return try send(receiver, symbol(args[0]), [])
-        case "perform:with:": return try send(receiver, symbol(args[0]), [args[1]])
+        case "perform:with:", "perform:with:with:", "perform:with:with:with:":
+            return try send(receiver, symbol(args[0]), Array(args.dropFirst()))
+        case "perform:withArguments:":
+            return try send(receiver, symbol(args[0]), sequenceElements(args[1]))
         case "error:line:column:":
             throw SmalltalkError(try string(args[0]), at: SourcePosition(line: Int(try integer(args[1])), column: Int(try integer(args[2]))))
         default: break
@@ -25,6 +29,8 @@ extension SmalltalkRuntime {
         switch receiver {
         case .classObject(let stClass): return try classPrimitive(stClass, selector, args)
         case .integer(let n): return try integerPrimitive(n, selector, args)
+        case .float(let number): return try floatPrimitive(number, selector, args)
+        case .character(let codePoint): return try characterPrimitive(codePoint, selector)
         case .boolean(let b):
             switch selector {
             case "not": return .boolean(!b)
@@ -34,6 +40,10 @@ extension SmalltalkRuntime {
             case "ifFalse:ifTrue:": return try invokeBlock(args[b ? 1 : 0])
             case "and:": return b ? .boolean(try boolean(invokeBlock(args[0]))) : .boolean(false)
             case "or:": return b ? .boolean(true) : .boolean(try boolean(invokeBlock(args[0])))
+            case "&": return .boolean(try boolean(args[0]) && b)
+            case "|": return .boolean(try boolean(args[0]) || b)
+            case "eqv:": return .boolean(try boolean(args[0]) == b)
+            case "xor:": return .boolean(try boolean(args[0]) != b)
             default: return nil
             }
         case .string(let string):
@@ -44,12 +54,17 @@ extension SmalltalkRuntime {
                     throw SmalltalkError(compilationMode ? "String exceeds the 256 KiB limit." : "String exceeds the 64 KiB limit.")
                 }
                 return .string(result)
-            case "size": return .integer(Int64(string.count))
+            case "size": return .integer(Int64(string.unicodeScalars.count))
             case "at:":
-                let index = try index(args[0], count: string.count)
-                return .string(String(string[string.index(string.startIndex, offsetBy: index)]))
+                let scalars = string.unicodeScalars
+                let index = try index(args[0], count: scalars.count)
+                return .character(scalars[scalars.index(scalars.startIndex, offsetBy: index)].value)
             case "asString": return receiver
             case "asSymbol": return .symbol(string)
+            case "asCharacter":
+                let scalars = string.unicodeScalars
+                guard scalars.count == 1, let scalar = scalars.first else { throw SmalltalkError("Expected one Unicode scalar.") }
+                return .character(scalar.value)
             case "utf8Size": return .integer(Int64(string.utf8.count))
             case "suffixFittingUTF8:":
                 let budget = min(max(0, try integer(args[0])), 262_144)
@@ -66,6 +81,9 @@ extension SmalltalkRuntime {
             case "includesIgnoringCase:": return .boolean(string.localizedCaseInsensitiveContains(try self.string(args[0])))
             case "characters": return try array(string.map { .string(String($0)) })
             case "includes:":
+                if case .character(let codePoint) = args[0] {
+                    return .boolean(string.unicodeScalars.contains { $0.value == codePoint })
+                }
                 let substring = try self.string(args[0])
                 return .boolean(string.contains(substring))
             case "isLetter": return .boolean(string.count == 1 && string.first?.isLetter == true)
@@ -76,6 +94,19 @@ extension SmalltalkRuntime {
             case "isWhitespace": return .boolean(string.count == 1 && string.first?.isWhitespace == true)
             case "isLineBreak": return .boolean(string == "\n" || string == "\r" || string == "\r\n")
             case "asIntegerOrNil": return Int64(string).map(Value.integer) ?? .nilValue
+            case "parseFloatOrNil":
+                let spelling = string.replacingOccurrences(of: "d", with: "e").replacingOccurrences(of: "q", with: "e")
+                guard let number = Double(spelling), number.isFinite else { return .nilValue }
+                return .float(number)
+            case "parseIntegerMagnitudeRadix:":
+                let radix = try integer(args[0])
+                guard (2...36).contains(radix), !string.isEmpty, string.utf8.allSatisfy({ byte in
+                    let digit = (48...57).contains(byte) ? Int(byte) - 48 : Int(byte) - 55
+                    return ((48...57).contains(byte) || (65...90).contains(byte)) && digit < radix
+                }) else { return .nilValue }
+                guard let magnitude = UInt64(string, radix: Int(radix)) else { return .symbol("overflow") }
+                if magnitude == UInt64(Int64.max) + 1 { return .symbol("minimumMagnitude") }
+                return Int64(exactly: magnitude).map(Value.integer) ?? .symbol("overflow")
             default: return nil
             }
         case .symbol(let name): return selector == "asString" ? .string(name) : nil
@@ -123,12 +154,28 @@ extension SmalltalkRuntime {
                 }
             default: return nil
             }
-        case .block:
+        case .block(let block):
             switch selector {
             case "value", "value:", "value:value:": return try invokeBlock(receiver, args)
-            case "whileTrue:", "whileFalse:":
-                while try boolean(invokeBlock(receiver)) == (selector == "whileTrue:") {
-                    _ = try invokeBlock(args[0])
+            case "argumentCount": return .integer(Int64(block.parameters.count))
+            case "valueWithArguments:": return try invokeBlock(receiver, sequenceElements(args[0]))
+            case "ensure:", "ifCurtailed:":
+                let result: Value
+                do {
+                    result = try invokeBlock(receiver)
+                } catch {
+                    let returnValues = (error as? ReturnSignal).map { [$0.value] } ?? []
+                    try withRoots(returnValues) { _ in _ = try invokeBlock(args[0]) }
+                    throw error
+                }
+                return try withRoots([result]) { _ in
+                    if selector == "ensure:" { _ = try invokeBlock(args[0]) }
+                    return result
+                }
+            case "whileTrue", "whileFalse", "whileTrue:", "whileFalse:":
+                let condition = selector == "whileTrue" || selector == "whileTrue:"
+                while try boolean(invokeBlock(receiver)) == condition {
+                    if let body = args.first { _ = try invokeBlock(body) }
                 }
                 return .nilValue
             default: return nil
@@ -139,6 +186,26 @@ extension SmalltalkRuntime {
             return receiver
         case .object(let object):
             return object.stClass === classes["ToolServices"] ? try toolPrimitive(selector, args) : nil
+        default: return nil
+        }
+    }
+
+    private func characterPrimitive(_ codePoint: UInt32, _ selector: String) throws -> Value? {
+        guard let scalar = Unicode.Scalar(codePoint) else { throw SmalltalkError("Invalid character code point.") }
+        let character = Character(String(scalar))
+        switch selector {
+        case "codePoint", "hash", "identityHash": return .integer(Int64(codePoint))
+        case "asString": return .string(String(scalar))
+        case "isLetter": return .boolean(character.isLetter)
+        case "isDigit": return .boolean(scalar.properties.numericType == .decimal)
+        case "isAlphaNumeric": return .boolean(character.isLetter || scalar.properties.numericType == .decimal)
+        case "isLowercase": return .boolean(character.isLowercase)
+        case "isUppercase": return .boolean(character.isUppercase)
+        case "asLowercase", "asUppercase":
+            let mapping = selector == "asLowercase" ? character.lowercased() : character.uppercased()
+            let scalars = mapping.unicodeScalars
+            guard scalars.count == 1, let mapped = scalars.first else { return .character(codePoint) }
+            return .character(mapped.value)
         default: return nil
         }
     }
@@ -174,12 +241,17 @@ extension SmalltalkRuntime {
                 throw SmalltalkError("\(stClass.name) cannot be instantiated with new.")
             }
             let object = try object(stClass)
-            return try send(.object(object), "initialize", [])
+            let instance = Value.object(object)
+            _ = try send(instance, "initialize", [])
+            return instance
         default: return nil
         }
     }
 
     func integerPrimitive(_ n: Int64, _ selector: String, _ args: [Value]) throws -> Value? {
+        if case .float? = args.first, ["+", "-", "*", "/", "//", "\\\\", "<", ">", "<=", ">="].contains(selector) {
+            return try floatPrimitive(Double(n), selector, args)
+        }
         switch selector {
         case "+": return .integer(try checked(n.addingReportingOverflow(integer(args[0]))))
         case "-": return .integer(try checked(n.subtractingReportingOverflow(integer(args[0]))))
@@ -204,6 +276,12 @@ extension SmalltalkRuntime {
         case "negated": return .integer(try checked(Int64(0).subtractingReportingOverflow(n)))
         case "abs": return .integer(n < 0 ? try checked(Int64(0).subtractingReportingOverflow(n)) : n)
         case "squared": return .integer(try checked(n.multipliedReportingOverflow(by: n)))
+        case "asFloat", "asFloatE", "asFloatD", "asFloatQ": return .float(Double(n))
+        case "asCharacter":
+            guard let codePoint = UInt32(exactly: n), Unicode.Scalar(codePoint) != nil else {
+                throw SmalltalkError("Invalid Unicode scalar code point.")
+            }
+            return .character(codePoint)
         case "timesRepeat:":
             if n > 0 { for _ in 0..<n { _ = try invokeBlock(args[0]) } }
             return .integer(n)

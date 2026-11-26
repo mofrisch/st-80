@@ -210,7 +210,7 @@ final class DebuggerExecution {
     }
 
     func report(_ error: Error, at instruction: BytecodeInstruction, runtime: SmalltalkRuntime) {
-        guard !reportedError, !(error is DebuggerStopped), !(error is ReturnSignal), !(error is ExceptionHandlerReturn) else { return }
+        guard !reportedError, !(error is DebuggerStopped), !(error is ReturnSignal), !(error is ExceptionTransfer) else { return }
         reportedError = true
         frames[frames.count - 1].instruction = instruction
         _ = channel.pause(snapshot(.error(error.localizedDescription), runtime: runtime))

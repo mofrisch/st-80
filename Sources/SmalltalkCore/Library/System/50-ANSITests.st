@@ -363,3 +363,145 @@ ANSISmalltalkTest compile: 'testLargeArrayIsOneBasedAndInitiallyNil
     self assert: (array at: 65535) isNil.
     array at: 65535 put: 42.
     self assert: (array at: 65535) equals: 42'.
+
+ANSISmalltalkTest compile: 'testObjectCopyClassTestsAndHash
+    | counter copy |
+    counter := Counter new add: 7.
+    copy := counter copy.
+    copy increment.
+    self assert: counter value equals: 7.
+    self assert: copy value equals: 8.
+    self assert: (counter isMemberOf: Counter).
+    self assert: (counter isKindOf: Object).
+    self deny: (counter isMemberOf: Object).
+    self assert: 0.50s hash equals: (1 / 2) hash.
+    self assert: (Array with: 7) hash equals: #(7) hash.
+    self assert: counter identityHash equals: counter identityHash'.
+
+ANSISmalltalkTest compile: 'testIntegerBitAndNumberTheoryProtocols
+    | high |
+    high := 1 bitShift: 97.
+    self assert: high highBit equals: 98.
+    self assert: (high bitAt: 98) equals: 1.
+    self assert: (high bitAt: 98 put: 0) equals: 0.
+    self assert: ((high bitOr: 5) bitXor: high) equals: 5.
+    self assert: (high bitShift: -97) equals: 1.
+    self assert: (13 allMask: 5).
+    self assert: (13 anyMask: 6).
+    self assert: (13 noMask: 2).
+    self assert: -7 odd.
+    self assert: (48 gcd: -18) equals: 6.
+    self assert: (21 lcm: 6) equals: 42.
+    self assert: 0 factorial equals: 1.
+    self assert: 20 factorial equals: 2432902008176640000.
+    self assert: (-384839 printStringRadix: 36) equals: ''-88XZ'''.
+
+ANSISmalltalkTest compile: 'testNumericConversionsAndIntervals
+    self assert: (3 between: 1 and: 3).
+    self assert: (4 asFraction) equals: 4.
+    self assert: 0.125 asFraction equals: (1 / 8).
+    self assert: -2.5 asInteger equals: -3.
+    self assert: ((-7 / 2) quo: 1) equals: -3.
+    self assert: ((-7 / 2) rem: 1) equals: (-1 / 2).
+    self assert: (2 raisedTo: 100) equals: 1267650600228229401496703205376.
+    self assert: (2 raisedToInteger: -3) equals: (1 / 8).
+    self assert: ((8.5s roundTo: 2s) = 8s).
+    self assert: ((8.5s truncateTo: 3s) = 6s).
+    self assert: (9 to: 1 by: -3) asArray equals: #(9 6 3).
+    self assert: (1 to: 9 by: -3) isEmpty.
+    self assert: (0.5s to: 1.5s by: 0.5s) asArray equals: #(0.5s 1.0s 1.5s).
+    self assert: (90.0 degreesToRadians sin - 1.0) abs < 0.000000001'.
+
+ANSISmalltalkTest compile: 'testCollectionSearchingAndEnumeration
+    | values order |
+    values := #(1 3 2 3).
+    self assert: (values allSatisfy: [ :each | each > 0 ]).
+    self deny: (values anySatisfy: [ :each | each > 3 ]).
+    self assert: (values detect: [ :each | each even ]) equals: 2.
+    self assert: (values detect: [ :each | each > 3 ] ifNone: [ 42 ]) equals: 42.
+    self assert: (values inject: 0 into: [ :sum :each | sum + each ]) equals: 9.
+    self assert: (values occurrencesOf: 3) equals: 2.
+    self assert: (values indexOf: 3) equals: 2.
+    self assert: (values findLast: [ :each | each = 3 ]) equals: 4.
+    self assert: (values indexOfSubCollection: #(3 2) startingAt: 1) equals: 2.
+    self assert: (values indexOfSubCollection: #(3 2) startingAt: 3 ifAbsent: [ 42 ]) equals: 42.
+    self assert: (values before: 3) equals: 1.
+    self assert: (values after: 3) equals: 2.
+    order := 0.
+    values from: 2 to: 3 keysAndValuesDo: [ :index :value | order := order * 100 + (index * 10) + value ].
+    self assert: order equals: 2332'.
+
+ANSISmalltalkTest compile: 'testSequenceCopyAndOverlappingReplacement
+    | values |
+    self assert: (#(1 2 1 2 3) copyReplaceAll: #(1 2) with: #(9)) equals: #(9 9 3).
+    self assert: (#(1 2) copyReplaceFrom: 2 to: 1 withObject: 42) equals: #(1 42 2).
+    self assert: (#(1 2 1) copyReplacing: 1 withObject: 42) equals: #(42 2 42).
+    self assert: (#(1 2 1 3) copyWithout: 1) equals: #(2 3).
+    values := Array withAll: #(1 2 3 4).
+    values replaceFrom: 2 to: 4 with: values startingAt: 1.
+    self assert: values equals: #(1 1 2 3).
+    values atAll: #(1 3) put: 42.
+    self assert: values equals: #(42 1 42 3)'.
+
+ANSISmalltalkTest compile: 'testStringFactoriesAndReadableStringProtocols
+    | text alias copy |
+    text := String with: $A with: $é with: $B.
+    alias := text.
+    copy := text copy.
+    text at: 2 put: $猫.
+    self assert: alias equals: ''A猫B''.
+    self assert: copy equals: ''AéB''.
+    text replaceFrom: 1 to: 2 with: ''xY''.
+    self assert: text equals: ''xYB''.
+    self assert: text hash equals: ''xYB'' hash.
+    self assert: text asLowercase equals: ''xyb''.
+    self assert: (text sameAs: #Xyb).
+    self assert: (#bravo between: ''ALPHA'' and: ''Charlie'').
+    self assert: (''a,,bc,'' subStrings: '','') equals: #(''a'' ''bc'').
+    self assert: #Ab size equals: 2.
+    self assert: (#Ab at: 1) equals: $A.
+    text := ''a'' , ''b''.
+    text at: 2 put: $c.
+    self assert: text equals: ''ac'''.
+
+ANSISmalltalkTest compile: 'testExceptionRetryReturnAndResignal
+    | attempts value |
+    attempts := 0.
+    value := [
+        attempts := attempts + 1.
+        attempts = 1 ifTrue: [ Error signal ].
+        42
+    ] on: Error do: [ :exception | exception retry ].
+    self assert: attempts equals: 2.
+    self assert: value equals: 42.
+    self assert: ([ Error signal ] on: Error do: [ :exception | exception retryUsing: [ 42 ] ]) equals: 42.
+    self assert: ([ Error signal ] on: Error do: [ :exception | exception return: 42 ]) equals: 42.
+    value := [
+        [ Error signal ] on: Error do: [ :exception | exception resignalAs: (ANSIProbeException new messageText: ''replacement'') ]
+    ] on: ANSIProbeException do: [ :exception | exception resume: 42 ].
+    self assert: value equals: 42'.
+
+ANSISmalltalkTest compile: 'testExceptionResumeOuterPassAndSets
+    | value |
+    value := [
+        [ 1 + ANSIProbeException signal ] on: ANSIProbeException do: [ :exception |
+            self assert: exception isNested.
+            exception resume: exception outer + 1 ]
+    ] on: Exception do: [ :exception | exception resume: 40 ].
+    self assert: value equals: 42.
+    value := [
+        [ Error signal ] on: Error do: [ :exception | exception pass ]
+    ] on: ANSIProbeException , Error do: [ :exception | 42 ].
+    self assert: value equals: 42'.
+
+ANSISmalltalkTest compile: 'testStandardErrorsCarryTheirArguments
+    | object |
+    object := Object new.
+    self assert: ([ object ansiMissing: 7 ] on: MessageNotUnderstood do: [ :exception |
+        self assert: exception receiver == object.
+        self assert: exception message selector equals: #ansiMissing:.
+        self assert: exception message arguments equals: #(7).
+        exception resume: 42 ]) equals: 42.
+    self assert: ([ 7 / 0 ] on: ZeroDivide do: [ :exception |
+        self assert: exception dividend equals: 7.
+        exception resume: 42 ]) equals: 42'.

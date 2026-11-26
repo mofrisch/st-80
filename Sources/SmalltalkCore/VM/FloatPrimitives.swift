@@ -53,6 +53,14 @@ extension SmalltalkRuntime {
         case "abs": return .float(abs(number))
         case "squared": return try finiteFloat(number * number)
         case "asFloat", "asFloatE", "asFloatD", "asFloatQ": return .float(number)
+        case "asFraction":
+            let exponent = Int((number.bitPattern >> 52) & 0x7ff)
+            let mantissa = Int64(number.bitPattern & 0x000f_ffff_ffff_ffff)
+            let significand = mantissa + (exponent == 0 ? 0 : 1 << 52)
+            let coefficient = BigInteger(number.sign == .minus ? -significand : significand)
+            let shift = max(exponent, 1) - 1_075
+            if shift >= 0 { return integerValue(coefficient.shiftedLeft(shift)) }
+            return try fractionValue(coefficient, .one.shiftedLeft(-shift))
         case "asScaledDecimal:": return try convertToScaledDecimal(.float(number), scale: arguments[0])
         case "ceiling", "floor", "truncated", "rounded":
             let rule: FloatingPointRoundingRule
@@ -67,7 +75,9 @@ extension SmalltalkRuntime {
         case "sqrt": return try finiteFloat(number.squareRoot())
         case "exp": return try finiteFloat(exp(number))
         case "ln": return try finiteFloat(log(number))
-        case "raisedTo:": return try finiteFloat(pow(number, floatingNumber(arguments[0])))
+        case "arcCos": return try finiteFloat(acos(number))
+        case "arcSin": return try finiteFloat(asin(number))
+        case "arcTan": return try finiteFloat(atan(number))
         case "sin": return try finiteFloat(sin(number))
         case "cos": return try finiteFloat(cos(number))
         case "tan": return try finiteFloat(tan(number))

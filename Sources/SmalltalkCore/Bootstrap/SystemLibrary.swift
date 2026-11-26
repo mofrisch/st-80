@@ -114,6 +114,70 @@ struct SystemLibrary: Sendable {
         }
         try runtime.validateCompilerClasses()
     }
+
+    /// Earlier images retain their own method tables. Backfill the new protocols
+    /// while preserving installed versions of existing methods.
+    func installANSIProtocols(in runtime: SmalltalkRuntime) throws {
+        let libraryClasses = [
+            "Object", "Number", "Integer", "Fraction", "Float", "ScaledDecimal", "Exception", "ExceptionSet",
+            "MessageNotUnderstood", "ZeroDivide", "SequenceableCollection", "Array", "Interval", "String", "Symbol", "Transcript",
+        ]
+        for name in libraryClasses {
+            guard let target = runtime.classes[name] else { throw SmalltalkError("Missing ANSI class \(name).") }
+            for side in MethodSide.allCases {
+                let methods = seed[side][name] ?? [:]
+                for (selector, code) in methods.sorted(by: { $0.key < $1.key }) where target[side][selector] == nil {
+                    guard target[side].count < SmalltalkRuntime.methodsPerSideLimit else { break }
+                    guard let source = sources[side][name]?[selector] else {
+                        throw SmalltalkError("Missing bundled source for \(side.displayName(for: name))>>\(selector).")
+                    }
+                    target[side][selector] = try code.validatedMethod(selector: selector, source: source)
+                }
+            }
+        }
+    }
+
+    /// Update shipped browser code only. Per-image protocol assignments are
+    /// merged by Smalltalk the next time that browser's catalog is used.
+    func upgradeBrowserProtocols(in runtime: SmalltalkRuntime) throws -> Bool {
+        let name = "BrowserOrganization"
+        guard let target = runtime.classes[name],
+              let previous = target.methods["protocolsOf:side:"],
+              Self.digest(Data(previous.source.utf8)) == "674b0cce59f3f6c8cd8f55cd14d06bb99f37075a1566e1da2b8e00f22de4fc67" else {
+            return false
+        }
+        let defaults: [(MethodSide, String, Set<String>)] = [
+            (.instance, "shippedProtocols", [
+                "97dae8e50970465556c668dc41ef4c1254051edbed61bf9e87f6f1650aaf65d9",
+                "809f589b0eb5d68b77d58170a7c5b7877bb1f42aabc1ba2cc5971e610cf50664",
+                "3f96d04fe9b1bc6217026ac6fbf14e9862321ebb8a59610d9d6c4fe86b0a17f8",
+                "1198c24ac571e6f29f761121d6f07bf4ce67f09c8c262f038bb512a5b13729ac",
+            ]),
+            (.classSide, "shippedClassCategories", [
+                "94b28fa4e197128a9942bda803c88b225ff4b73c86eb419a706c4b06c8dc4b1e",
+                "45dba024b3d32946974fd979d5c048df2d6902dffc037ce038e6a30303b1d4ff",
+                "8c81a5a21932001fa86c5ecb219bb36046bc083a3f9d0c58a1e468f957b630e1",
+                "d6f01cc25cefa6821ba8f6df8155881ce9448539865f2469d944a22fea670818",
+            ]),
+        ]
+        for (side, selector, hashes) in defaults {
+            if let method = target[side][selector], hashes.contains(Self.digest(Data(method.source.utf8))) {
+                try install(selector, side: side)
+            }
+        }
+        for selector in ["shippedClassSideProtocols", "refreshShippedProtocols", "fileShippedProtocolsOf:side:into:"] {
+            if target.methods[selector] == nil { try install(selector, side: .instance) }
+        }
+        try install("protocolsOf:side:", side: .instance)
+        return true
+
+        func install(_ selector: String, side: MethodSide) throws {
+            guard let code = seed[side][name]?[selector], let source = sources[side][name]?[selector] else {
+                throw SmalltalkError("Missing bundled browser method \(selector).")
+            }
+            target[side][selector] = try code.validatedMethod(selector: selector, source: source)
+        }
+    }
 }
 
 extension SmalltalkRuntime {

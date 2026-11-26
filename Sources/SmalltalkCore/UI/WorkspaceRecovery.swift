@@ -48,7 +48,7 @@ extension SmalltalkRuntime {
                 ])
             }
             guard case .array(let result) = outcome, result.elements.count == 2,
-                  case .boolean(let success) = result.elements[0], case .string(let message) = result.elements[1] else {
+                  case .boolean(let success) = result.elements[0], let message = result.elements[1].textContents else {
                 throw SmalltalkError("Workspace recovery returned an invalid result.")
             }
             if success { value = message } else { failure = message }

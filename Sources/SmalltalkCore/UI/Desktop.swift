@@ -321,8 +321,8 @@ extension SmalltalkRuntime {
     private func selectedBrowserMethod(in window: STObject) -> (selection: BrowserMethodSelection, compiled: Method?)? {
         guard case .symbol("browser")? = window.fields["kind"], isUIClass(window.stClass, named: "BrowserWindow"),
               case .boolean(false)? = window.fields["editingDefinition"],
-              case .string(let className)? = window.fields["className"], let target = classes[className],
-              case .string(let selector)? = window.fields["selector"],
+              let className = window.fields["className"]?.textContents, let target = classes[className],
+              let selector = window.fields["selector"]?.textContents,
               case .symbol(let sideName)? = window.fields["methodSide"], let side = MethodSide(rawValue: sideName) else { return nil }
         let compiled = target[side][selector]
         let primitive = isReflectedPrimitive(selector, on: target, side: side)
@@ -349,7 +349,7 @@ extension SmalltalkRuntime {
             guard case .object(let object) = value,
                   case .integer(let id)? = object.fields["id"], id > 0, ids.insert(id).inserted,
                   case .symbol(let name)? = object.fields["kind"], let kind = ToolKind(rawValue: name),
-                  case .string(let title)? = object.fields["title"], case .string(let text)? = object.fields["text"],
+                  let title = object.fields["title"]?.textContents, let text = object.fields["text"]?.textContents,
                   case .integer(let x)? = object.fields["x"], case .integer(let y)? = object.fields["y"],
                   case .integer(let width)? = object.fields["width"], case .integer(let height)? = object.fields["height"],
                   case .boolean(let minimized)? = object.fields["minimized"],

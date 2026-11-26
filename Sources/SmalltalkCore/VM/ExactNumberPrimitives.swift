@@ -1,6 +1,52 @@
 extension SmalltalkRuntime {
     static let exactBinarySelectors: Set<String> = ["+", "-", "*", "/", "//", "\\\\", "<", ">", "<=", ">="]
 
+    func integerProtocol(_ number: BigInteger, _ selector: String, _ arguments: [Value]) throws -> Value? {
+        switch selector {
+        case "bitAnd:", "bitOr:", "bitXor:":
+            let operand = try unboundedInteger(arguments[0])
+            try chargeNumericWork(max(number.wordCount, operand.wordCount))
+            if selector == "bitAnd:" { return integerValue(number.bitAnd(operand)) }
+            if selector == "bitOr:" { return integerValue(number.bitOr(operand)) }
+            return integerValue(number.bitXor(operand))
+        case "bitShift:":
+            let shift = try unboundedInteger(arguments[0])
+            if shift.isNegative {
+                guard let count = shift.magnitude.int64, count < number.bitWidth else { return .integer(0) }
+                try chargeNumericWork(number.wordCount)
+                return integerValue(number.shiftedRight(Int(count)))
+            }
+            if number.isZero { return .integer(0) }
+            guard let count = shift.int64, count <= Int.max - number.bitWidth else {
+                throw SmalltalkError("Bit shift is outside the supported range.")
+            }
+            try chargeNumericWork(number.wordCount + Int(count) / 29 + 1)
+            return integerValue(number.shiftedLeft(Int(count)))
+        case "bitAt:", "bitAt:put:":
+            let index = try unboundedInteger(arguments[0])
+            guard index > .zero else { throw SmalltalkError("Bit indices start at 1.") }
+            let bit = index.int64.flatMap { $0 <= number.bitWidth ? Int($0 - 1) : nil }
+            try chargeNumericWork(number.wordCount)
+            let set = bit.map { !number.shiftedRight($0).bitAnd(.one).isZero } ?? false
+            if selector == "bitAt:" { return .integer(set ? 1 : 0) }
+            let replacement = try !unboundedInteger(arguments[1]).bitAnd(.one).isZero
+            if replacement == set { return integerValue(number) }
+            guard let count = index.int64 else { throw SmalltalkError("Bit index is outside the supported range.") }
+            try chargeNumericWork(Int(count) / 29 + 1)
+            return integerValue(number.bitXor(.one.shiftedLeft(Int(count - 1))))
+        case "highBit":
+            return .integer(Int64(number.bitWidth))
+        case "printStringRadix:":
+            let radix = try integer(arguments[0])
+            guard (2...36).contains(radix) else { throw SmalltalkError("Radix must be between 2 and 36.") }
+            guard number.bitWidth <= 65_536 * (radix == 2 ? 1 : 6) else { throw SmalltalkError("The integer representation is too long.") }
+            let text = try number.radixString(Int(radix), charge: chargeNumericWork)
+            guard text.utf8.count <= 65_536 else { throw SmalltalkError("The integer representation is too long.") }
+            return .string(text)
+        default: return nil
+        }
+    }
+
     func largeIntegerPrimitive(_ number: BigInteger, _ selector: String, _ arguments: [Value]) throws -> Value? {
         if case .scaledDecimal(let decimal)? = arguments.first, Self.exactBinarySelectors.contains(selector) {
             return try scaledDecimalBinary(ScaledDecimal(number, scale: 0), selector, decimal)

@@ -218,6 +218,26 @@ struct ToolWindowTests {
         #expect(classes.subtracting(shipped).isEmpty, "Unknown classes: \(classes.subtracting(shipped).sorted())")
     }
 
+    @Test func ansiFactoriesAreFiledOnTheClassSide() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            (SystemOrganization protocolsOf: String side: #class)
+                groupOf: 'withAll:' default: 'Unclassified'
+            """)
+        #expect(result.value == "'Instance Creation'")
+        #expect(await session.evaluate("""
+            (SystemOrganization protocolsOf: String side: #instance)
+                groupOf: 'at:put:' default: 'Unclassified'
+            """).value == "'Updating'")
+        #expect(await session.evaluate("""
+            | grouping |
+            grouping := SystemOrganization protocolsOf: String side: #class.
+            grouping addGroup: 'My Factories'; move: 'withAll:' to: 'My Factories'.
+            SystemOrganization refreshShippedProtocols.
+            grouping groupOf: 'withAll:' default: 'Unclassified'
+            """).value == "'My Factories'")
+    }
+
     @Test func browserFiltersClassesAndMethodsThroughFourPanes() async throws {
         let session = SmalltalkSession()
         let snapshot = try await openTools(.browser, in: session)

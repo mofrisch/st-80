@@ -12,7 +12,7 @@ extension SmalltalkRuntime {
         func outcome(_ operation: () throws -> String) throws -> Value {
             let result: (Bool, String)
             do { result = (true, try operation()) }
-            catch where error is ExceptionHandlerReturn || error is ReturnSignal { throw error }
+            catch where error is ExceptionTransfer || error is ReturnSignal { throw error }
             catch { result = (false, error.localizedDescription) }
             return try array([.boolean(result.0), .string(result.1)])
         }

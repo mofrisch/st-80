@@ -103,6 +103,16 @@ final class BigInteger: Codable, Sendable, Comparable, CustomStringConvertible {
 
     static func powerOfTen(_ exponent: Int) -> BigInteger { BigInteger(value: BigInt(10).power(exponent)) }
     func shiftedLeft(_ count: Int) -> BigInteger { BigInteger(value: value << count) }
+    func shiftedRight(_ count: Int) -> BigInteger { BigInteger(value: value >> count) }
+
+    func bitAnd(_ other: BigInteger) -> BigInteger { BigInteger(value: value & other.value) }
+    func bitOr(_ other: BigInteger) -> BigInteger { BigInteger(value: value | other.value) }
+    func bitXor(_ other: BigInteger) -> BigInteger { BigInteger(value: value ^ other.value) }
+
+    func radixString(_ radix: Int, charge: (Int) throws -> Void) throws -> String {
+        try charge(radix.nonzeroBitCount == 1 ? wordCount : Self.workProduct(wordCount, wordCount))
+        return String(value, radix: radix, uppercase: true)
+    }
 
     var description: String {
         var text = ""

@@ -61,6 +61,7 @@ struct ValuePrinter {
         case .nilValue: append("nil")
         case .classObject(let stClass): append(stClass.name)
         case .object(let object):
+            if let text = value.textContents { appendValue(.string(text), depth: depth); return }
             append("a "); append(object.stClass.name)
             let fields = object.stClass.fields.prefix(8)
             guard !fields.isEmpty else { return }

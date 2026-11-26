@@ -202,6 +202,23 @@ struct ImageTests {
         #expect(await value("output == Transcript", in: restarted) == "true")
     }
 
+    @Test func writableStringsKeepTheirContentsAndAliasesAcrossImageLoad() async throws {
+        let session = SmalltalkSession()
+        let initial = await session.evaluate("""
+            mutableText := String with: $A with: $é.
+            sameText := mutableText.
+            copiedText := mutableText copy.
+            mutableText at: 2 put: $猫
+            """)
+        try #require(initial.error == nil)
+        let restored = SmalltalkSession()
+        _ = try await restored.loadImage(session.imageData())
+        #expect(await value("sameText == mutableText", in: restored) == "true")
+        #expect(await value("copiedText == mutableText", in: restored) == "false")
+        #expect(await value("copiedText", in: restored) == "'Aé'")
+        #expect(await value("sameText at: 1 put: $B. mutableText", in: restored) == "'B猫'")
+    }
+
     @Test func invalidImagesLeaveTheCurrentSessionUntouched() async throws {
         let current = SmalltalkSession()
         _ = await value("kept := Counter new. kept add: 42", in: current)

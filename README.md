@@ -60,7 +60,7 @@ The VM builds and validates a separate session before replacing the active one. 
 
 **Reset Session** starts a fresh session with an empty desktop.
 
-The JSON image format (`format: st80-image`, `version: 7`) stores an object table, metaclass references and class instance variables, bytecode for methods and blocks, source positions, and source references. Version 6 images can still be loaded. The core API `imageData` produces a portable image with embedded method sources. Each image can contain up to 32 MiB and 40,000 reachable reference objects.
+The JSON image format (`format: st80-image`, `version: 8`) stores an object table, metaclass references and class instance variables, bytecode for methods and blocks, source positions, and source references. Version 6 and 7 images can still be loaded. The core API `imageData` produces a portable image with embedded method sources. Each image can contain up to 32 MiB and 40,000 reachable reference objects.
 
 ### Sources and changes
 
@@ -309,6 +309,8 @@ The prototype has these limits.
 - Assigning an undeclared name in a workspace creates a persistent workspace variable. `| temp |` declares a local that lasts for the evaluation.
 - Arithmetic between integers and fractions stays exact. The VM uses [attaswift/BigInt](https://github.com/attaswift/BigInt) for large integers and charges the execution budget before expensive library calls.
 - Scaled decimals preserve fractional trailing zeros. For example, `1.20s` prints as `1.20s2`. The scale can be at most 1,024. Division is exact when its decimal expansion fits, and other quotients round to at least 30 fractional places. Rounding breaks ties away from zero. Mixed arithmetic follows the ANSI conversion table.
+- `String new:`, `String withAll:`, concatenation, and `copy` create writable strings. String literals are read-only. Use one-based indexes and `Character` values with `at:put:`.
+- `1 to: 9 by: 2` creates a lazy `Interval`. Use `asArray` to materialize it.
 - Use `[ Error signal: 'Missing data' ] on: Error do: [ :exception | exception messageText ]` to handle a signaled exception. The closest matching handler runs before the protected block's cleanup, and the handler's result becomes the result of `on:do:`. Applications can define subclasses of `Exception` and `Error`. Sending `error:` to an object signals an `Error`.
 - Strings are Unicode values and `==` compares them by value.
 - Value previews and `printString` produce at most 64 KiB and visit at most 4,096 values, ending with `…` when truncated. Binding previews share a 64 KiB budget per snapshot and use at most 4 KiB per binding.
@@ -329,7 +331,7 @@ The project generator preserves the asset catalog and app icon settings for Debu
 
 ## Smalltalk tests
 
-Run `TestRunner runAll summary` in a fresh Workspace to run all bundled tests. `ANSISmalltalkTest run summary` runs 31 tests for supported behavior from the ANSI Smalltalk draft, including exceptions, scaled decimals, exact arithmetic, message dispatch, blocks, and arrays. You can browse their source under **Tests** in the System Browser.
+Run `TestRunner runAll summary` in a fresh Workspace to run all bundled tests. `ANSISmalltalkTest run summary` runs 42 tests for supported behavior from the ANSI Smalltalk draft, including exceptions, scaled decimals, exact arithmetic, message dispatch, blocks, and arrays. You can browse their source under **Tests** in the System Browser.
 
 Define a subclass of `TestCase` in the Workspace or Browser. Its own parameterless instance methods named `testSomething` run in alphabetical order. Each method runs on a fresh instance. Override `setUp` and `tearDown` for fixtures.
 

@@ -134,7 +134,7 @@ extension SmalltalkRuntime {
             let key = try send(.classObject(windowClass), "selectionFor:requested:", [
                 stack, selectedFrameID.map { .string(String($0)) } ?? .nilValue,
             ])
-            let selected = if case .string(let name) = key, let id = Int(name) {
+            let selected = if let name = key.textContents, let id = Int(name) {
                 snapshot.frames.first(where: { $0.id == id })
             } else {
                 nil as DebuggerFrame?

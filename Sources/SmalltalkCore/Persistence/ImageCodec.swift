@@ -1,7 +1,7 @@
 import Foundation
 
 enum ImageCodec {
-    static let version = 7
+    static let version = 8
     static let supportedVersions = 6...version
     static let maxBytes = 32 * 1_024 * 1_024
     static let maxNodes = 40_000
@@ -150,10 +150,13 @@ enum ImageCodec {
         }
         for builtin in runtime.classes.values {
             if records[builtin.name] == nil, SmalltalkRuntime.additiveBuiltinNames.contains(builtin.name) { continue }
-            guard let record = records[builtin.name], record.superclass == builtin.superclass?.name, record.fields == builtin.ownFields,
-                  record.classFields?.isEmpty != false else {
+            guard let record = records[builtin.name], record.classFields?.isEmpty != false else {
                 throw invalid("Built-in class \(builtin.name) is missing or has an invalid layout.")
             }
+            let newLayout = record.superclass == builtin.superclass?.name && record.fields == builtin.ownFields
+            let oldSequenceLayout = image.version < 8 && ["Array", "String", "Symbol"].contains(builtin.name)
+                && record.superclass == "Object" && record.fields.isEmpty
+            guard newLayout || oldSequenceLayout else { throw invalid("Built-in class \(builtin.name) has an invalid layout.") }
         }
         var remaining = image.classes.filter { !SmalltalkRuntime.builtinNames.contains($0.name) }
         while !remaining.isEmpty {
@@ -189,6 +192,12 @@ enum ImageCodec {
         try runtime.validateCompilerClasses()
         if records["ScaledDecimal"] == nil { try runtime.upgradeCompilerForScaledDecimals() }
         if records["Exception"] == nil { try runtime.installExceptionProtocol() }
+        var refreshBrowserProtocols = false
+        if image.version < 8 {
+            let library = try SystemLibrary.shared.get()
+            try library.installANSIProtocols(in: runtime)
+            refreshBrowserProtocols = try library.upgradeBrowserProtocols(in: runtime)
+        }
         guard runtime.classes["UIBinding"]?.lookup("reconcileMount:") != nil else {
             throw invalid("The image is missing UIBinding>>reconcileMount:. Start a fresh session.")
         }
@@ -200,7 +209,8 @@ enum ImageCodec {
             switch node {
             case .object(let record):
                 guard let stClass = runtime.classes[record.className],
-                      SmalltalkRuntime.heapBuiltinNames.contains(stClass.name) || !SmalltalkRuntime.builtinNames.contains(stClass.name),
+                      stClass === runtime.classes["String"] || SmalltalkRuntime.heapBuiltinNames.contains(stClass.name)
+                        || !SmalltalkRuntime.builtinNames.contains(stClass.name),
                       Set(record.fields.keys) == Set(stClass.fields) else { throw invalid("Invalid object layout.") }
                 let object = try runtime.object(stClass)
                 shells.append(.value(.object(object)))
@@ -268,7 +278,17 @@ enum ImageCodec {
 
         for (id, node) in image.nodes.enumerated() {
             switch (node, shells[id]) {
-            case (.object(let record), .value(.object(let object))): object.fields = try record.fields.mapValues(value)
+            case (.object(let record), .value(.object(let object))):
+                object.fields = try record.fields.mapValues(value)
+                if refreshBrowserProtocols, runtime.isUIClass(object.stClass, named: "BrowserOrganization"),
+                   object.fields["systemProtocols"] != nil {
+                    object.fields["systemProtocols"] = .nilValue
+                }
+                if object.stClass === runtime.classes["String"] {
+                    guard case .string(let text)? = object.fields["_contents"], text.utf8.count <= 65_536 else {
+                        throw invalid("Invalid mutable string contents.")
+                    }
+                }
             case (.array(let values), .value(.array(let array))): array.elements = try values.map(value)
             case (.environment(let record), .environment(let scope)):
                 try validateNames(Array(record.values.keys))

@@ -36,8 +36,8 @@ extension SmalltalkRuntime {
 
     func projectTransientWindow(_ value: Value) throws -> TransientWindowInfo {
         guard case .object(let window) = value, isUIClass(window.stClass, named: "UIWindow"),
-              case .string(let identifier)? = window.fields["identifier"], !identifier.isEmpty, identifier.utf8.count <= 128,
-              case .string(let title)? = window.fields["title"],
+              let identifier = window.fields["identifier"]?.textContents, !identifier.isEmpty, identifier.utf8.count <= 128,
+              let title = window.fields["title"]?.textContents,
               case .integer(let width)? = window.fields["width"], (1...8192).contains(width),
               case .integer(let height)? = window.fields["height"], (1...8192).contains(height),
               case .integer(let minimumWidth)? = window.fields["minimumWidth"], (1...width).contains(minimumWidth),

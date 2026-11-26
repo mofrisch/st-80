@@ -109,7 +109,7 @@ private enum CompilerOutput {
     }
 
     static func string(_ value: Value) throws -> String {
-        guard case .string(let text) = value else { throw invalid() }
+        guard let text = value.textContents else { throw invalid() }
         return text
     }
 
@@ -151,11 +151,11 @@ private enum CompilerOutput {
 
     private static func literal(_ value: Value, depth: Int) throws -> Literal {
         guard depth <= 32 else { throw SmalltalkError("Literal is nested too deeply.") }
+        if let text = value.textContents { return .string(text) }
         switch value {
         case .integer(let number): return .integer(number)
         case .largeInteger(let number): return .largeInteger(number)
         case .scaledDecimal(let number): return .scaledDecimal(number)
-        case .string(let text): return .string(text)
         case .symbol(let name): return .symbol(name)
         case .boolean(let value): return .boolean(value)
         case .nilValue: return .nilValue

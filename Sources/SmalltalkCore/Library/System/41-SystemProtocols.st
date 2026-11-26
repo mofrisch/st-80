@@ -6,11 +6,11 @@ BrowserOrganization compile: 'shippedProtocols
             (''Initialization'' (''initialize''))
             (''Comparing'' (''='' ''=='' ''~='' ''~~''))
             (''Nil Testing'' (''isNil'' ''notNil'' ''ifNil:'' ''ifNotNil:''))
-            (''Reflection'' (''class'' ''respondsTo:'' ''perform:'' ''perform:with:'' ''perform:with:with:''
+            (''Reflection'' (''class'' ''isKindOf:'' ''isMemberOf:'' ''respondsTo:'' ''perform:'' ''perform:with:'' ''perform:with:with:''
                 ''perform:with:with:with:'' ''perform:withArguments:''))
-            (''Printing'' (''printString''))
-            (''Identity'' (''yourself''))
-            (''Error Reporting'' (''error:'' ''error:line:column:''))))
+            (''Printing'' (''printString'' ''printOn:''))
+            (''Identity and Copying'' (''yourself'' ''copy'' ''hash'' ''identityHash''))
+            (''Error Reporting'' (''error:'' ''doesNotUnderstand:'' ''error:line:column:''))))
         (''Class'' (
             (''Instance Creation'' (''new'' ''new:''))
             (''Class Structure'' (''name'' ''superclass'' ''subclasses'' ''allSuperclasses'' ''allSubclasses'' ''instanceVariableNamesText''))
@@ -18,36 +18,69 @@ BrowserOrganization compile: 'shippedProtocols
                 ''subclass:instanceVariableNames:classVariableNames:poolDictionaries:category:''))
             (''Method Dictionary'' (''compile:'' ''compileClass:'' ''methodNames'' ''methodSourceAt:'' ''classMethodNames'' ''classMethodSourceAt:'' ''isPrimitiveAt:''))))
         (''Metaclass'' ((''Class Structure'' (''instanceClass'' ''instanceVariableNames:''))))
+        (''Number'' (
+            (''Comparing'' (''between:and:'' ''min:'' ''max:''))
+            (''Sign'' (''negative'' ''positive'' ''strictlyPositive'' ''sign''))
+            (''Arithmetic'' (''quo:'' ''rem:'' ''reciprocal'' ''raisedTo:'' ''raisedToInteger:'' ''fractionPart''))
+            (''Intervals'' (''to:'' ''to:by:''))
+            (''Rounding and Conversion'' (''asInteger'' ''roundTo:'' ''truncateTo:''))))
         (''Integer'' (
             (''Arithmetic'' (''+'' ''-'' ''*'' ''/'' ''//'' ''\\'' ''negated'' ''abs'' ''squared''))
             (''Comparing'' (''<'' ''>'' ''<='' ''>=''))
             (''Bounds'' (''min:'' ''max:'' ''clampFrom:to:''))
-            (''Rational Access'' (''numerator'' ''denominator''))
+            (''Rational Access'' (''numerator'' ''denominator'' ''asFraction''))
+            (''Bit Operations'' (''bitAnd:'' ''bitOr:'' ''bitXor:'' ''bitShift:'' ''bitAt:'' ''bitAt:put:''
+                ''allMask:'' ''anyMask:'' ''noMask:'' ''highBit''))
+            (''Integer Arithmetic'' (''even'' ''odd'' ''factorial'' ''gcd:'' ''lcm:'' ''sqrt''))
+            (''Rounding'' (''ceiling'' ''floor'' ''rounded'' ''truncated'' ''integerPart''))
+            (''Printing'' (''printStringRadix:'' ''printOn:base:showRadix:''))
             (''Converting'' (''asCharacter'' ''asFloat'' ''asFloatE'' ''asFloatD'' ''asFloatQ'' ''asScaledDecimal:''))
             (''Iteration'' (''timesRepeat:'' ''to:do:'' ''to:by:do:''))))
         (''Boolean'' (
             (''Logical Operations'' (''not'' ''and:'' ''or:'' ''&'' ''|'' ''eqv:'' ''xor:''))
             (''Conditionals'' (''ifTrue:'' ''ifFalse:'' ''ifTrue:ifFalse:'' ''ifFalse:ifTrue:''))))
         (''Fraction'' (
-            (''Rational Access'' (''numerator'' ''denominator''))
+            (''Rational Access'' (''numerator'' ''denominator'' ''asFraction'' ''integerPart''))
             (''Arithmetic'' (''+'' ''-'' ''*'' ''/'' ''//'' ''\\'' ''negated'' ''abs'' ''squared''))
             (''Comparing'' (''<'' ''>'' ''<='' ''>=''))
-            (''Converting'' (''asFloat'' ''asFloatE'' ''asFloatD'' ''asFloatQ'' ''asScaledDecimal:'' ''floor'' ''ceiling'' ''rounded'' ''truncated''))))
+            (''Converting'' (''asFloat'' ''asFloatE'' ''asFloatD'' ''asFloatQ'' ''asScaledDecimal:'' ''floor'' ''ceiling'' ''rounded'' ''truncated''))
+            (''Mathematical Functions'' (''sqrt''))
+            (''Iteration'' (''to:do:'' ''to:by:do:''))))
         (''ScaledDecimal'' (
             (''Accessing'' (''scale'' ''integerPart'' ''fractionPart''))
-            (''Arithmetic'' (''+'' ''-'' ''*'' ''/'' ''//'' ''\\'' ''negated'' ''abs'' ''squared'' ''reciprocal''))
+            (''Arithmetic'' (''+'' ''-'' ''*'' ''/'' ''//'' ''\\'' ''negated'' ''abs'' ''squared'' ''reciprocal'' ''sqrt''))
             (''Comparing'' (''<'' ''>'' ''<='' ''>='' ''negative'' ''positive'' ''strictlyPositive'' ''sign''))
             (''Converting'' (''asFraction'' ''asScaledDecimal:'' ''asFloat'' ''asFloatE'' ''asFloatD'' ''asFloatQ''
-                ''asInteger'' ''rounded'' ''floor'' ''ceiling'' ''truncated''))))
+                ''asInteger'' ''rounded'' ''floor'' ''ceiling'' ''truncated''))
+            (''Iteration'' (''to:do:'' ''to:by:do:''))))
         (''Float'' (
             (''Arithmetic'' (''+'' ''-'' ''*'' ''/'' ''//'' ''\\'' ''negated'' ''abs'' ''squared''))
             (''Comparing'' (''<'' ''>'' ''<='' ''>=''))
-            (''Converting'' (''asFloat'' ''asFloatE'' ''asFloatD'' ''asFloatQ'' ''asScaledDecimal:'' ''ceiling'' ''floor'' ''truncated'' ''rounded''))
-            (''Mathematical Functions'' (''sqrt'' ''exp'' ''ln'' ''raisedTo:'' ''sin'' ''cos'' ''tan''))))
+            (''Converting'' (''asFloat'' ''asFloatE'' ''asFloatD'' ''asFloatQ'' ''asScaledDecimal:'' ''ceiling'' ''floor'' ''truncated'' ''rounded'' ''asFraction'' ''integerPart''))
+            (''Mathematical Functions'' (''sqrt'' ''exp'' ''ln'' ''log:'' ''floorLog:''))
+            (''Trigonometry'' (''sin'' ''cos'' ''tan'' ''arcSin'' ''arcCos'' ''arcTan'' ''degreesToRadians'' ''radiansToDegrees''))
+            (''Iteration'' (''to:do:'' ''to:by:do:''))))
+        (''SequenceableCollection'' (
+            (''Accessing'' (''at:ifAbsent:'' ''first'' ''last'' ''before:'' ''after:''))
+            (''Testing'' (''notEmpty'' ''allSatisfy:'' ''anySatisfy:'' ''occurrencesOf:''))
+            (''Searching'' (''detect:'' ''detect:ifNone:'' ''findFirst:'' ''findLast:'' ''indexOf:'' ''indexOf:ifAbsent:''
+                ''indexOfSubCollection:startingAt:'' ''indexOfSubCollection:startingAt:ifAbsent:''))
+            (''Enumerating'' (''do:separatedBy:'' ''inject:into:'' ''from:to:do:'' ''from:to:keysAndValuesDo:''
+                ''keysAndValuesDo:'' ''reverseDo:'' ''with:do:'' ''reject:''))
+            (''Copying'' (''copyFrom:to:'' ''copyWith:'' ''reverse'' ''copyReplacing:withObject:''
+                ''copyReplaceFrom:to:with:'' ''copyReplaceFrom:to:withObject:'' ''copyReplaceAll:with:'' ''copyWithout:''))
+            (''Converting'' (''asArray''))
+            (''Private'' (''_sequenceFrom:'' ''rehash''))))
         (''String'' (
-            (''Accessing'' (''size'' ''at:'' ''characters''))
+            (''Accessing'' (''size'' ''at:'' ''characters'' ''isEmpty''))
+            (''Updating'' (''at:put:'' ''atAll:put:'' ''atAllPut:'' ''replaceFrom:to:with:''
+                ''replaceFrom:to:with:startingAt:'' ''replaceFrom:to:withObject:''))
+            (''Enumerating'' (''do:'' ''collect:'' ''select:''))
+            (''Case Conversion'' (''asLowercase'' ''asUppercase''))
+            (''Comparing'' (''sameAs:'' ''<'' ''<='' ''>'' ''>='' ''min:'' ''max:'' ''between:and:''))
+            (''Private'' (''_sequenceFrom:'' ''_replaceCharacters:''))
             (''Combining'' ('',''))
-            (''Searching'' (''includes:''))
+            (''Searching'' (''includes:'' ''subStrings:''))
             (''Character Testing'' (''isLetter'' ''isNumber'' ''isASCIIDigit'' ''isLowercase'' ''isWhitespace'' ''isLineBreak''))
             (''Converting'' (''asString'' ''asSymbol'' ''asCharacter'' ''asIntegerOrNil'' ''parseIntegerMagnitudeRadix:'' ''parseFloatOrNil'' ''parseScaledDecimalOrNil''))))
         (''Character'' (
@@ -55,14 +88,24 @@ BrowserOrganization compile: 'shippedProtocols
             (''Testing'' (''isAlphaNumeric'' ''isDigit'' ''isLetter'' ''isLowercase'' ''isUppercase''))
             (''Identity'' (''hash'' ''identityHash''))))
         (''Symbol'' (
-            (''Converting'' (''asString''))))
+            (''Accessing'' (''size'' ''at:'' ''isEmpty'' ''includes:''))
+            (''Enumerating'' (''do:'' ''collect:'' ''select:''))
+            (''Text'' (''asString'' ''asSymbol'' ''asLowercase'' ''asUppercase'' ''subStrings:'' '',''))
+            (''Comparing'' (''sameAs:'' ''<'' ''<='' ''>'' ''>='' ''min:'' ''max:'' ''between:and:''))
+            (''Private'' (''_sequenceFrom:''))))
         (''Array'' (
             (''Accessing'' (''size'' ''at:'' ''at:ifAbsent:'' ''first'' ''last''))
-            (''Updating'' (''at:put:''))
+            (''Updating'' (''at:put:'' ''atAll:put:'' ''atAllPut:'' ''replaceFrom:to:with:''
+                ''replaceFrom:to:with:startingAt:'' ''replaceFrom:to:withObject:''))
             (''Enumerating'' (''do:'' ''collect:'' ''select:''))
             (''Testing'' (''isEmpty'' ''includes:''))
-            (''Copying'' (''copyWith:'' ''copyFrom:to:'' ''reverse''))
+            (''Copying'' (''copyWith:'' ''copyFrom:to:'' ''reverse'' '',''))
             (''Converting'' (''joinedStringFrom:to:''))))
+        (''Interval'' (
+            (''Initialization'' (''initializeFrom:to:by:''))
+            (''Accessing'' (''size'' ''at:'' ''isEmpty'' ''includes:''))
+            (''Enumerating'' (''do:'' ''collect:'' ''select:''))
+            (''Copying'' ('',''))))
         (''BlockClosure'' (
             (''Evaluation'' (''value'' ''value:'' ''value:value:'' ''argumentCount'' ''valueWithArguments:''))
             (''Exception Handling'' (''on:do:''))
@@ -71,9 +114,14 @@ BrowserOrganization compile: 'shippedProtocols
         (''FailedMessage'' ((''Accessing'' (''selector'' ''arguments''))))
         (''Exception'' (
             (''Exception Description'' (''messageText'' ''messageText:'' ''tag'' ''tag:'' ''description'' ''isResumable''))
-            (''Signaling'' (''signal'' ''signal:'' ''defaultAction'' ''_signalException'' ''_failUnhandledException''))))
+            (''Signaling'' (''signal'' ''signal:'' ''defaultAction'' ''_signalException'' ''_failUnhandledException''))
+            (''Handler Control'' (''isNested'' ''outer'' ''pass'' ''resignalAs:'' ''resume'' ''resume:''
+                ''retry'' ''retryUsing:'' ''return'' ''return:''))))
+        (''ExceptionSet'' ((''Handler Selection'' (''selectors:'' ''handles:'' '',''))))
+        (''MessageNotUnderstood'' ((''Exception Description'' (''receiver:message:'' ''receiver'' ''message'' ''description'' ''isResumable''))))
+        (''ZeroDivide'' ((''Exception Description'' (''dividend:'' ''dividend'' ''description'' ''isResumable''))))
         (''Transcript'' (
-            (''Writing'' (''show:'' ''cr''))
+            (''Writing'' (''show:'' ''nextPut:'' ''nextPutAll:'' ''cr'' ''space'' ''tab'' ''flush''))
             (''Buffer Management'' (''clear'' ''record:''))))
         (''Counter'' (
             (''Initialization'' (''initialize''))
@@ -201,7 +249,8 @@ BrowserOrganization compile: 'shippedProtocols
             (''Group Editing'' (''addGroup:'' ''renameGroup:to:'' ''nameError:''))
             (''Membership'' (''explicitGroupOf:'' ''groupOf:default:'' ''move:to:''))))
         (''BrowserOrganization'' (
-            (''Initialization'' (''initialize'' ''shippedProtocols''))
+            (''Initialization'' (''initialize'' ''shippedProtocols'' ''shippedClassSideProtocols''
+                ''refreshShippedProtocols'' ''fileShippedProtocolsOf:side:into:''))
             (''Class Categories'' (''classCategories'' ''categoryOf:'' ''defaultCategoryOf:''))
             (''Method Protocols'' (''protocolsOf:'' ''protocolsOf:side:''))))
         (''BrowserOrganizationForm'' (
@@ -281,13 +330,35 @@ BrowserOrganization compile: 'shippedProtocols
                 ''testLexicalBlockBindings'' ''testValuableProtocol'' ''testBooleanShortCircuitAndLoop''
                 ''testCleanupRunsInUnwindOrder''))
             (''Class Tests'' (''testClassObjectsHaveDistinctMetaclasses'' ''testClassInstanceVariablesBelongToTheReceivingClass''))
+            (''Object Tests'' (''testObjectCopyClassTestsAndHash''))
+            (''Text Tests'' (''testStringFactoriesAndReadableStringProtocols''))
             (''Number Tests'' (''testLargeIntegerArithmetic'' ''testLargeIntegerFloorDivision'' ''testExactFractions''
                 ''testScaledDecimalLiterals'' ''testScaledDecimalExactArithmetic'' ''testScaledDecimalDivision''
-                ''testScaledDecimalMixedNumericTypes'' ''testScaledDecimalConversions'' ''testScaledDecimalWithWideCoefficient''))
-            (''Collection Tests'' (''testArrayFactoriesAndIndexedCopy'' ''testLargeArrayIsOneBasedAndInitiallyNil''))
+                ''testScaledDecimalMixedNumericTypes'' ''testScaledDecimalConversions'' ''testScaledDecimalWithWideCoefficient''
+                ''testIntegerBitAndNumberTheoryProtocols'' ''testNumericConversionsAndIntervals''))
+            (''Collection Tests'' (''testArrayFactoriesAndIndexedCopy'' ''testLargeArrayIsOneBasedAndInitiallyNil''
+                ''testCollectionSearchingAndEnumeration'' ''testSequenceCopyAndOverlappingReplacement''))
             (''Exception Tests'' (''testExceptionNormalCompletion'' ''testExceptionSignalersAndMetadata''
                 ''testExceptionSelectsNearestMatchingHandler'' ''testExceptionFromAnActionUsesTheOuterEnvironment''
                 ''testExceptionHandlerRunsBeforeUnwindBlocks'' ''testExceptionActionCanReturnFromItsHomeMethod''
-                ''testExceptionSelectorUsesHandles'' ''testExceptionDefaultAction''))
+                ''testExceptionSelectorUsesHandles'' ''testExceptionDefaultAction''
+                ''testExceptionRetryReturnAndResignal'' ''testExceptionResumeOuterPassAndSets'' ''testStandardErrorsCarryTheirArguments''))
             (''Test Support'' (''returnThroughCleanup:'' ''returnThroughException:''))))
+    )'.
+
+BrowserOrganization compile: 'shippedClassSideProtocols
+    ^ #(
+        (''Array'' ((''Instance Creation'' (''with:'' ''with:with:'' ''with:with:with:'' ''with:with:with:with:'' ''withAll:''))))
+        (''String'' ((''Instance Creation'' (''with:'' ''with:with:'' ''with:with:with:'' ''with:with:with:with:'' ''withAll:''))))
+        (''Character'' (
+            (''Instance Creation'' (''codePoint:''))
+            (''Control Characters'' (''cr'' ''lf'' ''space'' ''tab''))))
+        (''Float'' (
+            (''Representation'' (''radix'' ''precision'' ''emin'' ''emax'' ''denormalized'' ''epsilon'' ''fmax''
+                ''fmin'' ''fminNormalized'' ''fminDenormalized''))
+            (''Constants'' (''pi'' ''e''))))
+        (''Fraction'' ((''Instance Creation'' (''numerator:denominator:''))))
+        (''Exception'' ((''Signaling'' (''signal'' ''signal:'')) (''Handler Selection'' (''handles:'' '',''))))
+        (''ZeroDivide'' ((''Signaling'' (''dividend:''))))
+        (''Interval'' ((''Instance Creation'' (''from:to:'' ''from:to:by:''))))
     )'.

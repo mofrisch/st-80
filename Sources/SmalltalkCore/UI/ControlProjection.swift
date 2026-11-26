@@ -42,14 +42,13 @@ extension SmalltalkRuntime {
                 throw SmalltalkError("Invalid interface. Expected a tree of UI elements with at most 512 elements, a depth of 16, and no cycles or reused elements.")
             }
             func string(_ name: String, maximum: Int = 65_536) throws -> String {
-                guard case .string(let text)? = object.fields[name], text.utf8.count <= maximum else {
+                guard let text = object.fields[name]?.textContents, text.utf8.count <= maximum else {
                     throw SmalltalkError("Invalid interface. \(object.stClass.name)>>\(name) must be a string of at most \(maximum / 1024) KiB.")
                 }
                 return text
             }
             func field(_ name: String) -> String? {
-                if case .string(let value)? = object.fields[name] { return value }
-                return nil
+                object.fields[name]?.textContents
             }
             func symbolField(_ name: String) -> String? {
                 if case .symbol(let value)? = object.fields[name] { return value }
@@ -119,7 +118,7 @@ extension SmalltalkRuntime {
                     throw SmalltalkError("A list requires an array of at most 1,024 items.")
                 }
                 items = try values.elements.map {
-                    guard case .string(let title) = $0, title.utf8.count <= 4096 else {
+                    guard let title = $0.textContents, title.utf8.count <= 4096 else {
                         throw SmalltalkError("List items must be strings.")
                     }
                     return title
@@ -135,8 +134,8 @@ extension SmalltalkRuntime {
                 }
                 historyEntries = try source.elements.map { value in
                     guard case .array(let row) = value, row.elements.count == 4,
-                          case .string(let key) = row.elements[0], case .string(let title) = row.elements[1],
-                          case .string(let subtitle) = row.elements[2], case .string(let badge) = row.elements[3],
+                          let key = row.elements[0].textContents, let title = row.elements[1].textContents,
+                          let subtitle = row.elements[2].textContents, let badge = row.elements[3].textContents,
                           [key, title, subtitle, badge].allSatisfy({ $0.utf8.count <= 4_096 }) else {
                         throw SmalltalkError("Invalid history list entry.")
                     }
@@ -154,7 +153,7 @@ extension SmalltalkRuntime {
                         throw SmalltalkError("Invalid value table column count.")
                     }
                     return try array.elements.map {
-                        guard case .string(let string) = $0, string.utf8.count <= 4_096 else {
+                        guard let string = $0.textContents, string.utf8.count <= 4_096 else {
                             throw SmalltalkError("Value table cells must be strings of at most 4 KiB.")
                         }
                         return string
@@ -246,7 +245,7 @@ extension SmalltalkRuntime {
             menu = try entries.elements.map { entry in
                 guard case .array(let row) = entry, row.elements.count == 2,
                       case .symbol(let name) = row.elements[0], let action = UIEditorAction(rawValue: name),
-                      case .string(let title) = row.elements[1], !title.isEmpty, title.utf8.count <= 4096 else {
+                      let title = row.elements[1].textContents, !title.isEmpty, title.utf8.count <= 4096 else {
                     throw SmalltalkError("Invalid code editor menu action or title.")
                 }
                 return UIEditorMenuItem(action: action, title: title)

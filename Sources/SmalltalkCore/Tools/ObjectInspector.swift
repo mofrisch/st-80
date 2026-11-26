@@ -6,11 +6,9 @@ public enum InspectionMember: Hashable, Sendable {
     case index(Int)
 
     fileprivate init?(key: Value) {
-        switch key {
-        case .string(let name): self = .field(name)
-        case .integer(let index) where index > 0: self = .index(Int(index))
-        default: return nil
-        }
+        if let name = key.textContents { self = .field(name) }
+        else if case .integer(let index) = key, index > 0 { self = .index(Int(index)) }
+        else { return nil }
     }
 
     fileprivate var key: Value {
@@ -313,6 +311,7 @@ extension SmalltalkRuntime {
         let text: String
         switch value {
         case .object:
+            if let string = value.textContents { return inspectionPreview(.string(string), limit: limit, multiline: multiline) }
             text = "a \(inspectionClassName(value))"
         case .array(let array):
             text = "Array (\(array.elements.count) \(array.elements.count == 1 ? "element" : "elements"))"

@@ -16,6 +16,9 @@ final class SmalltalkRuntime {
         ("UndefinedObject", "Object"),
         ("Exception", "Object"),
         ("Error", "Exception"),
+        ("MessageNotUnderstood", "Error"),
+        ("ZeroDivide", "Error"),
+        ("ExceptionSet", "Object"),
         ("Boolean", "Object"),
         ("True", "Boolean"),
         ("False", "Boolean"),
@@ -26,16 +29,19 @@ final class SmalltalkRuntime {
         ("Fraction", "Number"),
         ("ScaledDecimal", "Number"),
         ("Float", "Number"),
-        ("String", "Object"),
+        ("SequenceableCollection", "Object"),
+        ("String", "SequenceableCollection"),
         ("Character", "Object"),
-        ("Symbol", "Object"),
-        ("Array", "Object"),
+        ("Symbol", "SequenceableCollection"),
+        ("Array", "SequenceableCollection"),
+        ("Interval", "SequenceableCollection"),
         ("BlockClosure", "Object"),
         ("Transcript", "Object"),
     ]
     static let builtinNames = Set(builtinHierarchy.map(\.name))
-    static let heapBuiltinNames: Set<String> = ["Object", "Exception", "Error"]
-    static let additiveBuiltinNames: Set<String> = ["Character", "Float", "LargeInteger", "Fraction", "ScaledDecimal", "Exception", "Error", "Metaclass"]
+    static let heapBuiltinNames: Set<String> = ["Object", "Exception", "Error", "MessageNotUnderstood", "ZeroDivide", "ExceptionSet", "Interval"]
+    static let additiveBuiltinNames: Set<String> = ["Character", "Float", "LargeInteger", "Fraction", "ScaledDecimal", "Exception", "Error", "Metaclass",
+                                                   "MessageNotUnderstood", "ZeroDivide", "ExceptionSet", "SequenceableCollection", "Interval"]
     static let floatAliases: Set<String> = ["FloatE", "FloatD", "FloatQ"]
     static let classLimit = 128 + additiveBuiltinNames.count
     static let executionStepLimit = 100_000
@@ -71,6 +77,8 @@ final class SmalltalkRuntime {
     var debugger: DebuggerExecution?
     var executionCancellation: (any ExecutionCancellation)?
     var exceptionHandler: SmalltalkExceptionHandler?
+    var exceptionAction: SmalltalkExceptionAction?
+    var exceptionDefaultSignal: SmalltalkSignal?
     var useASTInterpreterForTesting = false
     let compilationMode: Bool
     var arrayLimit: Int { compilationMode ? 524_288 : 65_535 }
@@ -85,7 +93,16 @@ final class SmalltalkRuntime {
         self.memory = memory ?? ObjectMemory(hardLimit: compilationMode ? 1_000_000 : 100_000,
                                              initialThreshold: compilationMode ? 32_768 : 4096)
         for (name, superclass) in Self.builtinHierarchy {
-            let fields = name == "Exception" ? ["messageText", "tagValue", "tagAssigned"] : []
+            let fields: [String]
+            switch name {
+            case "Exception": fields = ["messageText", "tagValue", "tagAssigned"]
+            case "MessageNotUnderstood": fields = ["message", "receiver"]
+            case "ZeroDivide": fields = ["dividend"]
+            case "ExceptionSet": fields = ["selectors"]
+            case "String": fields = ["_contents"]
+            case "Interval": fields = ["start", "step", "count"]
+            default: fields = []
+            }
             let stClass = STClass(name, superclass: superclass.flatMap { classes[$0] }, fields: fields)
             classes[name] = stClass
             globals[name] = .classObject(stClass)

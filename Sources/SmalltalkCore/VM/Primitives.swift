@@ -4,6 +4,8 @@ extension SmalltalkRuntime {
     func primitive(_ receiver: Value, _ selector: String, _ args: [Value]) throws -> Value? {
         switch selector {
         case "class": return .classObject(classOf(receiver))
+        case "copy": return try copyValue(receiver)
+        case "hash", "identityHash": return .integer(try hashValue(receiver, identity: selector == "identityHash"))
         case "yourself": return receiver
         case "printString": return .string(printValue(receiver))
         case "=", "==": return .boolean(try equal(receiver, args[0], identity: selector == "=="))
@@ -23,13 +25,17 @@ extension SmalltalkRuntime {
             return try send(receiver, symbol(args[0]), sequenceElements(args[1]))
         case "error:line:column:":
             throw SmalltalkError(try string(args[0]), at: SourcePosition(line: Int(try integer(args[1])), column: Int(try integer(args[2]))))
+        case "/", "//", "\\\\":
+            if receiver.isNumeric, args[0].isNumericZero {
+                return try signalZeroDivide(dividend: receiver)
+            }
         default: break
         }
 
         switch receiver {
         case .classObject(let stClass): return try classPrimitive(stClass, selector, args)
-        case .integer(let n): return try integerPrimitive(n, selector, args)
-        case .largeInteger(let n): return try largeIntegerPrimitive(n, selector, args)
+        case .integer(let n): return try integerPrimitive(n, selector, args) ?? integerProtocol(BigInteger(n), selector, args)
+        case .largeInteger(let n): return try largeIntegerPrimitive(n, selector, args) ?? integerProtocol(n, selector, args)
         case .fraction(let n): return try fractionPrimitive(n, selector, args)
         case .scaledDecimal(let n): return try scaledDecimalPrimitive(n, selector, args)
         case .float(let number): return try floatPrimitive(number, selector, args)
@@ -50,76 +56,15 @@ extension SmalltalkRuntime {
             default: return nil
             }
         case .string(let string):
+            return try stringPrimitive(receiver, contents: string, selector, args)
+        case .symbol(let name):
             switch selector {
-            case ",":
-                let result = string + (try self.string(args[0]))
-                guard result.utf8.count <= (compilationMode ? 262_144 : 65_536) else {
-                    throw SmalltalkError(compilationMode ? "String exceeds the 256 KiB limit." : "String exceeds the 64 KiB limit.")
-                }
-                return .string(result)
-            case "size": return .integer(Int64(string.unicodeScalars.count))
-            case "at:":
-                let scalars = string.unicodeScalars
-                let index = try index(args[0], count: scalars.count)
-                return .character(scalars[scalars.index(scalars.startIndex, offsetBy: index)].value)
-            case "asString": return receiver
-            case "asSymbol": return .symbol(string)
-            case "asCharacter":
-                let scalars = string.unicodeScalars
-                guard scalars.count == 1, let scalar = scalars.first else { throw SmalltalkError("Expected one Unicode scalar.") }
-                return .character(scalar.value)
-            case "utf8Size": return .integer(Int64(string.utf8.count))
-            case "suffixFittingUTF8:":
-                let budget = min(max(0, try integer(args[0])), 262_144)
-                var count = 0
-                var start = string.endIndex
-                while start != string.startIndex {
-                    let previous = string.index(before: start)
-                    let bytes = string[previous..<start].utf8.count
-                    guard count + bytes <= budget else { break }
-                    count += bytes
-                    start = previous
-                }
-                return .string(String(string[start...]))
-            case "includesIgnoringCase:": return .boolean(string.localizedCaseInsensitiveContains(try self.string(args[0])))
-            case "characters": return try array(string.map { .string(String($0)) })
-            case "includes:":
-                if case .character(let codePoint) = args[0] {
-                    return .boolean(string.unicodeScalars.contains { $0.value == codePoint })
-                }
-                let substring = try self.string(args[0])
-                return .boolean(string.contains(substring))
-            case "isLetter": return .boolean(string.count == 1 && string.first?.isLetter == true)
-            case "isNumber": return .boolean(string.count == 1 && string.first?.isNumber == true)
-            case "isASCIIDigit":
-                return .boolean(string.count == 1 && string.first.map { $0.isASCII && $0.isNumber } == true)
-            case "isLowercase": return .boolean(string.count == 1 && string.first?.isLowercase == true)
-            case "isWhitespace": return .boolean(string.count == 1 && string.first?.isWhitespace == true)
-            case "isLineBreak": return .boolean(string == "\n" || string == "\r" || string == "\r\n")
-            case "asIntegerOrNil":
-                if let small = Int64(string) { return .integer(small) }
-                let signed = string.first == "-" || string.first == "+"
-                let digits = signed ? String(string.dropFirst()) : string
-                guard let magnitude = try BigInteger.parseMagnitude(digits, radix: 10, charge: chargeNumericWork) else { return .nilValue }
-                return integerValue(string.first == "-" ? -magnitude : magnitude)
-            case "parseFloatOrNil":
-                let spelling = string.replacingOccurrences(of: "d", with: "e").replacingOccurrences(of: "q", with: "e")
-                guard let number = Double(spelling), number.isFinite else { return .nilValue }
-                return .float(number)
-            case "parseScaledDecimalOrNil":
-                return try scaledDecimalLiteral(string).map(Value.scaledDecimal) ?? .nilValue
-            case "parseIntegerMagnitudeRadix:":
-                let radix = try integer(args[0])
-                guard (2...36).contains(radix), !string.isEmpty, string.utf8.allSatisfy({ byte in
-                    let digit = (48...57).contains(byte) ? Int(byte) - 48 : Int(byte) - 55
-                    return ((48...57).contains(byte) || (65...90).contains(byte)) && digit < radix
-                }) else { return .nilValue }
-                if let small = Int64(string, radix: Int(radix)) { return .integer(small) }
-                guard let magnitude = try BigInteger.parseMagnitude(string, radix: Int(radix), charge: chargeNumericWork) else { return .nilValue }
-                return integerValue(magnitude)
+            case "asString": return .string(name)
+            case "asSymbol": return receiver
+            case "size", "at:", "do:", "asLowercase", "asUppercase", "sameAs:", "<", "<=", ">", ">=", "min:", "max:", "between:and:":
+                return try stringPrimitive(receiver, contents: name, selector, args)
             default: return nil
             }
-        case .symbol(let name): return selector == "asString" ? .string(name) : nil
         case .array(let array):
             switch selector {
             case "size": return .integer(Int64(array.elements.count))
@@ -185,10 +130,171 @@ extension SmalltalkRuntime {
             try appendTranscript(string(args[0]))
             return receiver
         case .object(let object):
+            if object.stClass === classes["String"], let contents = receiver.textContents {
+                return try stringPrimitive(receiver, contents: contents, selector, args)
+            }
             if object.stClass === classes["ToolServices"] { return try toolPrimitive(selector, args) }
-            return try exceptionPrimitive(receiver, object, selector)
+            return try exceptionPrimitive(receiver, object, selector, args)
         default: return nil
         }
+    }
+
+    private func stringPrimitive(_ receiver: Value, contents string: String, _ selector: String, _ args: [Value]) throws -> Value? {
+        switch selector {
+        case ",":
+            let result = string + (try readableString(args[0]))
+            guard result.utf8.count <= (compilationMode ? 262_144 : 65_536) else {
+                throw SmalltalkError(compilationMode ? "String exceeds the 256 KiB limit." : "String exceeds the 64 KiB limit.")
+            }
+            return compilationMode ? .string(result) : try newString(result)
+        case "size": return .integer(Int64(string.unicodeScalars.count))
+        case "at:":
+            let scalars = string.unicodeScalars
+            let index = try index(args[0], count: scalars.count)
+            return .character(scalars[scalars.index(scalars.startIndex, offsetBy: index)].value)
+        case "at:put:":
+            guard case .object(let object) = receiver else { throw SmalltalkError("This string is read-only. Send copy to make it writable.") }
+            guard case .character(let scalar) = args[1], let character = Unicode.Scalar(scalar) else {
+                throw SmalltalkError("A string element must be a character.")
+            }
+            try chargeNumericWork(string.utf8.count / 32 + 1)
+            var contents = string.unicodeScalars
+            let offset = try index(args[0], count: contents.count)
+            let start = contents.index(contents.startIndex, offsetBy: offset)
+            contents.replaceSubrange(start..<contents.index(after: start), with: CollectionOfOne(character))
+            try setString(object, contents: String(contents))
+            return args[1]
+        case "_replaceCharacters:":
+            guard case .object(let object) = receiver else { throw SmalltalkError("This string is read-only. Send copy to make it writable.") }
+            try setString(object, contents: stringFromCharacters(args[0]))
+            return receiver
+        case "do:":
+            for scalar in string.unicodeScalars { _ = try invokeBlock(args[0], [.character(scalar.value)]) }
+            return receiver
+        case "asLowercase", "asUppercase":
+            var result = String.UnicodeScalarView()
+            for scalar in string.unicodeScalars {
+                let original = String(scalar)
+                let mapping = selector == "asLowercase" ? original.lowercased() : original.uppercased()
+                let mapped = mapping.unicodeScalars
+                result.append(mapped.count == 1 ? mapped.first! : scalar)
+            }
+            return try newString(String(result))
+        case "sameAs:", "<", "<=", ">", ">=", "min:", "max:", "between:and:":
+            let lower = try collate(string, with: args[0])
+            switch selector {
+            case "sameAs:": return .boolean(lower == .orderedSame)
+            case "<": return .boolean(lower == .orderedAscending)
+            case "<=": return .boolean(lower != .orderedDescending)
+            case ">": return .boolean(lower == .orderedDescending)
+            case ">=": return .boolean(lower != .orderedAscending)
+            case "min:": return lower == .orderedDescending ? args[0] : receiver
+            case "max:": return lower == .orderedAscending ? args[0] : receiver
+            default:
+                return .boolean(try lower != .orderedAscending && collate(string, with: args[1]) != .orderedDescending)
+            }
+        case "asString": return receiver
+        case "asSymbol": return .symbol(string)
+        case "asCharacter":
+            let scalars = string.unicodeScalars
+            guard scalars.count == 1, let scalar = scalars.first else { throw SmalltalkError("Expected one Unicode scalar.") }
+            return .character(scalar.value)
+        case "utf8Size": return .integer(Int64(string.utf8.count))
+        case "suffixFittingUTF8:":
+            let budget = min(max(0, try integer(args[0])), 262_144)
+            var count = 0
+            var start = string.endIndex
+            while start != string.startIndex {
+                let previous = string.index(before: start)
+                let bytes = string[previous..<start].utf8.count
+                guard count + bytes <= budget else { break }
+                count += bytes
+                start = previous
+            }
+            return .string(String(string[start...]))
+        case "includesIgnoringCase:": return .boolean(string.localizedCaseInsensitiveContains(try self.string(args[0])))
+        case "characters": return try array(string.map { .string(String($0)) })
+        case "includes:":
+            if case .character(let codePoint) = args[0] {
+                return .boolean(string.unicodeScalars.contains { $0.value == codePoint })
+            }
+            if let substring = args[0].textContents { return .boolean(string.contains(substring)) }
+            return .boolean(false)
+        case "isLetter": return .boolean(string.count == 1 && string.first?.isLetter == true)
+        case "isNumber": return .boolean(string.count == 1 && string.first?.isNumber == true)
+        case "isASCIIDigit":
+            return .boolean(string.count == 1 && string.first.map { $0.isASCII && $0.isNumber } == true)
+        case "isLowercase": return .boolean(string.count == 1 && string.first?.isLowercase == true)
+        case "isWhitespace": return .boolean(string.count == 1 && string.first?.isWhitespace == true)
+        case "isLineBreak": return .boolean(string == "\n" || string == "\r" || string == "\r\n")
+        case "asIntegerOrNil":
+            if let small = Int64(string) { return .integer(small) }
+            let signed = string.first == "-" || string.first == "+"
+            let digits = signed ? String(string.dropFirst()) : string
+            guard let magnitude = try BigInteger.parseMagnitude(digits, radix: 10, charge: chargeNumericWork) else { return .nilValue }
+            return integerValue(string.first == "-" ? -magnitude : magnitude)
+        case "parseFloatOrNil":
+            let spelling = string.replacingOccurrences(of: "d", with: "e").replacingOccurrences(of: "q", with: "e")
+            guard let number = Double(spelling), number.isFinite else { return .nilValue }
+            return .float(number)
+        case "parseScaledDecimalOrNil":
+            return try scaledDecimalLiteral(string).map(Value.scaledDecimal) ?? .nilValue
+        case "parseIntegerMagnitudeRadix:":
+            let radix = try integer(args[0])
+            guard (2...36).contains(radix), !string.isEmpty, string.utf8.allSatisfy({ byte in
+                let digit = (48...57).contains(byte) ? Int(byte) - 48 : Int(byte) - 55
+                return ((48...57).contains(byte) || (65...90).contains(byte)) && digit < radix
+            }) else { return .nilValue }
+            if let small = Int64(string, radix: Int(radix)) { return .integer(small) }
+            guard let magnitude = try BigInteger.parseMagnitude(string, radix: Int(radix), charge: chargeNumericWork) else { return .nilValue }
+            return integerValue(magnitude)
+        default: return nil
+        }
+    }
+
+    private func readableString(_ value: Value) throws -> String {
+        if case .symbol(let name) = value { return name }
+        return try string(value)
+    }
+
+    private func collate(_ string: String, with value: Value) throws -> ComparisonResult {
+        let other = try readableString(value)
+        try chargeNumericWork((string.utf8.count + other.utf8.count) / 32 + 1)
+        let locale = Locale(identifier: "en_US_POSIX")
+        let left = string.folding(options: .caseInsensitive, locale: locale)
+        let right = other.folding(options: .caseInsensitive, locale: locale)
+        if left == right { return .orderedSame }
+        return left < right ? .orderedAscending : .orderedDescending
+    }
+
+    func newString(_ contents: String) throws -> Value {
+        let string = try object(classes["String"]!)
+        try setString(string, contents: contents)
+        return .object(string)
+    }
+
+    private func setString(_ string: STObject, contents: String) throws {
+        guard contents.utf8.count <= (compilationMode ? 262_144 : 65_536) else {
+            throw SmalltalkError("The string representation is too long.")
+        }
+        string.fields["_contents"] = .string(contents)
+    }
+
+    private func stringFromCharacters(_ value: Value) throws -> String {
+        if let contents = value.textContents { return contents }
+        var scalars = String.UnicodeScalarView()
+        var size = 0
+        for element in try sequenceElements(value) {
+            guard case .character(let codePoint) = element, let scalar = Unicode.Scalar(codePoint) else {
+                throw SmalltalkError("A string element must be a character.")
+            }
+            size += scalar.utf8.count
+            guard size <= (compilationMode ? 262_144 : 65_536) else {
+                throw SmalltalkError("The string representation is too long.")
+            }
+            scalars.append(scalar)
+        }
+        return String(scalars)
     }
 
     private func characterPrimitive(_ codePoint: UInt32, _ selector: String) throws -> Value? {
@@ -215,7 +321,13 @@ extension SmalltalkRuntime {
         switch selector {
         case "_fractionNumerator:denominator:":
             guard stClass.name == "Fraction" else { return nil }
-            return try fractionValue(unboundedInteger(args[0]), unboundedInteger(args[1]), factory: true)
+            let numerator = try unboundedInteger(args[0])
+            let denominator = try unboundedInteger(args[1])
+            if denominator.isZero { return try signalZeroDivide(dividend: args[0]) }
+            return try fractionValue(numerator, denominator, factory: true)
+        case "_stringWithAll:":
+            guard stClass.name == "String" else { return nil }
+            return try newString(stringFromCharacters(args[0]))
         case "name": return .symbol(stClass.name)
         case "superclass": return stClass.superclass.map(Value.classObject) ?? .nilValue
         case "subclasses", "allSubclasses":
@@ -259,15 +371,16 @@ extension SmalltalkRuntime {
             let classFields = try args.count == 3 ? string(args[2]).split(whereSeparator: \.isWhitespace).map(String.init) : []
             return .classObject(try subclass(of: stClass, name: symbol(args[0]), fields: string(args[1]), classFields: classFields))
         case "new:":
-            guard stClass.name == "Array" else { throw SmalltalkError("Only Array supports new:.") }
+            guard stClass.name == "Array" || stClass.name == "String" else { throw SmalltalkError("Only Array and String support new:.") }
             let count = try integer(args[0])
             guard (0...Int64(arrayLimit)).contains(count) else { throw SmalltalkError("Array size must be between 0 and \(arrayLimit).") }
+            if stClass.name == "String" { return try newString(String(repeating: " ", count: Int(count))) }
             return try array(Array(repeating: .nilValue, count: Int(count)))
         case "new":
             guard stClass.instanceClass == nil else { throw SmalltalkError("Each class has exactly one instance of its metaclass.") }
             if stClass.name == "Array" { return try array([]) }
-            if stClass.name == "String" { return .string("") }
-            guard Self.heapBuiltinNames.contains(stClass.name) || Self.primitiveDescriptions[stClass.name] == nil && !["True", "False", "SmallInteger", "LargeInteger", "Number", "UndefinedObject"].contains(stClass.name) else {
+            if stClass.name == "String" { return try newString("") }
+            guard Self.heapBuiltinNames.contains(stClass.name) || !Self.builtinNames.contains(stClass.name) else {
                 throw SmalltalkError("\(stClass.name) cannot be instantiated with new.")
             }
             let object = try object(stClass)

@@ -25,7 +25,7 @@ extension SmalltalkRuntime {
     }
 
     func string(_ value: Value) throws -> String {
-        guard case .string(let s) = value else { throw SmalltalkError("Expected a string.") }
+        guard let s = value.textContents else { throw SmalltalkError("Expected a string.") }
         return s
     }
 
@@ -42,6 +42,10 @@ extension SmalltalkRuntime {
 
     func sequenceElements(_ value: Value) throws -> [Value] {
         if case .array(let array) = value { return array.elements }
+        if let string = value.textContents {
+            try chargeNumericWork(string.utf8.count)
+            return string.unicodeScalars.map { .character($0.value) }
+        }
         return try withRoots([value]) { roots in
             let size = try integer(send(value, "size", []))
             guard (0...Int64(arrayLimit)).contains(size) else { throw SmalltalkError("Invalid argument collection size.") }
@@ -57,6 +61,58 @@ extension SmalltalkRuntime {
     }
 
     func isNil(_ value: Value) -> Bool { if case .nilValue = value { return true }; return false }
+
+    func copyValue(_ value: Value) throws -> Value {
+        switch value {
+        case .string(let text):
+            return try newString(text)
+        case .object(let original):
+            let copy = try object(original.stClass)
+            copy.fields = original.fields
+            return .object(copy)
+        case .array(let original):
+            return try array(original.elements)
+        default:
+            return value
+        }
+    }
+
+    func hashValue(_ value: Value, identity: Bool) throws -> Int64 {
+        var hash = Hasher()
+        switch value {
+        case .integer, .largeInteger, .fraction, .scaledDecimal, .float:
+            // Mixed equality uses both exact comparisons and rounded binary64
+            // comparisons. Every representation must agree when either does.
+            hash.combine("Number")
+        case .character(let scalar):
+            return Int64(scalar)
+        case .string(let string), .symbol(let string):
+            try chargeNumericWork(string.utf8.count / 32 + 1)
+            hash.combine(string)
+        case .boolean(let boolean):
+            hash.combine(boolean)
+        case .nilValue:
+            hash.combine("nil")
+        case .transcript:
+            hash.combine("Transcript")
+        case .object(let object):
+            if !identity, let string = value.textContents {
+                try chargeNumericWork(string.utf8.count / 32 + 1)
+                hash.combine(string)
+            } else {
+                hash.combine(ObjectIdentifier(object))
+            }
+        case .classObject(let stClass):
+            hash.combine(ObjectIdentifier(stClass))
+        case .block(let block):
+            hash.combine(ObjectIdentifier(block))
+        case .array(let array):
+            // Cyclic arrays compare structurally. Size is invariant under that comparison.
+            if identity { hash.combine(ObjectIdentifier(array)) }
+            else { hash.combine(array.elements.count) }
+        }
+        return Int64(hash.finalize())
+    }
 
     func equal(_ a: Value, _ b: Value, identity: Bool = false) throws -> Bool {
         struct ArrayPair: Hashable {
@@ -80,6 +136,10 @@ extension SmalltalkRuntime {
                 pending.append(.values(left.elements[index], right.elements[index]))
             case .values(let left, let right):
                 try tick()
+                if !identity, let a = left.textContents, let b = right.textContents {
+                    if a != b { return false }
+                    continue
+                }
                 switch (left, right) {
                 case (.integer(let a), .integer(let b)): if a != b { return false }
                 case (.largeInteger(let a), .largeInteger(let b)):
@@ -121,5 +181,35 @@ extension SmalltalkRuntime {
             }
         }
         return true
+    }
+}
+
+extension Value {
+    var isNumeric: Bool {
+        switch self {
+        case .integer, .largeInteger, .fraction, .scaledDecimal, .float: return true
+        default: return false
+        }
+    }
+
+    var isNumericZero: Bool {
+        switch self {
+        case .integer(let value): return value == 0
+        case .largeInteger(let value): return value.isZero
+        case .fraction(let value): return value.numerator.isZero
+        case .scaledDecimal(let value): return value.coefficient.isZero
+        case .float(let value): return value == 0
+        default: return false
+        }
+    }
+
+    var textContents: String? {
+        switch self {
+        case .string(let string): return string
+        case .object(let object) where object.stClass.name == "String":
+            if case .string(let string)? = object.fields["_contents"] { return string }
+            return nil
+        default: return nil
+        }
     }
 }

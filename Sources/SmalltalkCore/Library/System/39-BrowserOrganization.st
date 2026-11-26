@@ -121,8 +121,8 @@ BrowserOrganization compileClass: 'shippedClassCategories
     ^ #(
         (''Kernel'' (''Object'' ''Class'' ''Metaclass'' ''UndefinedObject'' ''Boolean'' ''True'' ''False''
             ''Number'' ''Integer'' ''SmallInteger'' ''LargeInteger'' ''Fraction'' ''ScaledDecimal'' ''Float'' ''BlockClosure'' ''FailedMessage''))
-        (''Exceptions'' (''Exception'' ''Error''))
-        (''Collections & Text'' (''Array'' ''String'' ''Character'' ''Symbol''))
+        (''Exceptions'' (''Exception'' ''Error'' ''ExceptionSet'' ''MessageNotUnderstood'' ''ZeroDivide''))
+        (''Collections & Text'' (''SequenceableCollection'' ''Array'' ''Interval'' ''String'' ''Character'' ''Symbol''))
         (''Compiler'' (''STCompilerList'' ''STScanner'' ''STCompiler''))
         (''MVC'' (''Model'' ''Controller'' ''UIBinding''))
         (''Desktop'' (''SystemWindow'' ''DesktopModel'' ''DisplayScreen'' ''DesktopManager'' ''UIWindow''))
@@ -159,21 +159,36 @@ BrowserOrganization compile: 'protocolsOf: target
     ^ self protocolsOf: target side: #instance'.
 
 BrowserOrganization compile: 'protocolsOf: target side: methodSide
-    | grouping entry className |
+    | grouping entry |
+    systemProtocols isNil ifTrue: [ self refreshShippedProtocols ].
     catalogs do: [ :each |
         ((each at: 1) == target and: [ (each at: 2) = methodSide ]) ifTrue: [ ^ each at: 3 ] ].
     grouping := BrowserGrouping new.
-    methodSide = #instance ifTrue: [
-        className := ToolVM classNameOf: target.
-        systemProtocols do: [ :definition |
-            (definition at: 1) = className ifTrue: [
-                (definition at: 2) do: [ :entrySpec |
-                    grouping defineGroup: (entrySpec at: 1) items: (entrySpec at: 2) ] ] ] ].
+    self fileShippedProtocolsOf: target side: methodSide into: grouping.
     grouping defineDefaults: #(''Unclassified'').
     entry := Array new: 3.
     entry at: 1 put: target; at: 2 put: methodSide; at: 3 put: grouping.
     catalogs := catalogs copyWith: entry.
     ^ grouping'.
+
+BrowserOrganization compile: 'refreshShippedProtocols
+    systemProtocols := self shippedProtocols.
+    catalogs do: [ :entry |
+        self fileShippedProtocolsOf: (entry at: 1) side: (entry at: 2) into: (entry at: 3) ]'.
+
+BrowserOrganization compile: 'fileShippedProtocolsOf: target side: methodSide into: grouping
+    | className definitions group additional |
+    className := ToolVM classNameOf: target.
+    definitions := methodSide = #instance
+        ifTrue: [ systemProtocols ] ifFalse: [ self shippedClassSideProtocols ].
+    definitions do: [ :definition |
+        (definition at: 1) = className ifTrue: [
+            (definition at: 2) do: [ :entrySpec |
+                additional := (entrySpec at: 2) select: [ :selector | (grouping explicitGroupOf: selector) isNil ].
+                group := grouping groupNamed: (entrySpec at: 1).
+                group isNil
+                    ifTrue: [ additional notEmpty ifTrue: [ grouping defineGroup: (entrySpec at: 1) items: additional ] ]
+                    ifFalse: [ group items: group items , additional ] ] ] ]'.
 
 UIColumn subclass: #BrowserOrganizationForm instanceVariableNames: 'heading entry destinations destination applyButton operation'.
 

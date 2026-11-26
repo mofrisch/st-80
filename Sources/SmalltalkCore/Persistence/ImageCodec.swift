@@ -199,11 +199,12 @@ enum ImageCodec {
         var refreshBrowserProtocols = false
         var addedCollections: Set<String> = []
         var missingCollections = image.version < 9 ? SmalltalkRuntime.shippedCollectionNames : []
-        let dictionaryNames = SmalltalkRuntime.shippedDictionaryNames
-        // Version 9 images can predate the dictionaries. Preserve any existing
-        // bindings, including a custom Dictionary hierarchy.
-        if dictionaryNames.allSatisfy({ records[$0] == nil && image.globals[$0] == nil }) {
-            missingCollections.formUnion(dictionaryNames)
+        // Version 9 images can predate either family. Preserve existing
+        // bindings, including small libraries authored under the same names.
+        for names in [SmalltalkRuntime.shippedDictionaryNames, SmalltalkRuntime.shippedStreamNames] {
+            if names.allSatisfy({ records[$0] == nil && image.globals[$0] == nil }) {
+                missingCollections.formUnion(names)
+            }
         }
         if !missingCollections.isEmpty {
             let library = try SystemLibrary.shared.get()

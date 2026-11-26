@@ -106,6 +106,23 @@ BrowserOrganization compile: 'shippedProtocols
             (''Copying'' (''copy''))
             (''Private'' (''_reserve:'' ''_indexOfKey:'' ''_key:matches:''))))
         (''IdentityDictionary'' ((''Private'' (''_key:matches:''))))
+        (''CollectionStream'' (
+            (''Contents'' (''contents'' ''isEmpty''))
+            (''Positioning'' (''position'' ''position:'' ''reset'' ''setToEnd''))
+            (''Lifecycle'' (''close''))
+            (''Private'' (''_openOn:writing:'' ''_sequence'' ''_size'' ''_sliceFrom:to:''
+                ''_checkWrite:'' ''_write:'' ''_commitWrite:''))))
+        (''ReadStream'' (
+            (''Reading'' (''next'' ''next:'' ''nextLine'' ''nextMatchFor:'' ''peek'' ''peekFor:'' ''upTo:''))
+            (''Positioning'' (''atEnd'' ''skip:'' ''skipTo:''))
+            (''Enumerating'' (''do:''))
+            (''Private'' (''_endAfter:'' ''_findNext:''))))
+        (''WriteStream'' (
+            (''Writing'' (''nextPut:'' ''nextPutAll:'' ''cr'' ''space'' ''tab''))
+            (''Lifecycle'' (''flush''))))
+        (''ReadWriteStream'' (
+            (''Writing'' (''nextPut:'' ''nextPutAll:'' ''cr'' ''space'' ''tab''))
+            (''Lifecycle'' (''flush''))))
         (''ByteArray'' (
             (''Initialization'' (''initialize''))
             (''Accessing'' (''size'' ''at:'' ''isEmpty'' ''includes:''))
@@ -384,6 +401,10 @@ BrowserOrganization compile: 'shippedProtocols
             (''Class Tests'' (''testClassObjectsHaveDistinctMetaclasses'' ''testClassInstanceVariablesBelongToTheReceivingClass''))
             (''Object Tests'' (''testObjectCopyClassTestsAndHash''))
             (''Text Tests'' (''testStringFactoriesAndReadableStringProtocols''))
+            (''Stream Tests'' (''testReadStreamPeekAndPosition'' ''testReadStreamSlicesAndDelimiters''
+                ''testReadStreamNextLineSupportsCommonLineEndings'' ''testWriteStreamOverwritesAndAppendsWithoutWriteBack''
+                ''testWriteStreamValidatesAByteBatchBeforeWriting'' ''testReadWriteStreamMovesBetweenReadingAndWriting''
+                ''testWriteStreamAcceptsObjectAndRadixPrinting''))
             (''Number Tests'' (''testLargeIntegerArithmetic'' ''testLargeIntegerFloorDivision'' ''testExactFractions''
                 ''testScaledDecimalLiterals'' ''testScaledDecimalExactArithmetic'' ''testScaledDecimalDivision''
                 ''testScaledDecimalMixedNumericTypes'' ''testScaledDecimalConversions'' ''testScaledDecimalWithWideCoefficient''
@@ -411,6 +432,9 @@ BrowserOrganization compile: 'shippedClassSideProtocols
         (''Collection'' ((''Instance Creation'' (''with:'' ''with:with:'' ''with:with:with:'' ''with:with:with:with:'' ''withAll:''))))
         (''UnorderedCollection'' ((''Instance Creation'' (''new:''))))
         (''Dictionary'' ((''Instance Creation'' (''new:'' ''withAll:''))))
+        (''ReadStream'' ((''Instance Creation'' (''on:''))))
+        (''WriteStream'' ((''Instance Creation'' (''with:''))))
+        (''ReadWriteStream'' ((''Instance Creation'' (''on:'' ''with:''))))
         (''ByteArray'' ((''Instance Creation'' (''new:'' ''withAll:''))))
         (''OrderedCollection'' ((''Instance Creation'' (''new:''))))
         (''SortedCollection'' (

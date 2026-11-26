@@ -262,6 +262,22 @@ struct ToolWindowTests {
             """).value == "'Instance Creation'")
     }
 
+    @Test func ansiStreamsAreFiledByOperationAndSide() async {
+        let session = SmalltalkSession()
+        #expect(await session.evaluate("""
+            (SystemOrganization protocolsOf: ReadStream side: #instance)
+                groupOf: 'nextLine' default: 'Unclassified'
+            """).value == "'Reading'")
+        #expect(await session.evaluate("""
+            (SystemOrganization protocolsOf: CollectionStream side: #instance)
+                groupOf: 'position:' default: 'Unclassified'
+            """).value == "'Positioning'")
+        #expect(await session.evaluate("""
+            (SystemOrganization protocolsOf: ReadWriteStream side: #class)
+                groupOf: 'with:' default: 'Unclassified'
+            """).value == "'Instance Creation'")
+    }
+
     @Test func browserFiltersClassesAndMethodsThroughFourPanes() async throws {
         let session = SmalltalkSession()
         let snapshot = try await openTools(.browser, in: session)

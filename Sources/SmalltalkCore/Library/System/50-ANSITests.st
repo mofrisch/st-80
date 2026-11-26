@@ -750,3 +750,124 @@ ANSISmalltalkTest compile: 'testDictionaryEnumerationVisitsASnapshot
     self assert: (seen at: #b) equals: 2.
     self assert: (table at: #b) equals: 99.
     self assert: (table at: #new) equals: 42'.
+
+ANSISmalltalkTest compile: 'testReadStreamPeekAndPosition
+    | stream empty |
+    stream := ReadStream on: #(nil 7 8).
+    empty := ReadStream on: #().
+    self assert: empty isEmpty.
+    self assert: empty atEnd.
+    self assert: empty peek isNil.
+    self deny: (empty peekFor: nil).
+    self assert: (stream peekFor: nil).
+    self assert: stream position equals: 0.
+    self assert: stream next isNil.
+    self deny: (stream nextMatchFor: 42).
+    self assert: stream position equals: 2.
+    self assert: stream next equals: 8.
+    self assert: stream atEnd.
+    self deny: stream isEmpty.
+    stream reset.
+    stream position: 1.
+    self assert: stream peek equals: 7.
+    stream skip: 100.
+    self assert: stream atEnd.
+    self assert: stream position equals: 3.
+    self assert: ([ stream position: 3. false ] on: Error do: [ :exception | true ]).
+    stream reset; setToEnd.
+    self assert: stream atEnd'.
+
+ANSISmalltalkTest compile: 'testReadStreamSlicesAndDelimiters
+    | text bytes prefix |
+    text := ReadStream on: ''ab,cd;ef''.
+    self assert: (text next: 0) class equals: String.
+    self assert: (text upTo: $,) equals: ''ab''.
+    self assert: text position equals: 3.
+    self assert: (text skipTo: $;).
+    self assert: (text upTo: $!) equals: ''ef''.
+    self assert: text atEnd.
+    self assert: (text upTo: $!) equals: ''''.
+    self assert: text contents equals: ''ab,cd;ef''.
+    bytes := ReadStream on: (ByteArray with: 1 with: 2 with: 255).
+    prefix := bytes next: 2.
+    self assert: prefix class equals: ByteArray.
+    self assert: prefix asArray equals: #(1 2).
+    self assert: (bytes next: 8) asArray equals: #(255).
+    self assert: bytes atEnd'.
+
+ANSISmalltalkTest compile: 'testReadStreamNextLineSupportsCommonLineEndings
+    | text stream line |
+    text := ''one'' , (String with: Character cr with: Character lf)
+        , ''two'' , Character cr asString
+        , ''three'' , Character lf asString , ''four''.
+    stream := ReadStream on: text.
+    self assert: stream nextLine equals: ''one''.
+    self assert: stream nextLine equals: ''two''.
+    self assert: stream nextLine equals: ''three''.
+    self assert: stream nextLine equals: ''four''.
+    self assert: stream atEnd.
+    line := ReadStream on: (String with: Character lf).
+    self assert: line nextLine equals: ''''.
+    self assert: line atEnd'.
+
+ANSISmalltalkTest compile: 'testWriteStreamOverwritesAndAppendsWithoutWriteBack
+    | original writer snapshot |
+    original := String withAll: ''café''.
+    writer := WriteStream with: original.
+    self assert: writer position equals: 4.
+    writer nextPut: $!.
+    writer position: 2.
+    writer nextPut: $猫.
+    self assert: writer contents equals: ''ca猫é!''.
+    writer setToEnd; space; tab; cr; flush.
+    self assert: writer contents equals: (''ca猫é!'' , (String with: Character space with: Character tab with: Character lf)).
+    self assert: original equals: ''café''.
+    snapshot := writer contents.
+    snapshot at: 1 put: $x.
+    self assert: writer contents first equals: $c.
+    self deny: (writer respondsTo: #next)'.
+
+ANSISmalltalkTest compile: 'testWriteStreamValidatesAByteBatchBeforeWriting
+    | writer bytes |
+    writer := WriteStream with: (ByteArray with: 0 with: 255).
+    writer position: 1.
+    self assert: ([ writer nextPutAll: #(8 256). false ]
+        on: Error do: [ :exception | true ]).
+    self assert: writer position equals: 1.
+    self assert: writer contents asArray equals: #(0 255).
+    writer nextPutAll: #(12 13).
+    bytes := writer contents.
+    self assert: bytes class equals: ByteArray.
+    self assert: bytes asArray equals: #(0 12 13).
+    self assert: writer position equals: 3'.
+
+ANSISmalltalkTest compile: 'testReadWriteStreamMovesBetweenReadingAndWriting
+    | stream initial replay |
+    initial := OrderedCollection with: 1 with: 2 with: 3.
+    stream := ReadWriteStream with: initial.
+    self assert: stream atEnd.
+    stream reset.
+    self assert: stream next equals: 1.
+    stream nextPut: 42.
+    self assert: stream next equals: 3.
+    self assert: stream atEnd.
+    stream nextPut: nil.
+    self assert: stream contents class equals: OrderedCollection.
+    self assert: stream contents asArray equals: #(1 42 3 nil).
+    self assert: initial asArray equals: #(1 2 3).
+    replay := OrderedCollection new.
+    stream reset; do: [ :each | replay add: each ].
+    self assert: replay asArray equals: #(1 42 3 nil).
+    self assert: stream atEnd.
+    stream := ReadWriteStream on: (Array with: 9).
+    self assert: stream next equals: 9'.
+
+ANSISmalltalkTest compile: 'testWriteStreamAcceptsObjectAndRadixPrinting
+    | writer |
+    writer := WriteStream with: String new.
+    ''hi'' printOn: writer.
+    writer space.
+    255 printOn: writer base: 16 showRadix: true.
+    self assert: writer contents equals: (''hi'' printString , '' 16rFF'').
+    writer close.
+    self assert: ([ writer nextPut: $x. false ] on: Error do: [ :exception | true ])'.

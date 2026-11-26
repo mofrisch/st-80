@@ -124,7 +124,8 @@ BrowserOrganization compileClass: 'shippedClassCategories
         (''Exceptions'' (''Exception'' ''Error'' ''ExceptionSet'' ''MessageNotUnderstood'' ''ZeroDivide''))
         (''Collections & Text'' (''Collection'' ''SequenceableCollection'' ''Array'' ''ByteArray'' ''Interval''
             ''OrderedCollection'' ''SortedCollection'' ''UnorderedCollection'' ''Bag'' ''Set''
-            ''Dictionary'' ''IdentityDictionary'' ''String'' ''Character'' ''Symbol''))
+            ''Dictionary'' ''IdentityDictionary'' ''String'' ''Character'' ''Symbol''
+            ''CollectionStream'' ''ReadStream'' ''WriteStream'' ''ReadWriteStream''))
         (''Compiler'' (''STCompilerList'' ''STScanner'' ''STCompiler''))
         (''MVC'' (''Model'' ''Controller'' ''UIBinding''))
         (''Desktop'' (''SystemWindow'' ''DesktopModel'' ''DisplayScreen'' ''DesktopManager'' ''UIWindow''))

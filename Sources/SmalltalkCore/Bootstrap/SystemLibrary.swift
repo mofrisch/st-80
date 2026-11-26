@@ -177,10 +177,12 @@ struct SystemLibrary: Sendable {
                 "1198c24ac571e6f29f761121d6f07bf4ce67f09c8c262f038bb512a5b13729ac",
                 "7ea8d999df67b9777d1c79ae510d3f93677423a2b8407699d2d534c376349576",
                 "7fa293e8a83174d786a7453a592a3e45123750cda2b8b8f291375f2779bd18ab",
+                "cc354ef0e71fc134f9f19929c4a44403584e9ebcc7dbd9085efa9bcb0716b8c3",
             ]),
             (.instance, "shippedClassSideProtocols", [
                 "7b2f2950f5dc051c01fdcd0afcdde26c8505606a3c1f370ad2c6910c5eff398c",
                 "a57049aae45eec58838977d232ca38087f17d6cadfc40092e4a23df2e68a9a13",
+                "b47e4912fcc451571d5cef706f0cc72fdf9e8d9a4642a4e2e6813c2c680df201",
             ]),
             (.classSide, "shippedClassCategories", [
                 "94b28fa4e197128a9942bda803c88b225ff4b73c86eb419a706c4b06c8dc4b1e",
@@ -189,6 +191,7 @@ struct SystemLibrary: Sendable {
                 "d6f01cc25cefa6821ba8f6df8155881ce9448539865f2469d944a22fea670818",
                 "1fb93f9ae4e52958193acf210246958977090fde93fb71a743809d4a03c13362",
                 "e0bc5333d08db3e3d27d006ea23e374351a5e468cc5be4023e1ce012b8bb3421",
+                "386c630d15d0ef4cfee1ef93fc238c610b3cca4774c91a15d9c80e5f7efdc3ef",
             ]),
         ]
         for (side, selector, hashes) in defaults {

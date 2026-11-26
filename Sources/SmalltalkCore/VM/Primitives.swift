@@ -131,7 +131,11 @@ extension SmalltalkRuntime {
             return receiver
         case .object(let object):
             if selector == "_spliceAt:remove:with:", let ordered = classes["OrderedCollection"], object.stClass.inherits(from: ordered) {
-                return try spliceCollectionStorage(object, arguments: args)
+                guard case .array(let incoming) = args[2] else { throw SmalltalkError("Invalid collection storage.") }
+                return try spliceCollectionStorage(object, first: integer(args[0]), removed: integer(args[1]), incoming: incoming)
+            }
+            if selector == "_commitWrite:", let stream = classes["CollectionStream"], object.stClass.inherits(from: stream) {
+                return try commitStreamWrite(object, incoming: args[0])
             }
             if object.stClass === classes["String"], let contents = receiver.textContents {
                 return try stringPrimitive(receiver, contents: contents, selector, args)
@@ -142,12 +146,11 @@ extension SmalltalkRuntime {
         }
     }
 
-    private func spliceCollectionStorage(_ object: STObject, arguments: [Value]) throws -> Value {
+    private func spliceCollectionStorage(_ object: STObject, first: Int64, removed: Int64, incoming: STArray) throws -> Value {
         guard case .array(let storage)? = object.fields["storage"],
-              case .integer(let used)? = object.fields["tally"], (0...storage.elements.count).contains(Int(used)),
-              case .array(let incoming) = arguments[2] else { throw SmalltalkError("Invalid collection storage.") }
-        let first = try integer(arguments[0])
-        let removed = try integer(arguments[1])
+              case .integer(let used)? = object.fields["tally"], (0...storage.elements.count).contains(Int(used)) else {
+            throw SmalltalkError("Invalid collection storage.")
+        }
         guard (1...used + 1).contains(first), (0...used - first + 1).contains(removed) else {
             throw SmalltalkError("Invalid collection splice range.")
         }
@@ -160,7 +163,8 @@ extension SmalltalkRuntime {
         guard count <= storage.elements.count else { throw SmalltalkError("Insufficient collection storage.") }
 
         // The contents and tally change together, after the execution budget has been checked.
-        try chargeNumericWork(previousCount - tail + values.count + Int(removed))
+        let moved = shift == 0 ? 0 : previousCount - tail
+        try chargeNumericWork(moved + values.count + Int(removed))
         if shift > 0 {
             for index in (tail..<previousCount).reversed() { storage.elements[index + shift] = storage.elements[index] }
         } else if shift < 0 {
@@ -172,6 +176,42 @@ extension SmalltalkRuntime {
         return .object(object)
     }
 
+    private func commitStreamWrite(_ object: STObject, incoming value: Value) throws -> Value {
+        guard case .object(let buffer)? = object.fields["buffer"],
+              case .integer(let used)? = buffer.fields["tally"], (0...Int64(arrayLimit)).contains(used),
+              case .integer(let cursor)? = object.fields["cursor"], (0...used).contains(cursor),
+              case .array(let incoming) = value else { throw SmalltalkError("Invalid stream storage.") }
+        let count = Int64(incoming.elements.count)
+        let overwritten = min(count, used - cursor)
+        var newByteCount: Int64?
+        if case .integer(let byteCount)? = object.fields["byteCount"] {
+            let limit: Int64 = compilationMode ? 262_144 : 65_536
+            guard (0...limit).contains(byteCount), case .array(let storage)? = buffer.fields["storage"],
+                  used <= storage.elements.count else { throw SmalltalkError("Invalid text stream storage.") }
+            let removedBytes = try streamTextBytes(storage.elements[Int(cursor)..<Int(cursor + overwritten)])
+            let writtenBytes = try streamTextBytes(incoming.elements[...])
+            let size = byteCount - removedBytes + writtenBytes
+            guard (0...limit).contains(size) else { throw SmalltalkError("The text stream exceeds the string size limit.") }
+            newByteCount = size
+        }
+        // Publish the new position only after the storage update. No evaluation
+        // or budget check can interrupt these changes.
+        _ = try spliceCollectionStorage(buffer, first: cursor + 1, removed: overwritten, incoming: incoming)
+        object.fields["cursor"] = .integer(cursor + count)
+        if let newByteCount { object.fields["byteCount"] = .integer(newByteCount) }
+        return .object(object)
+    }
+
+    private func streamTextBytes(_ values: ArraySlice<Value>) throws -> Int64 {
+        var count: Int64 = 0
+        for value in values {
+            guard case .character(let codePoint) = value, let scalar = Unicode.Scalar(codePoint) else {
+                throw SmalltalkError("A text stream expects characters.")
+            }
+            count += Int64(scalar.utf8.count)
+        }
+        return count
+    }
     private func stringPrimitive(_ receiver: Value, contents string: String, _ selector: String, _ args: [Value]) throws -> Value? {
         switch selector {
         case ",":

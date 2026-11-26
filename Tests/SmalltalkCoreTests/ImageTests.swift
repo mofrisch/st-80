@@ -286,6 +286,44 @@ struct ImageTests {
         }
     }
 
+    @Test func collectionStreamsRetainPositionAndPrivateContentsAcrossImageLoad() async throws {
+        let original = SmalltalkSession()
+        let setup = await original.evaluate("""
+            source := String withAll: 'é🐱a'.
+            reader := ReadStream on: source.
+            reader next.
+            writer := ReadWriteStream with: source.
+            writer position: 1.
+            writer nextPut: $猫
+            """)
+        try #require(setup.error == nil)
+
+        let restored = SmalltalkSession()
+        _ = try await restored.loadImage(original.imageData())
+        #expect(await value("reader position", in: restored) == "1")
+        #expect(await value("reader next", in: restored) == "$🐱")
+        #expect(await value("writer position", in: restored) == "2")
+        #expect(await value("writer contents", in: restored) == "'é猫a'")
+        #expect(await value("writer nextPut: $!. writer setToEnd; nextPut: $é. writer contents", in: restored) == "'é猫!é'")
+        #expect(await value("source", in: restored) == "'é🐱a'")
+    }
+
+    @Test func textStreamSizeLimitLeavesPositionAndContentsIntact() async throws {
+        let session = SmalltalkSession()
+        let setup = try await session.worker.submitThrowing { runtime in
+            runtime.globals["streamText"] = try runtime.newString(String(repeating: "🙂", count: 16_383))
+            return runtime.withWorkspaceExecution(WorkspaceExecution(stepLimit: 2_000_000)) {
+                runtime.run("textWriter := WriteStream with: streamText. textWriter nextPut: $🙂")
+            }
+        }
+        try #require(setup.error == nil)
+        let rejected = await session.evaluate("textWriter nextPut: $x")
+        #expect(rejected.error?.contains("string size limit") == true)
+        #expect(await value("textWriter position", in: session) == "16384")
+        let fitted = await session.evaluate("textWriter position: 16383. textWriter nextPut: $é; nextPut: $é. textWriter position")
+        #expect(fitted.value == "16385")
+    }
+
     @Test func invalidImagesLeaveTheCurrentSessionUntouched() async throws {
         let current = SmalltalkSession()
         _ = await value("kept := Counter new. kept add: 42", in: current)

@@ -15,7 +15,7 @@ struct SmalltalkTestFrameworkTests {
         #expect(await session.evaluate("CounterTest run passedCount").value == "2")
         #expect(await session.evaluate("CollectionsTest run passedCount").value == "2")
         #expect(await session.evaluate("UIBindingTest run passedCount").value == "2")
-        #expect(await session.evaluate("ANSISmalltalkTest run passedCount").value == "57")
+        #expect(await session.evaluate("ANSISmalltalkTest run passedCount").value == "64")
     }
 
     @Test func runnerSeparatesFailuresFromErrorsAndAlwaysAttemptsCleanup() async throws {

@@ -313,6 +313,7 @@ The prototype has these limits.
 - `1 to: 9 by: 2` creates a lazy `Interval`. Use `asArray` to materialize it.
 - `Bag` preserves multiplicities, `Set` keeps one element per equivalence class, and `ByteArray` stores values from 0 to 255. `OrderedCollection` supports insertion by position. `SortedCollection` uses ascending order by default and accepts a two-argument comparison block through `sortBlock:` or `asSortedCollection:`.
 - `Dictionary` matches keys using `=`. `IdentityDictionary` uses `==`. Both accept `nil` values and provide `at:ifAbsentPut:` for lazy insertion.
+- `ReadStream on:` starts at the beginning of a collection. `WriteStream with:` and `ReadWriteStream with:` start at its end. Writers keep private contents, available through `contents`. Stream positions are zero-based. Text streams write LF and accept LF, CRLF, and CR when reading lines.
 - Use `[ Error signal: 'Missing data' ] on: Error do: [ :exception | exception messageText ]` to handle a signaled exception. The closest matching handler runs before the protected block's cleanup, and the handler's result becomes the result of `on:do:`. Applications can define subclasses of `Exception` and `Error`. Sending `error:` to an object signals an `Error`.
 - Strings are Unicode values and `==` compares them by value.
 - Value previews and `printString` produce at most 64 KiB and visit at most 4,096 values, ending with `…` when truncated. Binding previews share a 64 KiB budget per snapshot and use at most 4 KiB per binding.
@@ -333,7 +334,7 @@ The project generator preserves the asset catalog and app icon settings for Debu
 
 ## Smalltalk tests
 
-Run `TestRunner runAll summary` in a fresh Workspace to run all bundled tests. `ANSISmalltalkTest run summary` runs 57 tests for supported behavior from the ANSI Smalltalk draft, including exceptions, scaled decimals, exact arithmetic, message dispatch, blocks, and arrays. You can browse their source under **Tests** in the System Browser.
+Run `TestRunner runAll summary` in a fresh Workspace to run all bundled tests. `ANSISmalltalkTest run summary` runs 64 tests for supported behavior from the ANSI Smalltalk draft, including exceptions, scaled decimals, exact arithmetic, message dispatch, blocks, and arrays. You can browse their source under **Tests** in the System Browser.
 
 Define a subclass of `TestCase` in the Workspace or Browser. Its own parameterless instance methods named `testSomething` run in alphabetical order. Each method runs on a fresh instance. Override `setUp` and `tearDown` for fixtures.
 

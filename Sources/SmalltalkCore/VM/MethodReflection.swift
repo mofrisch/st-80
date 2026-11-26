@@ -145,6 +145,9 @@ extension SmalltalkRuntime {
         "OrderedCollection": [
             "_spliceAt:remove:with:": "Splices the active storage range and updates the collection size.",
         ],
+        "CollectionStream": [
+            "_commitWrite:": "Updates the stream storage and advances its position together.",
+        ],
         "BlockClosure": [
             "value": "Evaluates the block.", "value:": "Evaluates the block with one argument.", "value:value:": "Evaluates the block with two arguments.",
             "argumentCount": "Returns the number of block arguments.", "valueWithArguments:": "Evaluates the block with the elements of a collection as arguments.",

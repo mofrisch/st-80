@@ -201,6 +201,7 @@ struct ToolWindowTests {
         }
         var categories: Set<String> = []
         var classes: Set<String> = []
+        var numberSubclasses: Set<String> = []
         for declaration in declarations.elements {
             guard case .array(let row) = declaration, row.elements.count == 2,
                   case .array(let members) = row.elements[1], !members.elements.isEmpty else {
@@ -211,11 +212,15 @@ struct ToolWindowTests {
             for member in members.elements {
                 let name = try runtime.string(member)
                 #expect(classes.insert(name).inserted, "Repeated class \(name)")
+                if category == "Numbers" { numberSubclasses.insert(name) }
             }
         }
         let shipped = Set(runtime.classes.keys)
         #expect(shipped.subtracting(classes).isEmpty, "Missing classes: \(shipped.subtracting(classes).sorted())")
         #expect(classes.subtracting(shipped).isEmpty, "Unknown classes: \(classes.subtracting(shipped).sorted())")
+        let number = try #require(runtime.classes["Number"])
+        let expected = Set(runtime.classes.values.filter { $0 !== number && $0.inherits(from: number) }.map(\.name))
+        #expect(numberSubclasses == expected)
     }
 
     @Test func ansiFactoriesAreFiledOnTheClassSide() async {

@@ -156,9 +156,9 @@ struct SystemLibrary: Sendable {
         }
     }
 
-    /// Update shipped browser code only. Per-image protocol assignments are
-    /// merged by Smalltalk the next time that browser's catalog is used.
-    func upgradeBrowserProtocols(in runtime: SmalltalkRuntime) throws -> Bool {
+    /// Update shipped browser code only. Smalltalk merges the defaults the
+    /// next time that the browser's catalog is used.
+    func upgradeBrowserOrganization(in runtime: SmalltalkRuntime, collectionsAdded: Bool) throws -> Bool {
         let name = "BrowserOrganization"
         let shippedLookupHashes: Set<String> = [
             "674b0cce59f3f6c8cd8f55cd14d06bb99f37075a1566e1da2b8e00f22de4fc67",
@@ -192,20 +192,35 @@ struct SystemLibrary: Sendable {
                 "1fb93f9ae4e52958193acf210246958977090fde93fb71a743809d4a03c13362",
                 "e0bc5333d08db3e3d27d006ea23e374351a5e468cc5be4023e1ce012b8bb3421",
                 "386c630d15d0ef4cfee1ef93fc238c610b3cca4774c91a15d9c80e5f7efdc3ef",
+                "e1980acc550da5ca0237e0eac5c268fd24cb6f1226190fba9946133a2aef6f2c",
             ]),
         ]
+        var refresh = collectionsAdded
         for (side, selector, hashes) in defaults {
             if let method = target[side][selector], hashes.contains(Self.digest(Data(method.source.utf8))) {
-                try install(selector, side: side)
+                try install(selector, side: side, on: target)
+                refresh = true
             }
         }
-        for selector in ["shippedClassSideProtocols", "refreshShippedProtocols", "fileShippedProtocolsOf:side:into:"] {
-            if target.methods[selector] == nil { try install(selector, side: .instance) }
+        guard refresh else { return false }
+        for selector in ["shippedClassSideProtocols", "fileShippedProtocolsOf:side:into:"] {
+            if target.methods[selector] == nil { try install(selector, side: .instance, on: target) }
         }
-        try install("protocolsOf:side:", side: .instance)
+        let catalogMethods = [
+            ("BrowserOrganization", "classCategories", "d5674dfea3a9fc64f919d5fb85669a89e99bed540b2e67c61f0d186cc1fd4d14"),
+            ("BrowserOrganization", "refreshShippedProtocols", "95225c9639971dd27259bedc112f082faf1ecddf13a64a134e667568e8521aa4"),
+            ("BrowserGrouping", "defineDefaults:", "0d430fcdeca2dec92ec0f69cc725f873bd75414e7fa84aba1e9cf9c3ad29eda0"),
+        ]
+        for (className, selector, hash) in catalogMethods {
+            guard let owner = runtime.classes[className] else { continue }
+            if let method = owner.methods[selector], Self.digest(Data(method.source.utf8)) != hash { continue }
+            try install(selector, side: .instance, on: owner)
+        }
+        try install("protocolsOf:side:", side: .instance, on: target)
         return true
 
-        func install(_ selector: String, side: MethodSide) throws {
+        func install(_ selector: String, side: MethodSide, on target: STClass) throws {
+            let name = target.name
             guard let code = seed[side][name]?[selector], let source = sources[side][name]?[selector] else {
                 throw SmalltalkError("Missing bundled browser method \(selector).")
             }

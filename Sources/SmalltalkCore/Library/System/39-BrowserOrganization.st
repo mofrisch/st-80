@@ -43,7 +43,8 @@ BrowserGrouping compile: 'initialize
 
 BrowserGrouping compile: 'defineDefaults: names
     names do: [ :name |
-        groups := groups copyWith: (BrowserGroup new name: name; defaultName: name; yourself) ]'.
+        (groups anySatisfy: [ :group | group defaultName = name or: [ group name = name ] ])
+            ifFalse: [ groups := groups copyWith: (BrowserGroup new name: name; defaultName: name; yourself) ] ]'.
 
 BrowserGrouping compile: 'defineGroup: name items: selectors
     groups := groups copyWith: (BrowserGroup new name: name; items: selectors; yourself)'.
@@ -120,7 +121,8 @@ BrowserOrganization compile: 'initialize
 BrowserOrganization compileClass: 'shippedClassCategories
     ^ #(
         (''Kernel'' (''Object'' ''Class'' ''Metaclass'' ''UndefinedObject'' ''Boolean'' ''True'' ''False''
-            ''Number'' ''Integer'' ''SmallInteger'' ''LargeInteger'' ''Fraction'' ''ScaledDecimal'' ''Float'' ''BlockClosure'' ''FailedMessage''))
+            ''Number'' ''BlockClosure'' ''FailedMessage''))
+        (''Numbers'' (''Integer'' ''SmallInteger'' ''LargeInteger'' ''Fraction'' ''ScaledDecimal'' ''Float''))
         (''Exceptions'' (''Exception'' ''Error'' ''ExceptionSet'' ''MessageNotUnderstood'' ''ZeroDivide''))
         (''Collections & Text'' (''Collection'' ''SequenceableCollection'' ''Array'' ''ByteArray'' ''Interval''
             ''OrderedCollection'' ''SortedCollection'' ''UnorderedCollection'' ''Bag'' ''Set''
@@ -148,6 +150,7 @@ BrowserOrganization compileClass: 'shippedClassCategories
             ''ANSIClassStateProbe'' ''ANSIClassStateChild'' ''ANSISmalltalkTest'')))'.
 
 BrowserOrganization compile: 'classCategories
+    systemProtocols isNil ifTrue: [ self refreshShippedProtocols ].
     ^ classCategories'.
 
 BrowserOrganization compile: 'categoryOf: name
@@ -175,6 +178,7 @@ BrowserOrganization compile: 'protocolsOf: target side: methodSide
     ^ grouping'.
 
 BrowserOrganization compile: 'refreshShippedProtocols
+    classCategories defineDefaults: (self class shippedClassCategories collect: [ :entry | entry at: 1 ]).
     systemProtocols := self shippedProtocols.
     catalogs do: [ :entry |
         self fileShippedProtocolsOf: (entry at: 1) side: (entry at: 2) into: (entry at: 3) ]'.

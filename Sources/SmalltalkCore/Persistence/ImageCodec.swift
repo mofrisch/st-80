@@ -196,7 +196,6 @@ enum ImageCodec {
         try runtime.validateCompilerClasses()
         if records["ScaledDecimal"] == nil { try runtime.upgradeCompilerForScaledDecimals() }
         if records["Exception"] == nil { try runtime.installExceptionProtocol() }
-        var refreshBrowserProtocols = false
         var addedCollections: Set<String> = []
         var missingCollections = image.version < 9 ? SmalltalkRuntime.shippedCollectionNames : []
         // Version 9 images can predate either family. Preserve existing
@@ -210,8 +209,9 @@ enum ImageCodec {
             let library = try SystemLibrary.shared.get()
             if image.version < 8 { try library.installANSIProtocols(in: runtime) }
             addedCollections = try library.installANSICollections(missingCollections, in: runtime)
-            refreshBrowserProtocols = try library.upgradeBrowserProtocols(in: runtime)
         }
+        let library = try? SystemLibrary.shared.get()
+        let refreshBrowserOrganization = try library?.upgradeBrowserOrganization(in: runtime, collectionsAdded: !addedCollections.isEmpty) ?? false
         guard runtime.classes["UIBinding"]?.lookup("reconcileMount:") != nil else {
             throw invalid("The image is missing UIBinding>>reconcileMount:. Start a fresh session.")
         }
@@ -294,7 +294,7 @@ enum ImageCodec {
             switch (node, shells[id]) {
             case (.object(let record), .value(.object(let object))):
                 object.fields = try record.fields.mapValues(value)
-                if refreshBrowserProtocols, runtime.isUIClass(object.stClass, named: "BrowserOrganization"),
+                if refreshBrowserOrganization, runtime.isUIClass(object.stClass, named: "BrowserOrganization"),
                    object.fields["systemProtocols"] != nil {
                     object.fields["systemProtocols"] = .nilValue
                 }
@@ -350,7 +350,7 @@ enum ImageCodec {
             throw invalid("The image has no valid window manager.")
         }
         try runtime.validateMVCState()
-        runtime.catalogDirty = false
+        runtime.catalogDirty = refreshBrowserOrganization
         runtime.recordingChanges = true
     }
 

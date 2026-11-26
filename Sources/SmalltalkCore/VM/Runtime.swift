@@ -19,6 +19,8 @@ final class SmalltalkRuntime {
         ("Number", "Object"),
         ("Integer", "Number"),
         ("SmallInteger", "Integer"),
+        ("LargeInteger", "Integer"),
+        ("Fraction", "Number"),
         ("Float", "Number"),
         ("String", "Object"),
         ("Character", "Object"),
@@ -28,7 +30,7 @@ final class SmalltalkRuntime {
         ("Transcript", "Object"),
     ]
     static let builtinNames = Set(builtinHierarchy.map(\.name))
-    static let additiveBuiltinNames: Set<String> = ["Character", "Float"]
+    static let additiveBuiltinNames: Set<String> = ["Character", "Float", "LargeInteger", "Fraction"]
     static let floatAliases: Set<String> = ["FloatE", "FloatD", "FloatQ"]
     static let classLimit = 128 + additiveBuiltinNames.count
     static let executionStepLimit = 100_000
@@ -60,7 +62,7 @@ final class SmalltalkRuntime {
     var evaluationRoots: [Value] = []
     var pendingMessages: [(receiver: Value, lookup: MessageLookup)] = []
     var debugger: DebuggerExecution?
-    var debuggerCancellation: DebuggerChannel?
+    var executionCancellation: (any ExecutionCancellation)?
     var useASTInterpreterForTesting = false
     let compilationMode: Bool
     var arrayLimit: Int { compilationMode ? 524_288 : 65_535 }
@@ -94,13 +96,41 @@ final class SmalltalkRuntime {
     }
 
     func tick() throws {
-        try debuggerCancellation?.checkStop()
-        steps += 1
-        guard steps <= stepLimit else {
+        try charge(1)
+    }
+
+    func chargeNumericWork(_ items: Int) throws {
+        try charge(Self.numericWorkSteps(items))
+    }
+
+    static func numericWorkSteps(_ items: Int) -> Int {
+        items > 0 ? (items - 1) / 16 + 1 : 1
+    }
+
+    private func charge(_ amount: Int) throws {
+        try executionCancellation?.checkStop()
+        guard amount <= stepLimit - steps else {
+            steps = stepLimit
             if compilationMode { throw SmalltalkError("The Smalltalk compiler reached its execution limit.") }
             let limit = stepLimit.formatted(.number.locale(Locale(identifier: "en_US")))
             throw SmalltalkError("Execution stopped after \(limit) steps. Check loops and recursion.")
         }
+        steps += amount
+    }
+
+    /// Scope the budget and stop signal to the command, before updating its UI.
+    func withWorkspaceExecution<T>(_ execution: WorkspaceExecution?, _ work: () throws -> T) rethrows -> T {
+        guard let execution else { return try work() }
+        let previousLimit = stepLimit
+        let previousCancellation = executionCancellation
+        stepLimit = execution.stepLimit
+        executionCancellation = execution
+        defer {
+            stepLimit = previousLimit
+            executionCancellation = previousCancellation
+            resetExecutionBudget()
+        }
+        return try work()
     }
 
     /// Run tool maintenance between user commands without spending that command's budget.
@@ -253,6 +283,7 @@ final class SmalltalkRuntime {
     func value(_ literal: Literal) throws -> Value {
         switch literal {
         case .integer(let n): return .integer(n)
+        case .largeInteger(let n): return integerValue(n)
         case .string(let s): return .string(s)
         case .symbol(let s): return .symbol(s)
         case .boolean(let b): return .boolean(b)
@@ -276,6 +307,8 @@ final class SmalltalkRuntime {
         let name: String
         switch value {
         case .integer: name = "SmallInteger"
+        case .largeInteger: name = "LargeInteger"
+        case .fraction: name = "Fraction"
         case .float: name = "Float"
         case .string: name = "String"
         case .character: name = "Character"

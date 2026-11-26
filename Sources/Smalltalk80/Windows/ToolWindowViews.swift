@@ -6,10 +6,20 @@ struct WindowToolbarView: View {
     let windowID: Int64
 
     var body: some View {
-        if let toolbar = controller.presentedWindow(windowID)?.info.content?.windowToolbar {
-            UIElementView(controller: controller, windowID: windowID, element: toolbar)
-                .controlSize(.small)
-                .fixedSize()
+        if let window = controller.presentedWindow(windowID)?.info, let toolbar = window.content?.windowToolbar {
+            HStack(spacing: 5) {
+                UIElementView(controller: controller, windowID: windowID, element: toolbar)
+                if controller.workspaceExecution?.windowID == windowID, let stop = controller.workspaceStop {
+                    UIElementView(host: .snapshot(isLoading: false, click: { _ in controller.stopWorkspaceExecution() },
+                                                  select: { _, _ in }), element: stop)
+                } else if controller.canRunWorkspaceWithBudget(in: window), let menu = controller.workspaceBudgets {
+                    UIElementView(host: .snapshot(isLoading: controller.isRunning, click: { item in
+                        Task { await controller.runWorkspaceWithBudget(item.command, windowID: windowID) }
+                    }, select: { _, _ in }), element: menu)
+                }
+            }
+            .controlSize(.small)
+            .fixedSize()
         }
     }
 }

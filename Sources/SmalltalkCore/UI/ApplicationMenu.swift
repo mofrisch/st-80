@@ -5,10 +5,13 @@ extension SmalltalkSession {
         let runtime = SmalltalkRuntime(bootstrap: false)
         try SystemLibrary.shared.get().install(in: runtime)
         return (bar: try runtime.projectApplicationMenu("menuBar"),
-                recovery: try runtime.projectApplicationMenu("recoveryCommands"))
+                recovery: try runtime.projectApplicationMenu("recoveryCommands"),
+                workspaceBudgets: try runtime.projectApplicationMenu("workspaceBudgets"),
+                workspaceStop: try runtime.projectApplicationMenu("workspaceStop", kind: .button))
     }
 
-    package static func bundledApplicationMenus() throws -> (bar: UIElementInfo, recovery: UIElementInfo) {
+    package static func bundledApplicationMenus() throws -> (bar: UIElementInfo, recovery: UIElementInfo,
+                                                             workspaceBudgets: UIElementInfo, workspaceStop: UIElementInfo) {
         try initialMenus.get()
     }
 
@@ -18,14 +21,14 @@ extension SmalltalkSession {
 }
 
 extension SmalltalkRuntime {
-    fileprivate func projectApplicationMenu(_ selector: String) throws -> UIElementInfo {
+    fileprivate func projectApplicationMenu(_ selector: String, kind: UIElementKind = .menu) throws -> UIElementInfo {
         guard let presenter = classes["ApplicationMenu"] else {
             throw SmalltalkError("The application menu class is missing.")
         }
         steps = 0
         let tree = try send(.classObject(presenter), selector, [])
-        let kind: UIElementKind = selector == "menuBar" ? .column : .menu
-        guard let content = try projectContent(tree), content.kind == kind else {
+        let expectedKind: UIElementKind = selector == "menuBar" ? .column : kind
+        guard let content = try projectContent(tree), content.kind == expectedKind else {
             throw SmalltalkError("The application menu has invalid content.")
         }
         return content

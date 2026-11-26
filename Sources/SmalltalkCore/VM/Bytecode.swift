@@ -236,6 +236,7 @@ private extension Literal {
     var disassemblyText: String {
         switch self {
         case .integer(let value): return String(value)
+        case .largeInteger(let value): return value.description
         case .string(let value): return Self.quote(value)
         case .boolean(let value): return String(value)
         case .nilValue: return "nil"

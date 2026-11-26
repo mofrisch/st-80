@@ -8,6 +8,8 @@ final class AppController {
     private(set) var windowPresentation = WindowPresentation()
     private(set) var applicationMenu: UIElementInfo?
     let recoveryMenuItems: [UIElementInfo]
+    let workspaceBudgets: UIElementInfo?
+    let workspaceStop: UIElementInfo?
     private let bundledMenu: UIElementInfo?
     @ObservationIgnored private var menuChangeID: String?
     @ObservationIgnored private var menuRefresh: Task<Void, Never>?
@@ -44,6 +46,7 @@ final class AppController {
     private let settingsWindowID = UUID()
     @ObservationIgnored var debugSession: WorkspaceDebugSession?
     @ObservationIgnored var debuggerStopRequested = false
+    private(set) var workspaceExecution: (windowID: Int64, run: WorkspaceExecution)?
     private var hasLoaded = false
     @ObservationIgnored private var inputDebounce: Task<Void, Never>?
     @ObservationIgnored private var inputFlush: (id: UUID, task: Task<Bool, Never>)?
@@ -62,6 +65,8 @@ final class AppController {
         bundledMenu = menus?.bar
         applicationMenu = menus?.bar
         recoveryMenuItems = menus?.recovery.children.filter(\.visible) ?? []
+        workspaceBudgets = menus?.workspaceBudgets
+        workspaceStop = menus?.workspaceStop
     }
 
     var activeKind: ToolKind? { windowPresentation.activeWindow?.info.kind }
@@ -123,10 +128,15 @@ final class AppController {
     /// Run one foreground command at a time. Live edits and window events
     /// have their own synchronization and can be flushed by the command.
     @discardableResult
-    func runOperation<Result>(_ operation: @MainActor () async -> Result) async -> Result? {
+    func runOperation<Result>(workspace: (windowID: Int64, run: WorkspaceExecution)? = nil,
+                              _ operation: @MainActor () async -> Result) async -> Result? {
         guard !isRunning else { return nil }
         isRunning = true
-        defer { isRunning = false }
+        workspaceExecution = workspace
+        defer {
+            workspaceExecution = nil
+            isRunning = false
+        }
         return await operation()
     }
 
@@ -334,12 +344,13 @@ final class AppController {
     }
 
     func recoverWorkspace(_ window: ToolWindowInfo, editor: UIElementInfo,
-                          action: WorkspaceRecoveryAction, selection: String) async {
+                          action: WorkspaceRecoveryAction, selection: String, stepLimit: Int? = nil) async {
         guard let currentEpoch else { return }
-        await runOperation {
+        let run = WorkspaceExecution(stepLimit: stepLimit)
+        await runOperation(workspace: (window.id, run)) {
             let source = selection.isEmpty ? inputText(windowID: window.id, element: editor) : selection
             let evaluation = await session.recoverWorkspace(source: source, action: action, windowID: window.id,
-                                                            identity: window.identity, epoch: currentEpoch)
+                                                            identity: window.identity, epoch: currentEpoch, execution: run)
             apply(evaluation)
             windowPresentation.setInputError(evaluation.executionError, for: window.id)
             if windowPresentation.isRecovering {

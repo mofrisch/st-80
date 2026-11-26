@@ -227,6 +227,7 @@ struct UIElementView: View {
             .accessibilityIdentifier(identifier)
         } else {
             Menu(element.text) { children }
+                .accessibilityIdentifier(identifier)
         }
     }
 

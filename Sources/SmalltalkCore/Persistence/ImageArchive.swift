@@ -34,6 +34,7 @@ struct ImageClass: Codable {
 
 enum ImageValue: Codable {
     case integer(Int64), string(String), symbol(String), boolean(Bool), nilValue
+    case largeInteger(BigInteger), fraction(ExactFraction)
     case character(UInt32), float(Double)
     case classObject(String), reference(Int), transcript
 }

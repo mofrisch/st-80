@@ -42,6 +42,18 @@ struct CompilerTests {
         #expect(await restored.evaluate("Counter new measure").value == "#($é 125.0)")
     }
 
+    @Test func largeIntegersAndFractionsSurviveAnImageRoundTrip() async throws {
+        let session = SmalltalkSession()
+        #expect(await session.compile("largeValue ^ 1000000000000000000000001", in: "Counter").error == nil)
+        #expect(await session.evaluate("large := Counter new largeValue. ratio := large / 3").error == nil)
+        let image = try await session.imageData()
+        let restored = SmalltalkSession()
+        _ = try await restored.loadImage(image)
+        #expect(await restored.evaluate("large = Counter new largeValue").value == "true")
+        #expect(await restored.evaluate("ratio denominator").value == "3")
+        #expect(await restored.evaluate("ratio * 3").value == "1000000000000000000000001")
+    }
+
     @Test func ansiArgumentsAreConstantAndLocalsCanShadow() async {
         let session = SmalltalkSession()
         #expect(await session.evaluate("| Counter | Counter := 42. Counter").value == "42")

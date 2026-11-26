@@ -10,16 +10,18 @@ extension SmalltalkSession {
     /// A retained native workspace can repair a broken Desktop without sending
     /// messages through that Desktop's controls or retaining its old VM objects.
     package func recoverWorkspace(source: String, action: WorkspaceRecoveryAction,
-                                  windowID: Int64, identity: String, epoch: String) async -> EvaluationResult {
+                                  windowID: Int64, identity: String, epoch: String,
+                                  execution: WorkspaceExecution? = nil) async -> EvaluationResult {
         await worker.submit { runtime in
-            runtime.recoverWorkspace(source: source, action: action, windowID: windowID, identity: identity, epoch: epoch)
+            runtime.recoverWorkspace(source: source, action: action, windowID: windowID, identity: identity, epoch: epoch, execution: execution)
         }
     }
 }
 
 extension SmalltalkRuntime {
     fileprivate func recoverWorkspace(source: String, action: WorkspaceRecoveryAction,
-                                      windowID: Int64, identity: String, epoch: String) -> EvaluationResult {
+                                      windowID: Int64, identity: String, epoch: String,
+                                      execution: WorkspaceExecution?) -> EvaluationResult {
         guard epoch == windowEpoch else { return snapshot() }
         let current = projectWindows()
         if let replacement = current.windows.first(where: { $0.id == windowID }), replacement.identity != identity {
@@ -40,9 +42,11 @@ extension SmalltalkRuntime {
             }
             guard let services = classes["ToolServices"] else { throw SmalltalkError("Tool services are missing.") }
             let policy = try SystemLibrary.shared.get().bundledClass("WorkspaceRecoveryCommands", in: self)
-            let outcome = try send(.classObject(policy), "\(action.rawValue):services:transcript:", [
-                .string(source), .object(try object(services)), globals["Transcript"] ?? .nilValue,
-            ])
+            let outcome = try withWorkspaceExecution(execution) {
+                try send(.classObject(policy), "\(action.rawValue):services:transcript:", [
+                    .string(source), .object(try object(services)), globals["Transcript"] ?? .nilValue,
+                ])
+            }
             guard case .array(let result) = outcome, result.elements.count == 2,
                   case .boolean(let success) = result.elements[0], case .string(let message) = result.elements[1] else {
                 throw SmalltalkError("Workspace recovery returned an invalid result.")

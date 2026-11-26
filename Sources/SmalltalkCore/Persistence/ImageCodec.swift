@@ -35,6 +35,8 @@ enum ImageCodec {
         func value(_ value: Value) throws -> ImageValue {
             switch value {
             case .integer(let n): return .integer(n)
+            case .largeInteger(let n): return .largeInteger(n)
+            case .fraction(let value): return .fraction(value)
             case .character(let codePoint): return .character(codePoint)
             case .float(let number): return .float(number)
             case .string(let s): return .string(s)
@@ -207,6 +209,8 @@ enum ImageCodec {
         func value(_ record: ImageValue) throws -> Value {
             switch record {
             case .integer(let n): return .integer(n)
+            case .largeInteger(let n): return runtime.integerValue(n)
+            case .fraction(let value): return .fraction(value)
             case .character(let codePoint):
                 guard Unicode.Scalar(codePoint) != nil else { throw invalid("Invalid character code point.") }
                 return .character(codePoint)

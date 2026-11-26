@@ -22,13 +22,21 @@ extension SmalltalkSession {
         await dispatchUIAction(action).evaluation
     }
 
+    package func uiAction(_ action: UIAction, execution: WorkspaceExecution) async -> EvaluationResult {
+        await withTaskCancellationHandler {
+            await worker.submit { $0.performUIAction(action, execution: execution).evaluation }
+        } onCancel: {
+            execution.stop()
+        }
+    }
+
     package func dispatchUIAction(_ action: UIAction) async -> UIActionResult {
         await worker.submit { $0.performUIAction(action) }
     }
 }
 
 extension SmalltalkRuntime {
-    func performUIAction(_ action: UIAction) -> UIActionResult {
+    func performUIAction(_ action: UIAction, execution: WorkspaceExecution? = nil) -> UIActionResult {
         beginEvaluation()
         let evaluation: EvaluationResult
         do {
@@ -45,7 +53,9 @@ extension SmalltalkRuntime {
             case .click(_, _, let selection):
                 guard control.kind == .button else { throw SmalltalkError("The element is not a button.") }
                 guard selection.utf8.count <= 65_536 else { throw SmalltalkError("The selection is too large.") }
-                result = try send(.object(control.object), "clickWithSelection:", [.string(selection)])
+                result = try withWorkspaceExecution(execution) {
+                    try send(.object(control.object), "clickWithSelection:", [.string(selection)])
+                }
             case .select(_, _, let value):
                 guard control.kind == .list || control.kind == .historyList || control.kind == .valueTable else { throw SmalltalkError("The element does not support selection.") }
                 if control.kind == .valueTable, case .boolean(true)? = control.object.fields["readOnly"] {

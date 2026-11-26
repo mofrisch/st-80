@@ -203,7 +203,6 @@ STCompiler compile: 'primary
         ^ self node: #literal at: position with: payload with: nil ].
     (kind = #binary and: [ self tokenValue = ''-'' ]) ifTrue: [
         ^ self node: #literal at: position with: self negativeNumber with: nil ].
-    kind = #minimumMagnitude ifTrue: [ self fail: ''Integer exceeds the 64-bit range.'' ].
     kind = #leftParen ifTrue: [
         self advance.
         node := self expression.
@@ -241,9 +240,6 @@ STCompiler compile: 'negativeNumber
         number := self floatFrom: self tokenValue.
         self advance.
         ^ number negated ].
-    self kind = #minimumMagnitude ifTrue: [
-        self advance.
-        ^ ''-9223372036854775808'' asIntegerOrNil ].
     self kind = #integer ifFalse: [ self fail: ''Expected an integer after -.'' ].
     number := self tokenValue.
     self advance.

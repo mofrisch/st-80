@@ -472,6 +472,16 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "3350A7F37D7A391B4B424A1A";
 		};
+		"10D455390599A5C56953E380" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "WorkspaceExecution.swift";
+			"sourceTree" = "<group>";
+		};
+		"86823F4DA6345641EB45523D" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "10D455390599A5C56953E380";
+		};
 		"DE25B0C77A969486A06F8A32" = {
 			"isa" = "PBXGroup";
 			"children" = (
@@ -479,6 +489,7 @@
 				"491CC3CD6E22BE99741AAE07",
 				"ACBAF8428C21D954F5D2CD58",
 				"3350A7F37D7A391B4B424A1A",
+				"10D455390599A5C56953E380",
 			);
 			"path" = "Session";
 			"sourceTree" = "<group>";
@@ -684,6 +695,16 @@
 			"path" = "UI";
 			"sourceTree" = "<group>";
 		};
+		"20B41E0F663289DDC476CC43" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "BigInteger.swift";
+			"sourceTree" = "<group>";
+		};
+		"E0999250CD07CE563169E8CE" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "20B41E0F663289DDC476CC43";
+		};
 		"822AC46A2843B55B454651B8" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -723,6 +744,26 @@
 		"FC9F49B3A2EF26A853A488E2" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "CEE840E247B2782D75863E11";
+		};
+		"5708FB9DA6F3C47F0362ED82" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "ExactFraction.swift";
+			"sourceTree" = "<group>";
+		};
+		"E852640E89E2016864AC38F2" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "5708FB9DA6F3C47F0362ED82";
+		};
+		"8094C47E86D511E7B7A286C7" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "ExactNumberPrimitives.swift";
+			"sourceTree" = "<group>";
+		};
+		"D07DC72184F8D9E3D2D328EB" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "8094C47E86D511E7B7A286C7";
 		};
 		"5EBA0AAC435CDE4E109F0595" = {
 			"isa" = "PBXFileReference";
@@ -847,10 +888,13 @@
 		"68307B5AC01BE4BF6B81BF15" = {
 			"isa" = "PBXGroup";
 			"children" = (
+				"20B41E0F663289DDC476CC43",
 				"822AC46A2843B55B454651B8",
 				"0C63B5F7BF85386253CDD602",
 				"ECA0FCC022689678C731DA0F",
 				"CEE840E247B2782D75863E11",
+				"5708FB9DA6F3C47F0362ED82",
+				"8094C47E86D511E7B7A286C7",
 				"5EBA0AAC435CDE4E109F0595",
 				"7943A2FF341B58B6EC9A9F86",
 				"B6C9C872CAFE1C6021AF6D3B",
@@ -897,6 +941,7 @@
 				"A394CA15A72B9FD0C2490A89",
 				"D914269FAE7593CBBC340ECE",
 				"F34C2FA510BB47D03A8046D9",
+				"86823F4DA6345641EB45523D",
 				"9283EDA1F24A35B66C2381E5",
 				"7FBC10CCDCF6467CE568C662",
 				"ADFB3D48E38764BC2545A587",
@@ -914,10 +959,13 @@
 				"6C795247B1A58181488E4392",
 				"505E3CB67EC8327BAE1EE819",
 				"A71FE86237C41CE305FB1058",
+				"E0999250CD07CE563169E8CE",
 				"F065B16289F4607300B3227A",
 				"21777B3C5EC8AF7BF81760FD",
 				"C054A07CA17424827C4A7EF1",
 				"FC9F49B3A2EF26A853A488E2",
+				"E852640E89E2016864AC38F2",
+				"D07DC72184F8D9E3D2D328EB",
 				"E8D57601030CE1D15B376FB4",
 				"483AEDA07188587DCE055C79",
 				"0A4FB526B4D1868622CD137C",
@@ -1403,6 +1451,7 @@
 				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
 				"DEBUG_INFORMATION_FORMAT" = "dwarf";
 				"ENABLE_TESTABILITY" = "YES";
+				"ONLY_ACTIVE_ARCH" = "YES";
 				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG $(inherited)";
 			};
 		};
@@ -1422,6 +1471,7 @@
 				"SWIFT_OPTIMIZATION_LEVEL" = "-O";
 				"DEBUG_INFORMATION_FORMAT" = "dwarf-with-dsym";
 				"ENABLE_TESTABILITY" = "NO";
+				"ONLY_ACTIVE_ARCH" = "NO";
 				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "$(inherited)";
 			};
 		};
@@ -1433,6 +1483,19 @@
 			);
 			"defaultConfigurationIsVisible" = "0";
 			"defaultConfigurationName" = "Release";
+		};
+		"473CE40CCF5DE3361274D0BF" = {
+			"isa" = "XCRemoteSwiftPackageReference";
+			"repositoryURL" = "https://github.com/attaswift/BigInt.git";
+			"requirement" = {
+				"kind" = "exactVersion";
+				"version" = "6.0.1";
+			};
+		};
+		"1D7F4ADEC6185AB398749078" = {
+			"isa" = "XCSwiftPackageProductDependency";
+			"package" = "473CE40CCF5DE3361274D0BF";
+			"productName" = "BigInt";
 		};
 		"4EEDA5480E4602B359C89F0C" = {
 			"isa" = "PBXBuildFile";
@@ -1564,11 +1627,15 @@
 			"productReference" = "5F37C3FAA17994C4FD9D7363";
 			"productType" = "com.apple.product-type.application";
 		};
+		"12D3934793860E28A375C08D" = {
+			"isa" = "PBXBuildFile";
+			"productRef" = "1D7F4ADEC6185AB398749078";
+		};
 		"65AB0784FB98E6BFEF78E0EA" = {
 			"isa" = "PBXFrameworksBuildPhase";
 			"buildActionMask" = "2147483647";
 			"files" = (
-
+				"12D3934793860E28A375C08D",
 			);
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};
@@ -1655,6 +1722,9 @@
 			"productName" = "SmalltalkCore";
 			"productReference" = "B9A9156A60C1F3C91937080C";
 			"productType" = "com.apple.product-type.framework";
+			"packageProductDependencies" = (
+				"1D7F4ADEC6185AB398749078",
+			);
 		};
 		"4FD53BA14BA4C01C0FC3DDFA" = {
 			"isa" = "PBXBuildFile";
@@ -1992,6 +2062,9 @@
 			);
 			"mainGroup" = "2EB2D8158FC6EF9EB19CB439";
 			"productRefGroup" = "FE0A091FDBFB3E9C31B7A1BD";
+			"packageReferences" = (
+				"473CE40CCF5DE3361274D0BF",
+			);
 			"projectDirPath" = "";
 			"projectRoot" = "";
 			"targets" = (

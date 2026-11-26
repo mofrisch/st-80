@@ -33,6 +33,9 @@ Float compileClass: 'fminDenormalized ^ 4.9406564584124654e-324'.
 Float compileClass: 'pi ^ 3.141592653589793'.
 Float compileClass: 'e ^ 2.718281828459045'.
 
+Fraction compileClass: 'numerator: top denominator: bottom
+    ^ self _fractionNumerator: top denominator: bottom'.
+
 Array compileClass: 'with: first
     ^ (self new: 1) at: 1 put: first; yourself'.
 Array compileClass: 'with: first with: second

@@ -56,6 +56,16 @@ ApplicationMenu compileClass: 'recoveryCommands
         add: (self command: #inspectIt title: ''Inspect it'' shortcut: ''⌘I'');
         yourself'.
 
+ApplicationMenu compileClass: 'workspaceBudgets
+    ^ UIMenu new title: ''Run with Budget''; identifier: ''workspaceBudgets'';
+        add: (self command: #budget1000000 title: ''1,000,000 steps'' shortcut: nil);
+        add: (self command: #budget10000000 title: ''10,000,000 steps'' shortcut: nil);
+        yourself'.
+
+ApplicationMenu compileClass: 'workspaceStop
+    ^ (self command: #stopExecution title: ''Stop'' shortcut: nil)
+        identifier: ''workspaceStop''; yourself'.
+
 ApplicationMenu compileClass: 'command: aCommand title: aTitle shortcut: aShortcut
     ^ UIButton new command: aCommand; title: aTitle; shortcutHint: aShortcut; yourself'.
 

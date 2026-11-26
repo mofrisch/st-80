@@ -41,6 +41,33 @@ ANSISmalltalkTest compile: 'testRadixLiteralsAndFloorDivision
     self assert: -7 // 3 equals: -3.
     self assert: -7 \\ 3 equals: 2'.
 
+ANSISmalltalkTest compile: 'testLargeIntegerArithmetic
+    self assert: 9223372036854775807 + 1 equals: 9223372036854775808.
+    self assert: -9223372036854775808 negated equals: 9223372036854775808.
+    self assert: 16r1000000000000000000000000 equals: 79228162514264337593543950336.
+    self assert: 1000000000000000000000000 squared equals: 1000000000000000000000000000000000000000000000000'.
+
+ANSISmalltalkTest compile: 'testLargeIntegerFloorDivision
+    | dividend divisor |
+    dividend := 12345678901234567890123456789012345678901234567890.
+    divisor := 98765432109876543210987654321.
+    self assert: dividend // divisor equals: 124999998860937500014.
+    self assert: dividend \\ divisor equals: 23533950614699073961469907396.
+    self assert: dividend negated // divisor equals: -124999998860937500015.
+    self assert: dividend negated \\ divisor equals: 75231481495177469249517746925.
+    self assert: dividend // divisor negated equals: -124999998860937500015.
+    self assert: dividend \\ divisor negated equals: -75231481495177469249517746925'.
+
+ANSISmalltalkTest compile: 'testExactFractions
+    | rational sum |
+    rational := Fraction numerator: 4 denominator: -6.
+    self assert: rational numerator equals: -2.
+    self assert: rational denominator equals: 3.
+    sum := (1 / 3) + (1 / 6).
+    self assert: sum equals: (1 / 2).
+    self assert: sum * 2 equals: 1.
+    self assert: ((1000000000000000000000001 / 3) * 3) equals: 1000000000000000000000001'.
+
 ANSISmalltalkTest compile: 'testFloatLiteralsAndPrecisionOrdering
     self assert: 1.25 * 2 equals: 2.5.
     self assert: 1.25e2 equals: 125.0.

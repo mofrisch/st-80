@@ -107,6 +107,32 @@ extension AppController {
         debugSession?.send(.stop)
     }
 
+    func stopWorkspaceExecution() {
+        workspaceExecution?.run.stop()
+    }
+
+    func canRunWorkspaceWithBudget(in window: ToolWindowInfo) -> Bool {
+        if windowPresentation.isRecovering { return workspaceEditor(in: window) != nil }
+        return workspaceDoIt(in: window) != nil
+    }
+
+    func runWorkspaceWithBudget(_ command: String?, windowID: Int64) async {
+        let prefix = "budget"
+        guard let command, command.hasPrefix(prefix), let limit = Int(command.dropFirst(prefix.count)),
+              let window = presentedWindow(windowID)?.info else { return }
+        if windowPresentation.isRecovering, let editor = workspaceEditor(in: window) {
+            let selection = selectedText(in: editor, windowID: windowID, text: inputText(windowID: windowID, element: editor))
+            await recoverWorkspace(window, editor: editor, action: .evaluate, selection: selection, stepLimit: limit)
+        } else if let button = workspaceDoIt(in: window) {
+            await clickControl(windowID: windowID, elementID: button.id, stepLimit: limit)
+        }
+    }
+
+    private func workspaceDoIt(in window: ToolWindowInfo) -> UIElementInfo? {
+        guard window.kind == .workspace else { return nil }
+        return window.content?.firstVisible { $0.kind == .button && $0.command == "doIt" && $0.enabled }
+    }
+
     func debugWorkspace(windowID: Int64, editorID: String, source: String) async {
         guard let window = presentedWindow(windowID)?.info, workspaceEditor(in: window)?.id == editorID else { return }
         await runOperation {
@@ -193,7 +219,8 @@ extension AppController {
         state.close()
     }
 
-    func clickControl(windowID: Int64, elementID: String, selection capturedSelection: String? = nil) async {
+    func clickControl(windowID: Int64, elementID: String, selection capturedSelection: String? = nil,
+                      stepLimit: Int? = nil) async {
         guard let window = presentedWindow(windowID)?.info,
               let root = window.content, let button = root.firstVisible(where: { $0.id == elementID }),
               canPerform(button, in: windowID) || canQueueAfterEditorFlush(button, in: windowID) else { return }
@@ -201,7 +228,7 @@ extension AppController {
         if windowPresentation.isRecovering, window.kind == .workspace,
            let command = button.command, let action = WorkspaceRecoveryAction(command: command),
            let editor = workspaceEditor(in: window) {
-            await recoverWorkspace(window, editor: editor, action: action, selection: selection)
+            await recoverWorkspace(window, editor: editor, action: action, selection: selection, stepLimit: stepLimit)
             return
         }
         let flushPolicy: ControlFlushPolicy
@@ -210,8 +237,10 @@ extension AppController {
         } else {
             flushPolicy = window.kind == .workspace || window.kind == .browser ? .bestEffort : .requireSuccess
         }
+        let execution = window.kind == .workspace && button.command.flatMap(WorkspaceRecoveryAction.init(command:)) != nil
+            ? WorkspaceExecution(stepLimit: stepLimit) : nil
         await sendControl(.click(windowID: windowID, elementID: elementID, selection: selection),
-                          windowID: windowID, flushPolicy: flushPolicy)
+                          windowID: windowID, flushPolicy: flushPolicy, execution: execution)
     }
 
     private func selectedText(for button: UIElementInfo, in windowID: Int64, root: UIElementInfo) -> String {
@@ -236,8 +265,9 @@ extension AppController {
         case requireEditorFlush(windowIdentity: String)
     }
 
-    private func sendControl(_ action: UIAction, windowID: Int64, flushPolicy: ControlFlushPolicy) async {
-        await runOperation {
+    private func sendControl(_ action: UIAction, windowID: Int64, flushPolicy: ControlFlushPolicy,
+                             execution: WorkspaceExecution? = nil) async {
+        await runOperation(workspace: execution.map { (windowID, $0) }) {
             switch flushPolicy {
             case .requireSuccess:
                 guard await flushWindowStateRequiringSuccess() else { return }
@@ -248,7 +278,12 @@ extension AppController {
             case .bestEffort:
                 await attemptToFlushWindowState()
             }
-            let evaluation = await session.uiAction(action)
+            let evaluation: EvaluationResult
+            if let execution {
+                evaluation = await session.uiAction(action, execution: execution)
+            } else {
+                evaluation = await session.uiAction(action)
+            }
             applyControlResult(evaluation, windowID: windowID)
         }
     }

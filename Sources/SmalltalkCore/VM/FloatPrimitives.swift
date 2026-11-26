@@ -10,14 +10,18 @@ extension SmalltalkRuntime {
         return mantissa + "e" + (power.first == "+" ? power.dropFirst() : power)
     }
 
-    func finiteFloat(_ number: Double) throws -> Value {
+    func finiteDouble(_ number: Double) throws -> Double {
         guard number.isFinite else { throw SmalltalkError("Floating-point result is outside the supported range.") }
-        return .float(number)
+        return number
     }
+
+    func finiteFloat(_ number: Double) throws -> Value { .float(try finiteDouble(number)) }
 
     private func floatingNumber(_ value: Value) throws -> Double {
         switch value {
         case .integer(let number): return Double(number)
+        case .largeInteger(let number): return try finiteDouble(number.doubleValue)
+        case .fraction(let number): return try finiteDouble(number.doubleValue)
         case .float(let number): return number
         default: throw SmalltalkError("Expected a number.")
         }
@@ -33,10 +37,10 @@ extension SmalltalkRuntime {
             guard divisor != 0 else { throw SmalltalkError("Division by zero.") }
             if selector == "/" { return try finiteFloat(number / divisor) }
             if selector == "//" {
-                guard let quotient = Int64(exactly: (number / divisor).rounded(.down)) else {
-                    throw SmalltalkError("64-bit integer overflow.")
+                guard let quotient = BigInteger(exactly: (number / divisor).rounded(.down)) else {
+                    throw SmalltalkError("Floating-point quotient is outside the supported range.")
                 }
-                return .integer(quotient)
+                return integerValue(quotient)
             }
             let remainder = number.truncatingRemainder(dividingBy: divisor)
             return .float(remainder != 0 && remainder.sign != divisor.sign ? remainder + divisor : remainder)
@@ -56,8 +60,8 @@ extension SmalltalkRuntime {
             case "truncated": rule = .towardZero
             default: rule = .toNearestOrAwayFromZero
             }
-            guard let rounded = Int64(exactly: number.rounded(rule)) else { throw SmalltalkError("64-bit integer overflow.") }
-            return .integer(rounded)
+            guard let rounded = BigInteger(exactly: number.rounded(rule)) else { throw SmalltalkError("Invalid floating-point integer conversion.") }
+            return integerValue(rounded)
         case "sqrt": return try finiteFloat(number.squareRoot())
         case "exp": return try finiteFloat(exp(number))
         case "ln": return try finiteFloat(log(number))

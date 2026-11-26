@@ -23,6 +23,7 @@ Local builds use ad hoc signing, so you can run the app without a development te
 ## Usage
 
 - In a **Workspace**, click **Do it** in the title bar or press **⌘D**. The evaluation commands use the selected code or the whole buffer when there is no selection.
+- **Do it** has a budget of 100,000 VM steps. Use **Run with Budget** for a single run with 1,000,000 or 10,000,000 steps. **Stop** interrupts a running evaluation at the next VM check. Changes already made by the evaluation are kept.
 - The ellipsis next to **Do it** and the editor's context menu offer **Print it** (**⌘P**), **Inspect it** (**⌘I**) and **Debug it** (**⌘⇧D**). **Print it** adds the result to the Transcript. **Inspect it** opens the value in the Object Inspector, and **Debug it** pauses at entry.
 - The result row below the Workspace editor shows the latest result. Click **Result** or **Error** to expand it. Choose **Smalltalk → Clear Transcript** or use the Transcript's context menu to clear the output.
 - The **System Browser** has four lists for class categories, classes, protocols, and methods. Switch between **Instance** and **Class** above the lists. Each side has its own protocols, methods, and editor draft. Start with **New Method**, and use **Accept** or **⌘S** to compile a changed method. Its history is under **Method Actions → Versions**.
@@ -294,7 +295,7 @@ greeter greeting
 
 ## Language support
 
-The language supports checked 64-bit integers, binary64 floating-point numbers, characters, strings, symbols, arrays, `nil`, booleans, assignments, local variables, unary, binary, and keyword messages, cascades, lexical blocks, non-local returns with `^`, classes, instance variables, single inheritance, and `super`.
+The language supports arbitrary-precision integers, exact fractions, binary64 floating-point numbers, characters, strings, symbols, arrays, `nil`, booleans, assignments, local variables, unary, binary, and keyword messages, cascades, lexical blocks, non-local returns with `^`, classes, instance variables, single inheritance, and `super`.
 
 Unary messages bind before binary messages, and binary messages before keyword messages. Binary messages are evaluated left to right, so `3 + 4 * 2` evaluates to `14`. The language follows Goldberg and Robson's [Smalltalk-80: The Language and Its Implementation](https://rmod-files.lille.inria.fr/FreeBooks/BlueBookHughes/BlueBookImplementationTOC.html).
 
@@ -305,10 +306,11 @@ The prototype has these limits.
 - `subclass:instanceVariableNames:` is the short form. The longer Smalltalk-80 message is accepted with empty class variables and pool dictionaries.
 - `new` sends `initialize`. With no explicit `^`, a method returns `self` and a block returns its last expression.
 - Assigning an undeclared name in a workspace creates a persistent workspace variable. `| temp |` declares a local that lasts for the evaluation.
-- Strings are Unicode values and `==` compares them by value. Integer division `/` requires an integral result. Fractions, scaled decimals, and arbitrary-precision integers are still missing.
+- Integer and fraction arithmetic remains exact until it mixes with a floating-point operand. The VM uses [attaswift/BigInt](https://github.com/attaswift/BigInt) for large integers and charges the execution budget before expensive library calls. Scaled decimals are still missing.
+- Strings are Unicode values and `==` compares them by value.
 - Value previews and `printString` produce at most 64 KiB and visit at most 4,096 values, ending with `…` when truncated. Binding previews share a 64 KiB budget per snapshot and use at most 4 KiB per binding.
 - Object memory uses the collector described above. The system does not yet include Smalltalk processes or BitBlt.
-- An evaluation can take up to 100,000 execution steps, including bytecode instructions and call entry, with 128 call levels and 32 syntactic nesting levels. The normal heap permits up to 100,000 registered nodes after collection, and arrays can hold 65,535 elements. A class can have 127 named instance variables including inherited fields and can define 1,000 methods per side. Changes already performed survive an evaluation error.
+- The default evaluation budget is 100,000 execution steps, including bytecode instructions and call entry. The VM allows 128 call levels and 32 syntactic nesting levels. The normal heap permits up to 100,000 registered nodes after collection, and arrays can hold 65,535 elements. A class can have 127 named instance variables including inherited fields and can define 1,000 methods per side. Changes already performed survive an evaluation error.
 
 ## App icon
 
@@ -324,7 +326,7 @@ The project generator preserves the asset catalog and app icon settings for Debu
 
 ## Smalltalk tests
 
-Run `TestRunner runAll summary` in a fresh Workspace to run all bundled tests. `ANSISmalltalkTest run summary` runs the 14 tests for supported behavior from the ANSI Smalltalk draft, including literals, message dispatch, blocks, and arrays. You can browse their source under **Tests** in the System Browser.
+Run `TestRunner runAll summary` in a fresh Workspace to run all bundled tests. `ANSISmalltalkTest run summary` runs 17 tests for supported behavior from the ANSI Smalltalk draft, including literals, exact arithmetic, message dispatch, blocks, and arrays. You can browse their source under **Tests** in the System Browser.
 
 Define a subclass of `TestCase` in the Workspace or Browser. Its own parameterless instance methods named `testSomething` run in alphabetical order. Each method runs on a fresh instance. Override `setUp` and `tearDown` for fixtures.
 

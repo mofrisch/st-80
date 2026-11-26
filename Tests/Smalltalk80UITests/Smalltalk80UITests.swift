@@ -979,6 +979,42 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertFalse(workspace.staticTexts["ERROR"].exists)
     }
 
+    func testWorkspaceBudgetAndStopApplyToOneDoIt() {
+        let app = launchFreshApp()
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        let run = workspace.buttons["executeButton"]
+        let stop = workspace.buttons["workspaceStop"]
+        let budget = workspace.descendants(matching: .any).matching(identifier: "workspaceBudgets").firstMatch
+        func runWithBudget(_ title: String) {
+            XCTAssertTrue(budget.waitForExistence(timeout: 5))
+            budget.click()
+            app.menuItems[title].firstMatch.click()
+        }
+
+        replaceText(in: editor, with: "| sum | sum := 0. 1 to: 20000 do: [ :i | sum := sum + i ]. sum")
+        runWithBudget("1,000,000 steps")
+        XCTAssertTrue(workspace.staticTexts["200010000"].waitForExistence(timeout: 8))
+        run.click()
+        let error = workspace.staticTexts["toolWindowError"]
+        func waitForError(containing text: String) {
+            let content = NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", text, text)
+            let visible = expectation(for: content, evaluatedWith: error)
+            wait(for: [visible], timeout: 5)
+        }
+        waitForError(containing: "100,000 steps")
+
+        replaceText(in: editor, with: "[ true ] whileTrue: [ 1 + 2 ]")
+        runWithBudget("10,000,000 steps")
+        XCTAssertTrue(stop.waitForExistence(timeout: 5))
+        stop.click()
+        waitForError(containing: "Execution stopped.")
+        XCTAssertFalse(stop.exists)
+        replaceText(in: editor, with: "6 * 7")
+        run.click()
+        XCTAssertTrue(workspace.staticTexts["42"].waitForExistence(timeout: 5))
+    }
+
     func testWorkspaceToolbarGroupsActionsAndFoldsResult() {
         let app = launchFreshApp(opening: ["Workspace", "Transcript"])
         let workspace = app.windows["toolWindow-1"]

@@ -184,13 +184,44 @@ struct SmalltalkCoreTests {
     @Test func arithmeticErrorsDoNotCrashTheSession() {
         let runtime = SmalltalkRuntime()
         #expect(runtime.run("1 / 0").error?.contains("Division by zero") == true)
-        #expect(runtime.run("9223372036854775807 + 1").error?.contains("overflow") == true)
-        #expect(runtime.run("2 / 3").error?.contains("Fractions") == true)
         #expect(value("-7 // 3", in: runtime) == "-3")
         #expect(value("-7 \\\\ 3", in: runtime) == "2")
         #expect(value("6 * 7", in: runtime) == "42")
         #expect(value("-9223372036854775808", in: runtime) == "-9223372036854775808")
-        #expect(runtime.run("-9223372036854775808 / -1").error?.contains("overflow") == true)
+    }
+
+    @Test func exactIntegerArithmeticPromotesAndNarrowsAcrossTheMachineRange() {
+        let runtime = SmalltalkRuntime()
+        #expect(value("9223372036854775807 + 1", in: runtime) == "9223372036854775808")
+        #expect(value("-9223372036854775808 / -1", in: runtime) == "9223372036854775808")
+        #expect(value("(9223372036854775807 + 1 - 1) class name", in: runtime) == "#SmallInteger")
+        #expect(value("16r1000000000000000000000000", in: runtime) == "79228162514264337593543950336")
+        #expect(value("36rZZZZZZZZZZZZZZZ", in: runtime) == "221073919720733357899775")
+        #expect(value("1000000000000000000000000 squared", in: runtime) == "1000000000000000000000000000000000000000000000000")
+        #expect(value("1.0e20 truncated", in: runtime) == "100000000000000000000")
+        #expect(value("18446744073709551616 = 1.8446744073709552e19", in: runtime) == "true")
+        #expect(value("| result | result := 0. 9223372036854775807 to: 9223372036854775808 do: [ :n | result := n ]. result", in: runtime) == "9223372036854775808")
+    }
+
+    @Test func fractionsAreReducedAndMixWithIntegerArithmetic() {
+        let runtime = SmalltalkRuntime()
+        #expect(value("2 / 3", in: runtime) == "2/3")
+        #expect(value("(1 / 3) + (1 / 6)", in: runtime) == "1/2")
+        #expect(value("(3 / 4) / (1 / 8)", in: runtime) == "6")
+        #expect(value("2 - (3 / 2)", in: runtime) == "1/2")
+        #expect(value("(1 / 4) + 0.5", in: runtime) == "0.75")
+        #expect(value("""
+            | scale |
+            scale := 10 squared squared squared squared squared squared squared squared squared.
+            ((scale + 1) / (scale + 3)) asFloat
+            """, in: runtime) == "1.0")
+        #expect(value("(1 / 3) < (2 / 5)", in: runtime) == "true")
+        #expect(value("(-7 / 2) // (3 / 2)", in: runtime) == "-3")
+        #expect(value(#"(-7 / 2) \\ (3 / 2)"#, in: runtime) == "1")
+        #expect(value("(Fraction numerator: 4 denominator: -6) numerator", in: runtime) == "-2")
+        #expect(value("(Fraction numerator: 4 denominator: 2) class name", in: runtime) == "#Fraction")
+        #expect(value("(Fraction numerator: 4 denominator: 2) = 2", in: runtime) == "true")
+        #expect(runtime.run("Fraction numerator: 1 denominator: 0").error?.contains("Division by zero") == true)
     }
 
     @Test func badSyntaxIncludesSourcePosition() {

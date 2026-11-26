@@ -25,6 +25,7 @@ final class ApplicationDelegate: NSObject, NSApplicationDelegate {
 
         quitPending = true
         controller.stopDebugging()
+        controller.stopWorkspaceExecution()
         Task {
             await controller.waitForCurrentOperation()
             let shouldQuit = await controller.confirmQuit()

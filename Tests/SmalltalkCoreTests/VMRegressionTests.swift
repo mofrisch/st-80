@@ -72,12 +72,41 @@ struct VMRegressionTests {
         let (_, continuation) = AsyncStream<DebuggerEvent>.makeStream()
         defer { continuation.finish() }
         let channel = DebuggerChannel(continuation)
-        runtime.debuggerCancellation = channel
+        runtime.executionCancellation = channel
         channel.send(.stop)
 
         // Call the comparator directly so this cannot pass solely because
         // send() checks cancellation before entering the primitive.
         #expect(throws: (any Error).self) { try runtime.equal(.integer(1), .integer(1)) }
+    }
+
+    @Test func largeIntegerArithmeticChargesTheExecutionBudgetBeforeCalculating() throws {
+        let runtime = SmalltalkRuntime(bootstrap: false)
+        let dividend = try #require(BigInteger.parseMagnitude(String(repeating: "9", count: 800), radix: 10) { _ in })
+        let divisor = try #require(BigInteger.parseMagnitude(String(repeating: "7", count: 400), radix: 10) { _ in })
+        let charge = runtime.chargeNumericWork
+        let multiplication = #expect(throws: SmalltalkError.self) {
+            try runtime.withToolExecutionBudget(64) { _ = try dividend.multiplied(by: divisor, charge: charge) }
+        }
+        let division = #expect(throws: SmalltalkError.self) {
+            try runtime.withToolExecutionBudget(64) { _ = try dividend.divided(by: divisor, charge: charge) }
+        }
+        #expect(multiplication?.message.contains("64 steps") == true)
+        #expect(division?.message.contains("64 steps") == true)
+    }
+
+    @Test func largeIntegerArithmeticChecksDebuggerCancellationAtTheLibraryBoundary() throws {
+        let runtime = SmalltalkRuntime(bootstrap: false)
+        let (_, continuation) = AsyncStream<DebuggerEvent>.makeStream()
+        defer { continuation.finish() }
+        let channel = DebuggerChannel(continuation)
+        runtime.executionCancellation = channel
+        channel.send(.stop)
+
+        let integer = BigInteger(Int64.max)
+        #expect(throws: (any Error).self) {
+            try integer.multiplied(by: integer, charge: runtime.chargeNumericWork)
+        }
     }
 
     private func removePayload(in session: SmalltalkSession) async -> EvaluationResult {

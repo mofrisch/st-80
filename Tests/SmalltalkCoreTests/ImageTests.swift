@@ -3,6 +3,18 @@ import Testing
 @testable import SmalltalkCore
 
 struct ImageTests {
+    @Test(arguments: [
+        #"{"largeInteger":{"_0":{"negative":true,"words":[123456789,234567890,345678901,12]}}}"#,
+        #"{"fraction":{"_0":{"denominator":{"negative":false,"words":[7]},"numerator":{"negative":true,"words":[1,0,1000000]}}}}"#,
+    ])
+    func exactNumbersKeepTheirImageEncoding(_ fixture: String) throws {
+        let encoded = Data(fixture.utf8)
+        let value = try JSONDecoder().decode(ImageValue.self, from: encoded)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        #expect(try encoder.encode(value) == encoded)
+    }
+
     @Test func unevaluatedBlockCodeRetainsItsRuntimeErrorsAfterRestore() async throws {
         let original = SmalltalkSession()
         let compiled = await original.evaluate("deferred := [ Array new: 65536 ]")

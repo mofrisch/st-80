@@ -50,7 +50,7 @@ extension SmalltalkRuntime {
         guard source.utf8.count <= 262_144 else { throw SmalltalkError("Source code exceeds the 256 KiB limit.") }
         let workspace = SmalltalkRuntime(bootstrap: false, compilationMode: true)
         workspace.memory.stressCollection = memory.stressCollection
-        workspace.debuggerCancellation = debuggerCancellation
+        workspace.executionCancellation = executionCancellation
         for name in Self.compilerClassNames {
             guard let original = classes[name], original.superclass?.name == "Object",
                   let parent = workspace.classes["Object"] else { throw SmalltalkError("Compiler class \(name) is missing.") }
@@ -130,6 +130,7 @@ private enum CompilerOutput {
         guard depth <= 32 else { throw SmalltalkError("Literal is nested too deeply.") }
         switch value {
         case .integer(let number): return .integer(number)
+        case .largeInteger(let number): return .largeInteger(number)
         case .string(let text): return .string(text)
         case .symbol(let name): return .symbol(name)
         case .boolean(let value): return .boolean(value)

@@ -125,8 +125,6 @@ STScanner compile: 'readRadixInteger: prefix
 STScanner compile: 'integerToken: digits radix: radix
     | number |
     number := digits parseIntegerMagnitudeRadix: radix.
-    number = #minimumMagnitude ifTrue: [ ^ self token: #minimumMagnitude value: nil ].
-    number = #overflow ifTrue: [ ^ self token: #unsupportedNumber value: ''Integer exceeds the 64-bit range.'' ].
     number isNil ifTrue: [ ^ self fail: ''Invalid digits for the integer radix.'' ].
     ^ self token: #integer value: number'.
 

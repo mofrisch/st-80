@@ -113,6 +113,40 @@ struct ToolWindowTests {
         })
     }
 
+    @Test func aHigherWorkspaceBudgetAppliesToOneDoIt() async throws {
+        let session = SmalltalkSession()
+        let snapshot = try await openTools(.workspace, in: session)
+        let workspace = try #require(snapshot.windows.first { $0.kind == .workspace })
+        let button = try #require(element("executeButton", in: workspace.content))
+        let action = UIAction.click(windowID: workspace.id, elementID: button.id,
+                                    selection: "| sum | sum := 0. 1 to: 20000 do: [ :i | sum := sum + i ]. sum")
+
+        let regular = await session.uiAction(action, execution: WorkspaceExecution())
+        #expect(regular.executionError?.contains("100,000 steps") == true)
+        let raised = await session.uiAction(action, execution: WorkspaceExecution(stepLimit: 1_000_000))
+        #expect(raised.executionError == nil)
+        #expect(element("evaluationResult", in: raised.windows.first { $0.id == workspace.id }?.content)?.text == "200010000")
+        let next = await session.uiAction(action, execution: WorkspaceExecution())
+        #expect(next.executionError?.contains("100,000 steps") == true)
+    }
+
+    @Test func stopAffectsOnlyItsWorkspaceRun() async throws {
+        let session = SmalltalkSession()
+        let snapshot = try await openTools(.workspace, in: session)
+        let workspace = try #require(snapshot.windows.first { $0.kind == .workspace })
+        let button = try #require(element("executeButton", in: workspace.content))
+        let action = UIAction.click(windowID: workspace.id, elementID: button.id, selection: "stopProbe := 42")
+        let execution = WorkspaceExecution()
+        execution.stop()
+
+        let stopped = await session.uiAction(action, execution: execution)
+        #expect(stopped.executionError == "Execution stopped.")
+        #expect(!stopped.bindings.contains { $0.name == "stopProbe" })
+        let next = await session.uiAction(action, execution: WorkspaceExecution())
+        #expect(next.executionError == nil)
+        #expect(next.bindings.first { $0.name == "stopProbe" }?.value == "42")
+    }
+
     @Test func everyShippedBrowserMethodBelongsToExactlyOneProtocol() throws {
         let runtime = SmalltalkRuntime()
         let organization = try #require(runtime.globals["SystemOrganization"])

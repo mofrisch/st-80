@@ -29,6 +29,8 @@ extension SmalltalkRuntime {
         switch receiver {
         case .classObject(let stClass): return try classPrimitive(stClass, selector, args)
         case .integer(let n): return try integerPrimitive(n, selector, args)
+        case .largeInteger(let n): return try largeIntegerPrimitive(n, selector, args)
+        case .fraction(let n): return try fractionPrimitive(n, selector, args)
         case .float(let number): return try floatPrimitive(number, selector, args)
         case .character(let codePoint): return try characterPrimitive(codePoint, selector)
         case .boolean(let b):
@@ -93,7 +95,12 @@ extension SmalltalkRuntime {
             case "isLowercase": return .boolean(string.count == 1 && string.first?.isLowercase == true)
             case "isWhitespace": return .boolean(string.count == 1 && string.first?.isWhitespace == true)
             case "isLineBreak": return .boolean(string == "\n" || string == "\r" || string == "\r\n")
-            case "asIntegerOrNil": return Int64(string).map(Value.integer) ?? .nilValue
+            case "asIntegerOrNil":
+                if let small = Int64(string) { return .integer(small) }
+                let signed = string.first == "-" || string.first == "+"
+                let digits = signed ? String(string.dropFirst()) : string
+                guard let magnitude = try BigInteger.parseMagnitude(digits, radix: 10, charge: chargeNumericWork) else { return .nilValue }
+                return integerValue(string.first == "-" ? -magnitude : magnitude)
             case "parseFloatOrNil":
                 let spelling = string.replacingOccurrences(of: "d", with: "e").replacingOccurrences(of: "q", with: "e")
                 guard let number = Double(spelling), number.isFinite else { return .nilValue }
@@ -104,9 +111,9 @@ extension SmalltalkRuntime {
                     let digit = (48...57).contains(byte) ? Int(byte) - 48 : Int(byte) - 55
                     return ((48...57).contains(byte) || (65...90).contains(byte)) && digit < radix
                 }) else { return .nilValue }
-                guard let magnitude = UInt64(string, radix: Int(radix)) else { return .symbol("overflow") }
-                if magnitude == UInt64(Int64.max) + 1 { return .symbol("minimumMagnitude") }
-                return Int64(exactly: magnitude).map(Value.integer) ?? .symbol("overflow")
+                if let small = Int64(string, radix: Int(radix)) { return .integer(small) }
+                guard let magnitude = try BigInteger.parseMagnitude(string, radix: Int(radix), charge: chargeNumericWork) else { return .nilValue }
+                return integerValue(magnitude)
             default: return nil
             }
         case .symbol(let name): return selector == "asString" ? .string(name) : nil
@@ -212,6 +219,9 @@ extension SmalltalkRuntime {
 
     func classPrimitive(_ stClass: STClass, _ selector: String, _ args: [Value]) throws -> Value? {
         switch selector {
+        case "_fractionNumerator:denominator:":
+            guard stClass.name == "Fraction" else { return nil }
+            return try fractionValue(unboundedInteger(args[0]), unboundedInteger(args[1]), factory: true)
         case "name": return .symbol(stClass.name)
         case "superclass": return stClass.superclass.map(Value.classObject) ?? .nilValue
         case "subclasses": return try array(classes.values.filter { $0.superclass === stClass }.sorted { $0.name < $1.name }.map(Value.classObject))
@@ -237,7 +247,7 @@ extension SmalltalkRuntime {
         case "new":
             if stClass.name == "Array" { return try array([]) }
             if stClass.name == "String" { return .string("") }
-            guard stClass.name == "Object" || Self.primitiveDescriptions[stClass.name] == nil && !["True", "False", "SmallInteger", "Number", "UndefinedObject"].contains(stClass.name) else {
+            guard stClass.name == "Object" || Self.primitiveDescriptions[stClass.name] == nil && !["True", "False", "SmallInteger", "LargeInteger", "Number", "UndefinedObject"].contains(stClass.name) else {
                 throw SmalltalkError("\(stClass.name) cannot be instantiated with new.")
             }
             let object = try object(stClass)
@@ -249,22 +259,35 @@ extension SmalltalkRuntime {
     }
 
     func integerPrimitive(_ n: Int64, _ selector: String, _ args: [Value]) throws -> Value? {
-        if case .float? = args.first, ["+", "-", "*", "/", "//", "\\\\", "<", ">", "<=", ">="].contains(selector) {
-            return try floatPrimitive(Double(n), selector, args)
+        if let operand = args.first, Self.exactBinarySelectors.contains(selector) || selector == "to:do:" || selector == "to:by:do:" {
+            switch operand {
+            case .largeInteger, .fraction, .float:
+                return try largeIntegerPrimitive(BigInteger(n), selector, args)
+            default: break
+            }
+            if selector == "to:by:do:", case .largeInteger = args[1] {
+                return try largeIntegerPrimitive(BigInteger(n), selector, args)
+            }
         }
         switch selector {
-        case "+": return .integer(try checked(n.addingReportingOverflow(integer(args[0]))))
-        case "-": return .integer(try checked(n.subtractingReportingOverflow(integer(args[0]))))
-        case "*": return .integer(try checked(n.multipliedReportingOverflow(by: integer(args[0]))))
+        case "+", "-", "*":
+            let operand = try integer(args[0])
+            let result: (partialValue: Int64, overflow: Bool)
+            switch selector {
+            case "+": result = n.addingReportingOverflow(operand)
+            case "-": result = n.subtractingReportingOverflow(operand)
+            default: result = n.multipliedReportingOverflow(by: operand)
+            }
+            if result.overflow { return try largeIntegerPrimitive(BigInteger(n), selector, args) }
+            return .integer(result.partialValue)
         case "/", "//", "\\\\":
             let divisor = try integer(args[0])
             guard divisor != 0 else { throw SmalltalkError("Division by zero.") }
-            guard !(n == .min && divisor == -1) else { throw SmalltalkError("64-bit integer overflow.") }
+            if n == .min && divisor == -1 { return try largeIntegerPrimitive(BigInteger(n), selector, args) }
             let quotient = n / divisor
             let remainder = n % divisor
             if selector == "/" {
-                guard remainder == 0 else { throw SmalltalkError("Fractions are not implemented. Use // for integer division.") }
-                return .integer(quotient)
+                return remainder == 0 ? .integer(quotient) : try fractionValue(BigInteger(n), BigInteger(divisor))
             }
             let roundDown = remainder != 0 && (n < 0) != (divisor < 0)
             if selector == "//" { return .integer(roundDown ? quotient - 1 : quotient) }
@@ -273,9 +296,15 @@ extension SmalltalkRuntime {
         case ">": return .boolean(n > (try integer(args[0])))
         case "<=": return .boolean(n <= (try integer(args[0])))
         case ">=": return .boolean(n >= (try integer(args[0])))
-        case "negated": return .integer(try checked(Int64(0).subtractingReportingOverflow(n)))
-        case "abs": return .integer(n < 0 ? try checked(Int64(0).subtractingReportingOverflow(n)) : n)
-        case "squared": return .integer(try checked(n.multipliedReportingOverflow(by: n)))
+        case "negated", "abs":
+            if n == .min { return integerValue(-BigInteger(n)) }
+            return .integer(selector == "negated" ? -n : abs(n))
+        case "squared":
+            let squared = n.multipliedReportingOverflow(by: n)
+            if squared.overflow { return try largeIntegerPrimitive(BigInteger(n), selector, args) }
+            return .integer(squared.partialValue)
+        case "numerator": return .integer(n)
+        case "denominator": return .integer(1)
         case "asFloat", "asFloatE", "asFloatD", "asFloatQ": return .float(Double(n))
         case "asCharacter":
             guard let codePoint = UInt32(exactly: n), Unicode.Scalar(codePoint) != nil else {
@@ -300,11 +329,6 @@ extension SmalltalkRuntime {
             return .integer(n)
         default: return nil
         }
-    }
-
-    private func checked(_ result: (partialValue: Int64, overflow: Bool)) throws -> Int64 {
-        guard !result.overflow else { throw SmalltalkError("64-bit integer overflow.") }
-        return result.partialValue
     }
 
     func appendTranscript(_ text: String) throws {

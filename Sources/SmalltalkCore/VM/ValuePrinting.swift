@@ -32,6 +32,11 @@ struct ValuePrinter {
         guard depth < 5 else { append("…"); return }
         switch value {
         case .integer(let number): append(String(number))
+        case .largeInteger(let number): appendInteger(number)
+        case .fraction(let fraction):
+            appendInteger(fraction.numerator)
+            append("/")
+            appendInteger(fraction.denominator)
         case .float(let number): append(SmalltalkRuntime.floatLiteralText(number))
         case .character(let codePoint):
             append("$")
@@ -73,6 +78,13 @@ struct ValuePrinter {
             append(")")
         case .block(let block): append("[Block · \(block.parameters.count) arguments]")
         case .transcript: append("Transcript")
+        }
+    }
+
+    private mutating func appendInteger(_ number: BigInteger) {
+        number.describe { fragment in
+            append(fragment)
+            return !truncated
         }
     }
 

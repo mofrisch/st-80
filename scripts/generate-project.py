@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the native Xcode project without third-party dependencies."""
+"""Generate the native Xcode project."""
 
 import hashlib
 import json
@@ -39,6 +39,7 @@ def configurations(name, settings):
                 "SWIFT_OPTIMIZATION_LEVEL": "-Onone" if configuration == "Debug" else "-O",
                 "DEBUG_INFORMATION_FORMAT": "dwarf" if configuration == "Debug" else "dwarf-with-dsym",
                 "ENABLE_TESTABILITY": "YES" if configuration == "Debug" else "NO",
+                "ONLY_ACTIVE_ARCH": "YES" if configuration == "Debug" else "NO",
                 "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "DEBUG $(inherited)" if configuration == "Debug" else "$(inherited)",
             })
         refs.append(add(f"{name}.{configuration}", "XCBuildConfiguration", name=configuration, buildSettings=build_settings))
@@ -117,11 +118,19 @@ common = {
     "CODE_SIGNING_ALLOWED": "YES",
 }
 project_configs = configurations("Project", common)
+bigint_package = add("Package.BigInt", "XCRemoteSwiftPackageReference",
+                     repositoryURL="https://github.com/attaswift/BigInt.git",
+                     requirement={"kind": "exactVersion", "version": "6.0.1"})
+bigint_product = add("Product.BigInt", "XCSwiftPackageProductDependency", package=bigint_package, productName="BigInt")
 targets = []
 for name, (_, _, product_type) in products.items():
     frameworks = []
     dependencies = []
+    package_products = {}
     extra_phases = []
+    if name == "SmalltalkCore":
+        frameworks.append(add("Link.SmalltalkCore.BigInt", "PBXBuildFile", productRef=bigint_product))
+        package_products["packageProductDependencies"] = [bigint_product]
     if name in {"Smalltalk80", "SmalltalkCoreTests", "Smalltalk80Tests"}:
         frameworks.append(add(f"Link.{name}.Core", "PBXBuildFile", fileRef=product_refs["SmalltalkCore"]))
         proxy = add(f"Proxy.{name}.Core", "PBXContainerItemProxy", containerPortal=uid("Project"), proxyType=1, remoteGlobalIDString=uid("Target.SmalltalkCore"), remoteInfo="SmalltalkCore")
@@ -165,13 +174,13 @@ for name, (_, _, product_type) in products.items():
     elif name == "Smalltalk80UITests":
         settings["TEST_TARGET_NAME"] = "Smalltalk80"
     target_configs = configurations(name, settings)
-    targets.append(add(f"Target.{name}", "PBXNativeTarget", buildConfigurationList=target_configs, buildPhases=[source_phases[name], framework_phase, resource_phase] + extra_phases, buildRules=[], dependencies=dependencies, name=name, productName=name, productReference=product_refs[name], productType=product_type))
+    targets.append(add(f"Target.{name}", "PBXNativeTarget", buildConfigurationList=target_configs, buildPhases=[source_phases[name], framework_phase, resource_phase] + extra_phases, buildRules=[], dependencies=dependencies, name=name, productName=name, productReference=product_refs[name], productType=product_type, **package_products))
 
 add("Project", "PBXProject", attributes={
     "BuildIndependentTargetsInParallel": "YES",
     "LastUpgradeCheck": "2730",
     "TargetAttributes": {uid(f"Target.{name}"): {"CreatedOnToolsVersion": "27.3", **({"TestTargetID": uid("Target.Smalltalk80")} if name in {"Smalltalk80Tests", "Smalltalk80UITests"} else {})} for name in products},
-}, buildConfigurationList=project_configs, compatibilityVersion="Xcode 14.0", developmentRegion="en", hasScannedForEncodings=0, knownRegions=["en", "Base"], mainGroup=main_group, productRefGroup=products_group, projectDirPath="", projectRoot="", targets=targets)
+}, buildConfigurationList=project_configs, compatibilityVersion="Xcode 14.0", developmentRegion="en", hasScannedForEncodings=0, knownRegions=["en", "Base"], mainGroup=main_group, productRefGroup=products_group, packageReferences=[bigint_package], projectDirPath="", projectRoot="", targets=targets)
 
 PROJECT.mkdir(exist_ok=True)
 (PROJECT / "project.pbxproj").write_text("// !$*UTF8*$!\n" + encode({"archiveVersion": 1, "classes": {}, "objectVersion": 56, "objects": objects, "rootObject": uid("Project")}) + "\n")

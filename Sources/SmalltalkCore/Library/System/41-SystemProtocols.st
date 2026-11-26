@@ -20,11 +20,17 @@ BrowserOrganization compile: 'shippedProtocols
             (''Arithmetic'' (''+'' ''-'' ''*'' ''/'' ''//'' ''\\'' ''negated'' ''abs'' ''squared''))
             (''Comparing'' (''<'' ''>'' ''<='' ''>=''))
             (''Bounds'' (''min:'' ''max:'' ''clampFrom:to:''))
+            (''Rational Access'' (''numerator'' ''denominator''))
             (''Converting'' (''asCharacter'' ''asFloat'' ''asFloatE'' ''asFloatD'' ''asFloatQ''))
             (''Iteration'' (''timesRepeat:'' ''to:do:'' ''to:by:do:''))))
         (''Boolean'' (
             (''Logical Operations'' (''not'' ''and:'' ''or:'' ''&'' ''|'' ''eqv:'' ''xor:''))
             (''Conditionals'' (''ifTrue:'' ''ifFalse:'' ''ifTrue:ifFalse:'' ''ifFalse:ifTrue:''))))
+        (''Fraction'' (
+            (''Rational Access'' (''numerator'' ''denominator''))
+            (''Arithmetic'' (''+'' ''-'' ''*'' ''/'' ''//'' ''\\'' ''negated'' ''abs'' ''squared''))
+            (''Comparing'' (''<'' ''>'' ''<='' ''>=''))
+            (''Converting'' (''asFloat'' ''asFloatE'' ''asFloatD'' ''asFloatQ'' ''floor'' ''ceiling'' ''rounded'' ''truncated''))))
         (''Float'' (
             (''Arithmetic'' (''+'' ''-'' ''*'' ''/'' ''//'' ''\\'' ''negated'' ''abs'' ''squared''))
             (''Comparing'' (''<'' ''>'' ''<='' ''>=''))
@@ -260,6 +266,7 @@ BrowserOrganization compile: 'shippedProtocols
                 ''testCharacterLiteralsAndStringElements'' ''testLiteralArrayValuesAndSymbolIdentity''
                 ''testLexicalBlockBindings'' ''testValuableProtocol'' ''testBooleanShortCircuitAndLoop''
                 ''testCleanupRunsInUnwindOrder''))
+            (''Number Tests'' (''testLargeIntegerArithmetic'' ''testLargeIntegerFloorDivision'' ''testExactFractions''))
             (''Collection Tests'' (''testArrayFactoriesAndIndexedCopy'' ''testLargeArrayIsOneBasedAndInitiallyNil''))
             (''Test Support'' (''returnThroughCleanup:''))))
     )'.

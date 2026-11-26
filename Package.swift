@@ -9,8 +9,11 @@ let package = Package(
         .executable(name: "Smalltalk80", targets: ["Smalltalk80"]),
         .executable(name: "st80-bootstrap", targets: ["SmalltalkBootstrap"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/attaswift/BigInt.git", exact: "6.0.1"),
+    ],
     targets: [
-        .target(name: "SmalltalkCore", resources: [.copy("Library")]),
+        .target(name: "SmalltalkCore", dependencies: [.product(name: "BigInt", package: "BigInt")], resources: [.copy("Library")]),
         .executableTarget(
             name: "Smalltalk80",
             dependencies: ["SmalltalkCore"],

@@ -1,0 +1,15 @@
+{
+  "originHash" : "5c91b063f9755323cecb739c370ca1ec061852b52b44ec0bbf15e3dc5a326fb9",
+  "pins" : [
+    {
+      "identity" : "bigint",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/attaswift/BigInt.git",
+      "state" : {
+        "revision" : "63feef7820abb1a8fb08587d7da56bb0b7db8751",
+        "version" : "6.0.1"
+      }
+    }
+  ],
+  "version" : 3
+}

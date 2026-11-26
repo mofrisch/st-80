@@ -74,7 +74,7 @@ extension SmalltalkSession {
 private struct DebuggerStopped: Error {}
 
 /// Only snapshots, commands, and cancellation cross the worker boundary.
-final class DebuggerChannel: @unchecked Sendable {
+final class DebuggerChannel: ExecutionCancellation, @unchecked Sendable {
     private let continuation: AsyncStream<DebuggerEvent>.Continuation
     private let condition = NSCondition()
     private var awaitingCommand = false
@@ -277,7 +277,7 @@ extension SmalltalkRuntime {
         catalogDirty = true
         evaluatingToolSource = true
         debugger = DebuggerExecution(channel)
-        debuggerCancellation = channel
+        executionCancellation = channel
         let result: (value: String?, error: String?)
         do {
             try channel.checkStop()
@@ -293,7 +293,7 @@ extension SmalltalkRuntime {
             result = (nil, error.localizedDescription)
         }
         debugger = nil
-        debuggerCancellation = nil
+        executionCancellation = nil
         evaluatingToolSource = false
         return finishWorkspaceEvaluation(value: result.value, error: result.error, target: target)
     }

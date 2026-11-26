@@ -1,0 +1,218 @@
+import BigInt
+
+/// Adapts BigInt to the VM's arithmetic budget and the existing image encoding.
+/// An immutable reference keeps BigInt's storage out of recursive VM frames.
+final class BigInteger: Codable, Sendable, Comparable, CustomStringConvertible {
+    private static let decimalBase: BigUInt = 1_000_000_000
+    private let value: BigInt
+
+    static let zero = BigInteger(0)
+    static let one = BigInteger(1)
+
+    init(_ value: Int64) {
+        self.value = BigInt(value)
+    }
+
+    private init(value: BigInt) {
+        self.value = value
+    }
+
+    init?(exactly value: Double) {
+        guard let integer = BigInt(exactly: value) else { return nil }
+        self.value = integer
+    }
+
+    // Images continue to use the original little-endian base-10^9 words.
+    private enum CodingKeys: String, CodingKey { case negative, words }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let negative = try container.decode(Bool.self, forKey: .negative)
+        let words = try container.decode([UInt32].self, forKey: .words)
+        guard words.last != 0, !negative || !words.isEmpty, words.allSatisfy({ $0 < 1_000_000_000 }) else {
+            throw DecodingError.dataCorruptedError(forKey: .words, in: container, debugDescription: "Invalid integer magnitude.")
+        }
+        value = BigInt(sign: negative ? .minus : .plus, magnitude: Self.decodeDecimalWords(words))
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var words: [UInt32] = []
+        visitDecimalWords {
+            words.append($0)
+            return true
+        }
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(isNegative, forKey: .negative)
+        try container.encode(Array(words.reversed()), forKey: .words)
+    }
+
+    static func parseMagnitude(_ text: String, radix: Int, charge: (Int) throws -> Void) throws -> BigInteger? {
+        guard (2...36).contains(radix), !text.isEmpty else { return nil }
+        try charge(text.utf8.count)
+        let significant = text.drop(while: { $0 == "0" })
+        guard !significant.isEmpty else { return .zero }
+        let bitsPerDigit = Int.bitWidth - (radix - 1).leadingZeroBitCount
+        let bits = workProduct(significant.utf8.count, bitsPerDigit)
+        let width = (bits - 1) / UInt.bitWidth + 1
+        // The dependency can pack digits directly only when a complete
+        // group of digits fills a machine word.
+        if radix.nonzeroBitCount != 1 || UInt.bitWidth % bitsPerDigit != 0 {
+            try charge(workProduct(width, width))
+        }
+
+        let magnitude: BigUInt?
+        if radix < 36 {
+            guard significant.utf8.allSatisfy({ (48...57).contains($0) || (65...90).contains($0) }) else { return nil }
+            magnitude = BigUInt(significant, radix: radix)
+        } else {
+            // BigInt 6.0.1 limits its string initializer to radices below 36.
+            // Swift's fixed-width constructor can parse each radix-36 group.
+            var result: BigUInt = 0
+            var rest = significant
+            let digitsPerWord = (UInt.bitWidth - 1) / 6
+            var width = rest.utf8.count % digitsPerWord
+            if width == 0 { width = digitsPerWord }
+            while !rest.isEmpty {
+                let group = rest.prefix(width)
+                guard group.utf8.allSatisfy({ (48...57).contains($0) || (65...90).contains($0) }),
+                      let digits = UInt(group, radix: 36) else { return nil }
+                let scale = (0..<width).reduce(UInt(1)) { power, _ in power * 36 }
+                result.multiply(byWord: scale)
+                result += BigUInt(digits)
+                rest = rest.dropFirst(width)
+                width = digitsPerWord
+            }
+            magnitude = result
+        }
+        return magnitude.map { BigInteger(value: BigInt(sign: .plus, magnitude: $0)) }
+    }
+
+    // A conservative estimate in the VM's existing ~30-bit work units.
+    var wordCount: Int {
+        let bits = value.magnitude.bitWidth
+        return bits == 0 ? 0 : (bits - 1) / 29 + 1
+    }
+    var isZero: Bool { value.isZero }
+    var isNegative: Bool { value.sign == .minus }
+    var magnitude: BigInteger {
+        if !isNegative { return self }
+        return -self
+    }
+    var int64: Int64? { Int64(exactly: value) }
+
+    var description: String {
+        var text = ""
+        describe { fragment in
+            text += fragment
+            return true
+        }
+        return text
+    }
+
+    var floatingComponents: (coefficient: Double, exponent: Int) {
+        let magnitude = value.magnitude
+        let shift = max(0, magnitude.bitWidth - UInt64.bitWidth)
+        let coefficient = Double(UInt64(truncatingIfNeeded: magnitude >> shift))
+        return (isNegative ? -coefficient : coefficient, shift)
+    }
+
+    var doubleValue: Double {
+        if let small = int64 { return Double(small) }
+        let overflow = isNegative ? -Double.infinity : Double.infinity
+        if value.magnitude.bitWidth > 1_024 { return overflow }
+        return Double(String(value)) ?? overflow
+    }
+
+    /// Allows the diagnostic printer to stop without formatting the tail.
+    func describe(_ append: (String) -> Bool) {
+        if isZero {
+            _ = append("0")
+            return
+        }
+        if isNegative && !append("-") { return }
+        var first = true
+        visitDecimalWords { word in
+            let digits = String(word)
+            let chunk = first ? digits : String(repeating: "0", count: 9 - digits.count) + digits
+            first = false
+            return append(chunk)
+        }
+    }
+
+    static prefix func - (operand: BigInteger) -> BigInteger { BigInteger(value: -operand.value) }
+    static func == (lhs: BigInteger, rhs: BigInteger) -> Bool { lhs.value == rhs.value }
+    static func < (lhs: BigInteger, rhs: BigInteger) -> Bool { lhs.value < rhs.value }
+    static func + (lhs: BigInteger, rhs: BigInteger) -> BigInteger { BigInteger(value: lhs.value + rhs.value) }
+    static func - (lhs: BigInteger, rhs: BigInteger) -> BigInteger { BigInteger(value: lhs.value - rhs.value) }
+
+    func multiplied(by other: BigInteger, charge: (Int) throws -> Void) throws -> BigInteger {
+        guard !isZero, !other.isZero else { return .zero }
+        // Reserve work before entering a synchronous library operation.
+        try charge(Self.workProduct(wordCount, other.wordCount))
+        return BigInteger(value: value * other.value)
+    }
+
+    /// Truncates toward zero, with a remainder having the sign of the dividend.
+    func divided(by divisor: BigInteger, charge: (Int) throws -> Void) throws -> (quotient: BigInteger, remainder: BigInteger) {
+        guard !divisor.isZero else { throw SmalltalkError("Division by zero.") }
+        try charge(max(wordCount, divisor.wordCount))
+        if value.magnitude < divisor.value.magnitude { return (.zero, self) }
+        try charge(Self.workProduct(wordCount, divisor.wordCount))
+        let division = value.magnitude.quotientAndRemainder(dividingBy: divisor.value.magnitude)
+        let quotient = BigInt(sign: value.sign == divisor.value.sign ? .plus : .minus, magnitude: division.quotient)
+        let remainder = BigInt(sign: value.sign, magnitude: division.remainder)
+        return (BigInteger(value: quotient), BigInteger(value: remainder))
+    }
+
+    private static func workProduct(_ lhs: Int, _ rhs: Int) -> Int {
+        let result = lhs.multipliedReportingOverflow(by: rhs)
+        return result.overflow ? .max : result.partialValue
+    }
+
+    private static func decodeDecimalWords(_ words: [UInt32]) -> BigUInt {
+        guard !words.isEmpty else { return 0 }
+        var powers = [decimalBase]
+        var capacity = 2
+        while capacity < words.count {
+            let power = powers[powers.count - 1]
+            powers.append(power * power)
+            capacity *= 2
+        }
+        // Split at powers of two so conversion of a wide image value does
+        // not multiply a growing magnitude by a single word on every pass.
+        func combine(_ groups: ArraySlice<UInt32>, level: Int) -> BigUInt {
+            guard let first = groups.first else { return 0 }
+            guard groups.count > 1 else { return BigUInt(first) }
+            let half = 1 << (level - 1)
+            if groups.count <= half { return combine(groups, level: level - 1) }
+            let middle = groups.startIndex + half
+            return combine(groups[middle...], level: level - 1) * powers[level - 1]
+                + combine(groups[..<middle], level: level - 1)
+        }
+        return combine(words[...], level: powers.count)
+    }
+
+    // The callback sees most significant words first, without leading zeroes.
+    private func visitDecimalWords(_ append: (UInt32) -> Bool) {
+        guard !isZero else { return }
+        let magnitude = value.magnitude
+        var powers = [Self.decimalBase]
+        while let power = powers.last, power <= magnitude { powers.append(power * power) }
+        func visit(_ group: BigUInt, level: Int, padded: Bool) -> Bool {
+            if level == 0 { return append(UInt32(truncatingIfNeeded: group)) }
+            let factor = powers[level - 1]
+            if group < factor {
+                if padded {
+                    for _ in 0..<(1 << (level - 1)) {
+                        guard append(0) else { return false }
+                    }
+                }
+                return visit(group, level: level - 1, padded: padded)
+            }
+            let division = group.quotientAndRemainder(dividingBy: factor)
+            return visit(division.quotient, level: level - 1, padded: padded)
+                && visit(division.remainder, level: level - 1, padded: true)
+        }
+        _ = visit(magnitude, level: powers.count - 1, padded: false)
+    }
+}

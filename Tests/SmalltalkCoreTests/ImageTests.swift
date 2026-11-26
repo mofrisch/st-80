@@ -6,6 +6,7 @@ struct ImageTests {
     @Test(arguments: [
         #"{"largeInteger":{"_0":{"negative":true,"words":[123456789,234567890,345678901,12]}}}"#,
         #"{"fraction":{"_0":{"denominator":{"negative":false,"words":[7]},"numerator":{"negative":true,"words":[1,0,1000000]}}}}"#,
+        #"{"scaledDecimal":{"_0":{"coefficient":{"negative":true,"words":[1230]},"scale":2}}}"#,
     ])
     func exactNumbersKeepTheirImageEncoding(_ fixture: String) throws {
         let encoded = Data(fixture.utf8)
@@ -13,6 +14,11 @@ struct ImageTests {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         #expect(try encoder.encode(value) == encoded)
+    }
+
+    @Test func invalidScaledDecimalScaleIsRejectedWhenReadingAnImageValue() {
+        let encoded = Data(#"{"scaledDecimal":{"_0":{"coefficient":{"negative":false,"words":[1]},"scale":1025}}}"#.utf8)
+        #expect(throws: DecodingError.self) { try JSONDecoder().decode(ImageValue.self, from: encoded) }
     }
 
     @Test func unevaluatedBlockCodeRetainsItsRuntimeErrorsAfterRestore() async throws {

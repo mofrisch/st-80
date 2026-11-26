@@ -21,7 +21,7 @@ BrowserOrganization compile: 'shippedProtocols
             (''Comparing'' (''<'' ''>'' ''<='' ''>=''))
             (''Bounds'' (''min:'' ''max:'' ''clampFrom:to:''))
             (''Rational Access'' (''numerator'' ''denominator''))
-            (''Converting'' (''asCharacter'' ''asFloat'' ''asFloatE'' ''asFloatD'' ''asFloatQ''))
+            (''Converting'' (''asCharacter'' ''asFloat'' ''asFloatE'' ''asFloatD'' ''asFloatQ'' ''asScaledDecimal:''))
             (''Iteration'' (''timesRepeat:'' ''to:do:'' ''to:by:do:''))))
         (''Boolean'' (
             (''Logical Operations'' (''not'' ''and:'' ''or:'' ''&'' ''|'' ''eqv:'' ''xor:''))
@@ -30,18 +30,24 @@ BrowserOrganization compile: 'shippedProtocols
             (''Rational Access'' (''numerator'' ''denominator''))
             (''Arithmetic'' (''+'' ''-'' ''*'' ''/'' ''//'' ''\\'' ''negated'' ''abs'' ''squared''))
             (''Comparing'' (''<'' ''>'' ''<='' ''>=''))
-            (''Converting'' (''asFloat'' ''asFloatE'' ''asFloatD'' ''asFloatQ'' ''floor'' ''ceiling'' ''rounded'' ''truncated''))))
+            (''Converting'' (''asFloat'' ''asFloatE'' ''asFloatD'' ''asFloatQ'' ''asScaledDecimal:'' ''floor'' ''ceiling'' ''rounded'' ''truncated''))))
+        (''ScaledDecimal'' (
+            (''Accessing'' (''scale'' ''integerPart'' ''fractionPart''))
+            (''Arithmetic'' (''+'' ''-'' ''*'' ''/'' ''//'' ''\\'' ''negated'' ''abs'' ''squared'' ''reciprocal''))
+            (''Comparing'' (''<'' ''>'' ''<='' ''>='' ''negative'' ''positive'' ''strictlyPositive'' ''sign''))
+            (''Converting'' (''asFraction'' ''asScaledDecimal:'' ''asFloat'' ''asFloatE'' ''asFloatD'' ''asFloatQ''
+                ''asInteger'' ''rounded'' ''floor'' ''ceiling'' ''truncated''))))
         (''Float'' (
             (''Arithmetic'' (''+'' ''-'' ''*'' ''/'' ''//'' ''\\'' ''negated'' ''abs'' ''squared''))
             (''Comparing'' (''<'' ''>'' ''<='' ''>=''))
-            (''Converting'' (''asFloat'' ''asFloatE'' ''asFloatD'' ''asFloatQ'' ''ceiling'' ''floor'' ''truncated'' ''rounded''))
+            (''Converting'' (''asFloat'' ''asFloatE'' ''asFloatD'' ''asFloatQ'' ''asScaledDecimal:'' ''ceiling'' ''floor'' ''truncated'' ''rounded''))
             (''Mathematical Functions'' (''sqrt'' ''exp'' ''ln'' ''raisedTo:'' ''sin'' ''cos'' ''tan''))))
         (''String'' (
             (''Accessing'' (''size'' ''at:'' ''characters''))
             (''Combining'' ('',''))
             (''Searching'' (''includes:''))
             (''Character Testing'' (''isLetter'' ''isNumber'' ''isASCIIDigit'' ''isLowercase'' ''isWhitespace'' ''isLineBreak''))
-            (''Converting'' (''asString'' ''asSymbol'' ''asCharacter'' ''asIntegerOrNil'' ''parseIntegerMagnitudeRadix:'' ''parseFloatOrNil''))))
+            (''Converting'' (''asString'' ''asSymbol'' ''asCharacter'' ''asIntegerOrNil'' ''parseIntegerMagnitudeRadix:'' ''parseFloatOrNil'' ''parseScaledDecimalOrNil''))))
         (''Character'' (
             (''Converting'' (''asString'' ''asLowercase'' ''asUppercase'' ''codePoint''))
             (''Testing'' (''isAlphaNumeric'' ''isDigit'' ''isLetter'' ''isLowercase'' ''isUppercase''))
@@ -266,7 +272,9 @@ BrowserOrganization compile: 'shippedProtocols
                 ''testCharacterLiteralsAndStringElements'' ''testLiteralArrayValuesAndSymbolIdentity''
                 ''testLexicalBlockBindings'' ''testValuableProtocol'' ''testBooleanShortCircuitAndLoop''
                 ''testCleanupRunsInUnwindOrder''))
-            (''Number Tests'' (''testLargeIntegerArithmetic'' ''testLargeIntegerFloorDivision'' ''testExactFractions''))
+            (''Number Tests'' (''testLargeIntegerArithmetic'' ''testLargeIntegerFloorDivision'' ''testExactFractions''
+                ''testScaledDecimalLiterals'' ''testScaledDecimalExactArithmetic'' ''testScaledDecimalDivision''
+                ''testScaledDecimalMixedNumericTypes'' ''testScaledDecimalConversions'' ''testScaledDecimalWithWideCoefficient''))
             (''Collection Tests'' (''testArrayFactoriesAndIndexedCopy'' ''testLargeArrayIsOneBasedAndInitiallyNil''))
             (''Test Support'' (''returnThroughCleanup:''))))
     )'.

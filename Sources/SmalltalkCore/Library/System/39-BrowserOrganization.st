@@ -120,7 +120,7 @@ BrowserOrganization compile: 'initialize
 BrowserOrganization compileClass: 'shippedClassCategories
     ^ #(
         (''Kernel'' (''Object'' ''Class'' ''UndefinedObject'' ''Boolean'' ''True'' ''False''
-            ''Number'' ''Integer'' ''SmallInteger'' ''LargeInteger'' ''Fraction'' ''Float'' ''BlockClosure'' ''FailedMessage''))
+            ''Number'' ''Integer'' ''SmallInteger'' ''LargeInteger'' ''Fraction'' ''ScaledDecimal'' ''Float'' ''BlockClosure'' ''FailedMessage''))
         (''Collections & Text'' (''Array'' ''String'' ''Character'' ''Symbol''))
         (''Compiler'' (''STCompilerList'' ''STScanner'' ''STCompiler''))
         (''MVC'' (''Model'' ''Controller'' ''UIBinding''))

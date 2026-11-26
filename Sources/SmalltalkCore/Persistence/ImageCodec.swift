@@ -37,6 +37,7 @@ enum ImageCodec {
             case .integer(let n): return .integer(n)
             case .largeInteger(let n): return .largeInteger(n)
             case .fraction(let value): return .fraction(value)
+            case .scaledDecimal(let value): return .scaledDecimal(value)
             case .character(let codePoint): return .character(codePoint)
             case .float(let number): return .float(number)
             case .string(let s): return .string(s)
@@ -173,6 +174,7 @@ enum ImageCodec {
             }
         }
         try runtime.validateCompilerClasses()
+        if records["ScaledDecimal"] == nil { try runtime.upgradeCompilerForScaledDecimals() }
         guard runtime.classes["UIBinding"]?.lookup("reconcileMount:") != nil else {
             throw invalid("The image is missing UIBinding>>reconcileMount:. Start a fresh session.")
         }
@@ -211,6 +213,7 @@ enum ImageCodec {
             case .integer(let n): return .integer(n)
             case .largeInteger(let n): return runtime.integerValue(n)
             case .fraction(let value): return .fraction(value)
+            case .scaledDecimal(let value): return .scaledDecimal(value)
             case .character(let codePoint):
                 guard Unicode.Scalar(codePoint) != nil else { throw invalid("Invalid character code point.") }
                 return .character(codePoint)

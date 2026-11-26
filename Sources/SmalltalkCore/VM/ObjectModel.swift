@@ -12,6 +12,7 @@ public enum MethodSide: String, Codable, CaseIterable, Sendable {
 enum Value {
     case integer(Int64), string(String), symbol(String), boolean(Bool), nilValue
     case largeInteger(BigInteger), fraction(ExactFraction)
+    case scaledDecimal(ScaledDecimal)
     case character(UInt32), float(Double)
     case classObject(STClass), object(STObject), block(STBlock), array(STArray), transcript
 }

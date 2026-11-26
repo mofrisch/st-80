@@ -98,7 +98,11 @@ STScanner compile: 'readNumber
     hasFraction ifTrue: [ self advance. self readDigits ].
     self peek = ''s'' ifTrue: [
         self advance. self readDigits.
-        ^ self token: #unsupportedNumber value: ''Scaled decimals are not implemented.'' ].
+        digits := characters joinedStringFrom: start to: offset - 1.
+        digits := digits parseScaledDecimalOrNil.
+        digits isNil ifTrue: [
+            ^ self token: #unsupportedNumber value: ''Invalid or out-of-range scaled decimal literal.'' ].
+        ^ self token: #scaledDecimal value: digits ].
     hasFraction ifTrue: [
         (#(''e'' ''d'' ''q'') includes: self peek) ifTrue: [
             self advance.

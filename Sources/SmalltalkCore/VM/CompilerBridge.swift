@@ -5,6 +5,28 @@ import Foundation
 extension SmalltalkRuntime {
     static let compilerClassNames = ["STCompilerList", "STScanner", "STCompiler"]
 
+    /// Earlier images keep their compiler in the image. Upgrade only the
+    /// shipped methods whose source predates scaled decimal literals.
+    func upgradeCompilerForScaledDecimals() throws {
+        let previousSources = [
+            ("STScanner", "readNumber", "d08339af28fc324e87e626667206898ad718624a3f20e7006b1a21bfab8eda27"),
+            ("STCompiler", "primary", "7fcc6426c594e49b25233c8ef1589e39c5cd2c772b4f121aefb97ad592889339"),
+            ("STCompiler", "negativeNumber", "915d335a00e544032bde468172e1f0c30839f195299a6d02da5c8d07d8678063"),
+            ("STCompiler", "arrayElement", "5e16c0b597068bf54c6853bbf832b7efbf43216814a8bf4a0d4694070668fdc5"),
+            ("STSourceScanner", "token:value:", "ea832cd677bc50fc496310fc7e9f895a49d1d01938a76a0148f4e863cbe99b09"),
+        ]
+        for (className, selector, sourceHash) in previousSources {
+            guard let compiler = classes[className], let previous = compiler.methods[selector],
+                  SystemLibrary.digest(Data(previous.source.utf8)) == sourceHash else { continue }
+            let library = try SystemLibrary.shared.get()
+            guard let code = library.seed.methods[className]?[selector],
+                  let source = library.sources.methods[className]?[selector] else {
+                throw SmalltalkError("The bundled \(className)>>\(selector) method is missing.")
+            }
+            compiler.methods[selector] = try code.validatedMethod(selector: selector, source: source)
+        }
+    }
+
     func compileWorkspace(_ source: String) throws -> Body {
         let body: Body = try withCompiler(source, selector: "workspace:", decode: CompilerOutput.body)
         try CodeValidator.check(body)
@@ -131,6 +153,7 @@ private enum CompilerOutput {
         switch value {
         case .integer(let number): return .integer(number)
         case .largeInteger(let number): return .largeInteger(number)
+        case .scaledDecimal(let number): return .scaledDecimal(number)
         case .string(let text): return .string(text)
         case .symbol(let name): return .symbol(name)
         case .boolean(let value): return .boolean(value)

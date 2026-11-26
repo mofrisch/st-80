@@ -21,6 +21,7 @@ final class SmalltalkRuntime {
         ("SmallInteger", "Integer"),
         ("LargeInteger", "Integer"),
         ("Fraction", "Number"),
+        ("ScaledDecimal", "Number"),
         ("Float", "Number"),
         ("String", "Object"),
         ("Character", "Object"),
@@ -30,7 +31,7 @@ final class SmalltalkRuntime {
         ("Transcript", "Object"),
     ]
     static let builtinNames = Set(builtinHierarchy.map(\.name))
-    static let additiveBuiltinNames: Set<String> = ["Character", "Float", "LargeInteger", "Fraction"]
+    static let additiveBuiltinNames: Set<String> = ["Character", "Float", "LargeInteger", "Fraction", "ScaledDecimal"]
     static let floatAliases: Set<String> = ["FloatE", "FloatD", "FloatQ"]
     static let classLimit = 128 + additiveBuiltinNames.count
     static let executionStepLimit = 100_000
@@ -284,6 +285,7 @@ final class SmalltalkRuntime {
         switch literal {
         case .integer(let n): return .integer(n)
         case .largeInteger(let n): return integerValue(n)
+        case .scaledDecimal(let n): return .scaledDecimal(n)
         case .string(let s): return .string(s)
         case .symbol(let s): return .symbol(s)
         case .boolean(let b): return .boolean(b)
@@ -309,6 +311,7 @@ final class SmalltalkRuntime {
         case .integer: name = "SmallInteger"
         case .largeInteger: name = "LargeInteger"
         case .fraction: name = "Fraction"
+        case .scaledDecimal: name = "ScaledDecimal"
         case .float: name = "Float"
         case .string: name = "String"
         case .character: name = "Character"

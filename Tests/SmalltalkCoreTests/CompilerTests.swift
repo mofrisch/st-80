@@ -20,7 +20,10 @@ struct CompilerTests {
         #expect(await session.evaluate("2 * -1.25q2").value == "-250.0")
         #expect(await session.evaluate("1.0e309").error?.contains("supported range") == true)
         #expect(await session.evaluate("FloatE precision + FloatD precision + FloatQ precision").value == "159")
-        #expect(await session.evaluate("12s").error?.contains("Scaled decimals") == true)
+        #expect(await session.evaluate("12s").value == "12s0")
+        #expect(await session.evaluate("1.2s0").error?.contains("scaled decimal literal") == true)
+        #expect(await session.evaluate("1s1025").error?.contains("scaled decimal literal") == true)
+        #expect(await session.evaluate("1s / 0s").error?.contains("Division by zero") == true)
         #expect(await session.compile("badReturn ^ 42. 7", in: "Counter").error?.contains("last statement") == true)
         #expect(await session.compile("nestedReturn ^ (^ 42)", in: "Counter").error != nil)
         #expect(await session.evaluate("true | false").value == "true")
@@ -52,6 +55,17 @@ struct CompilerTests {
         #expect(await restored.evaluate("large = Counter new largeValue").value == "true")
         #expect(await restored.evaluate("ratio denominator").value == "3")
         #expect(await restored.evaluate("ratio * 3").value == "1000000000000000000000001")
+    }
+
+    @Test func scaledDecimalValuesAndBytecodeRetainTheirScaleAfterImageLoad() async throws {
+        let session = SmalltalkSession()
+        #expect(await session.compile("price ^ #(-12.30s 7s4)", in: "Counter").error == nil)
+        #expect(await session.evaluate("storedPrice := 12345678901234567890.500s. getPrice := [ 3.1400s ]").error == nil)
+        let restored = SmalltalkSession()
+        _ = try await restored.loadImage(session.imageData())
+        #expect(await restored.evaluate("Counter new price").value == "#(-12.30s2 7.0000s4)")
+        #expect(await restored.evaluate("storedPrice").value == "12345678901234567890.500s3")
+        #expect(await restored.evaluate("getPrice value").value == "3.1400s4")
     }
 
     @Test func ansiArgumentsAreConstantAndLocalsCanShadow() async {
@@ -92,13 +106,13 @@ struct CompilerTests {
         let comment = "\"💡\r\ncomment\""
         let symbol = "#'e\u{301}'"
         let unfinished = "'unterminated 💡"
-        let source = "\(comment) café := \(symbol). 💥 # 9223372036854775809 ^ self \(unfinished)"
+        let source = "\(comment) café := \(symbol). 💥 # 9223372036854775809 1.20s3 ^ self \(unfinished)"
         let highlights = await session.sourceHighlights(source)
         let nativeText = source as NSString
 
-        #expect(highlights.map(\.kind) == [.comment, .language, .literal, .language, .language, .language, .literal])
+        #expect(highlights.map(\.kind) == [.comment, .language, .literal, .language, .language, .language, .language, .literal])
         #expect(highlights.map { nativeText.substring(with: NSRange($0.range)) }
-                == [comment, ":=", symbol, "9223372036854775809", "^", "self", unfinished])
+                == [comment, ":=", symbol, "9223372036854775809", "1.20s3", "^", "self", unfinished])
 
         let openComment = "\"open comment 💡"
         let commentHighlights = await session.sourceHighlights(openComment)

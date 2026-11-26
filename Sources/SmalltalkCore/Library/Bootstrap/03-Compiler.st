@@ -194,7 +194,7 @@ STCompiler compile: 'primary
         payload := self floatFrom: self tokenValue.
         self advance.
         ^ self node: #literal at: position with: payload with: nil ].
-    (#(integer string symbol identifier character) includes: kind) ifTrue: [
+    (#(integer scaledDecimal string symbol identifier character) includes: kind) ifTrue: [
         payload := self tokenValue.
         self advance.
         kind = #identifier ifTrue: [ ^ self node: #variable at: position with: payload with: nil ].
@@ -240,7 +240,7 @@ STCompiler compile: 'negativeNumber
         number := self floatFrom: self tokenValue.
         self advance.
         ^ number negated ].
-    self kind = #integer ifFalse: [ self fail: ''Expected an integer after -.'' ].
+    (#(integer scaledDecimal) includes: self kind) ifFalse: [ self fail: ''Expected a number after -.'' ].
     number := self tokenValue.
     self advance.
     ^ number negated'.
@@ -266,7 +266,7 @@ STCompiler compile: 'arrayElement
         payload := self floatFrom: self tokenValue.
         self advance.
         ^ payload ].
-    (#(integer string symbol identifier keyword character) includes: kind) ifTrue: [
+    (#(integer scaledDecimal string symbol identifier keyword character) includes: kind) ifTrue: [
         payload := self tokenValue.
         self advance.
         kind = #identifier ifTrue: [

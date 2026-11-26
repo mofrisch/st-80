@@ -17,7 +17,7 @@ STSourceScanner compile: 'nextHighlight
 
 STSourceScanner compile: 'token: kind value: value
     (#(string symbol arrayStart character) includes: kind) ifTrue: [ ^ self highlight: #literal ].
-    (#(assign caret integer minimumMagnitude float unsupportedNumber) includes: kind) ifTrue: [ ^ self highlight: #language ].
+    (#(assign caret integer scaledDecimal float unsupportedNumber) includes: kind) ifTrue: [ ^ self highlight: #language ].
     (kind = #identifier and: [ #(''self'' ''super'' ''nil'' ''true'' ''false'' ''thisContext'') includes: value ])
         ifTrue: [ ^ self highlight: #language ].
     ^ nil'.

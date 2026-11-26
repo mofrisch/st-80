@@ -37,6 +37,11 @@ struct ValuePrinter {
             appendInteger(fraction.numerator)
             append("/")
             appendInteger(fraction.denominator)
+        case .scaledDecimal(let decimal):
+            decimal.describe { fragment in
+                append(fragment)
+                return !truncated
+            }
         case .float(let number): append(SmalltalkRuntime.floatLiteralText(number))
         case .character(let codePoint):
             append("$")

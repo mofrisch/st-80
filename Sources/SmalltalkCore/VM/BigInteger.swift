@@ -37,8 +37,8 @@ final class BigInteger: Codable, Sendable, Comparable, CustomStringConvertible {
 
     func encode(to encoder: any Encoder) throws {
         var words: [UInt32] = []
-        visitDecimalWords {
-            words.append($0)
+        visitDecimalWords { word, _ in
+            words.append(word)
             return true
         }
         var container = encoder.container(keyedBy: CodingKeys.self)
@@ -99,6 +99,10 @@ final class BigInteger: Codable, Sendable, Comparable, CustomStringConvertible {
         return -self
     }
     var int64: Int64? { Int64(exactly: value) }
+    var bitWidth: Int { value.magnitude.bitWidth }
+
+    static func powerOfTen(_ exponent: Int) -> BigInteger { BigInteger(value: BigInt(10).power(exponent)) }
+    func shiftedLeft(_ count: Int) -> BigInteger { BigInteger(value: value << count) }
 
     var description: String {
         var text = ""
@@ -124,17 +128,25 @@ final class BigInteger: Codable, Sendable, Comparable, CustomStringConvertible {
     }
 
     /// Allows the diagnostic printer to stop without formatting the tail.
-    func describe(_ append: (String) -> Bool) {
+    func describe(decimalPlaces: Int = 0, _ append: (String) -> Bool) {
         if isZero {
-            _ = append("0")
+            if append("0"), decimalPlaces > 0 { _ = append("." + String(repeating: "0", count: decimalPlaces)) }
             return
         }
         if isNegative && !append("-") { return }
         var first = true
-        visitDecimalWords { word in
+        visitDecimalWords { word, remainingWords in
             let digits = String(word)
             let chunk = first ? digits : String(repeating: "0", count: 9 - digits.count) + digits
+            let digitsAfter = remainingWords * 9
+            let point = chunk.count + digitsAfter - decimalPlaces
+            if first && point <= 0 {
+                guard append("0." + String(repeating: "0", count: -point)) else { return false }
+            }
             first = false
+            if decimalPlaces > 0 && decimalPlaces >= digitsAfter && point > 0 && point <= chunk.count {
+                return append(String(chunk.prefix(point))) && append(".") && append(String(chunk.dropFirst(point)))
+            }
             return append(chunk)
         }
     }
@@ -192,27 +204,28 @@ final class BigInteger: Codable, Sendable, Comparable, CustomStringConvertible {
         return combine(words[...], level: powers.count)
     }
 
-    // The callback sees most significant words first, without leading zeroes.
-    private func visitDecimalWords(_ append: (UInt32) -> Bool) {
+    // The callback sees most significant words first, with their offsets from the end.
+    private func visitDecimalWords(_ append: (UInt32, Int) -> Bool) {
         guard !isZero else { return }
         let magnitude = value.magnitude
         var powers = [Self.decimalBase]
         while let power = powers.last, power <= magnitude { powers.append(power * power) }
-        func visit(_ group: BigUInt, level: Int, padded: Bool) -> Bool {
-            if level == 0 { return append(UInt32(truncatingIfNeeded: group)) }
+        func visit(_ group: BigUInt, level: Int, padded: Bool, remaining: Int) -> Bool {
+            if level == 0 { return append(UInt32(truncatingIfNeeded: group), remaining) }
             let factor = powers[level - 1]
+            let half = 1 << (level - 1)
             if group < factor {
                 if padded {
-                    for _ in 0..<(1 << (level - 1)) {
-                        guard append(0) else { return false }
+                    for index in (half..<(2 * half)).reversed() {
+                        guard append(0, remaining + index) else { return false }
                     }
                 }
-                return visit(group, level: level - 1, padded: padded)
+                return visit(group, level: level - 1, padded: padded, remaining: remaining)
             }
             let division = group.quotientAndRemainder(dividingBy: factor)
-            return visit(division.quotient, level: level - 1, padded: padded)
-                && visit(division.remainder, level: level - 1, padded: true)
+            return visit(division.quotient, level: level - 1, padded: padded, remaining: remaining + half)
+                && visit(division.remainder, level: level - 1, padded: true, remaining: remaining)
         }
-        _ = visit(magnitude, level: powers.count - 1, padded: false)
+        _ = visit(magnitude, level: powers.count - 1, padded: false, remaining: 0)
     }
 }

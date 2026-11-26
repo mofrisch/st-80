@@ -31,6 +31,7 @@ extension SmalltalkRuntime {
         case .integer(let n): return try integerPrimitive(n, selector, args)
         case .largeInteger(let n): return try largeIntegerPrimitive(n, selector, args)
         case .fraction(let n): return try fractionPrimitive(n, selector, args)
+        case .scaledDecimal(let n): return try scaledDecimalPrimitive(n, selector, args)
         case .float(let number): return try floatPrimitive(number, selector, args)
         case .character(let codePoint): return try characterPrimitive(codePoint, selector)
         case .boolean(let b):
@@ -105,6 +106,8 @@ extension SmalltalkRuntime {
                 let spelling = string.replacingOccurrences(of: "d", with: "e").replacingOccurrences(of: "q", with: "e")
                 guard let number = Double(spelling), number.isFinite else { return .nilValue }
                 return .float(number)
+            case "parseScaledDecimalOrNil":
+                return try scaledDecimalLiteral(string).map(Value.scaledDecimal) ?? .nilValue
             case "parseIntegerMagnitudeRadix:":
                 let radix = try integer(args[0])
                 guard (2...36).contains(radix), !string.isEmpty, string.utf8.allSatisfy({ byte in
@@ -261,7 +264,7 @@ extension SmalltalkRuntime {
     func integerPrimitive(_ n: Int64, _ selector: String, _ args: [Value]) throws -> Value? {
         if let operand = args.first, Self.exactBinarySelectors.contains(selector) || selector == "to:do:" || selector == "to:by:do:" {
             switch operand {
-            case .largeInteger, .fraction, .float:
+            case .largeInteger, .fraction, .scaledDecimal, .float:
                 return try largeIntegerPrimitive(BigInteger(n), selector, args)
             default: break
             }
@@ -306,6 +309,7 @@ extension SmalltalkRuntime {
         case "numerator": return .integer(n)
         case "denominator": return .integer(1)
         case "asFloat", "asFloatE", "asFloatD", "asFloatQ": return .float(Double(n))
+        case "asScaledDecimal:": return try convertToScaledDecimal(.integer(n), scale: args[0])
         case "asCharacter":
             guard let codePoint = UInt32(exactly: n), Unicode.Scalar(codePoint) != nil else {
                 throw SmalltalkError("Invalid Unicode scalar code point.")

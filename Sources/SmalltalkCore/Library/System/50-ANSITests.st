@@ -68,6 +68,73 @@ ANSISmalltalkTest compile: 'testExactFractions
     self assert: sum * 2 equals: 1.
     self assert: ((1000000000000000000000001 / 3) * 3) equals: 1000000000000000000000001'.
 
+ANSISmalltalkTest compile: 'testScaledDecimalLiterals
+    self assert: 123s class equals: ScaledDecimal.
+    self assert: 123s scale equals: 0.
+    self assert: 1.2300s scale equals: 4.
+    self assert: 123s2 printString equals: ''123.00s2''.
+    self assert: -0.004s printString equals: ''-0.004s3''.
+    self assert: (0s3 printString) equals: ''0.000s3''.
+    self assert: (#(-1.20s 7s3) at: 1) scale equals: 2'.
+
+ANSISmalltalkTest compile: 'testScaledDecimalExactArithmetic
+    self assert: (0.1s + 0.2s) equals: 0.3s.
+    self assert: (2 - 0.125s) printString equals: ''1.875s3''.
+    self assert: (0.125s + 2) printString equals: ''2.125s3''.
+    self assert: (1.20s * 2.5s) printString equals: ''3.000s3''.
+    self assert: 0.20s squared printString equals: ''0.0400s4''.
+    self assert: (-2.50s abs) printString equals: ''2.50s2'''.
+
+ANSISmalltalkTest compile: 'testScaledDecimalDivision
+    self assert: (1.00s / 8) printString equals: ''0.125s3''.
+    self assert: (2 / 4.000s) printString equals: ''0.500s3''.
+    self assert: (2s / 3) printString equals: ''0.666666666666666666666666666667s30''.
+    self assert: -7.50s // 2s equals: -4.
+    self assert: (-7.50s \\ 2s) printString equals: ''0.50s2''.
+    self assert: (1s / 1099511627776) scale equals: 40'.
+
+ANSISmalltalkTest compile: 'testScaledDecimalMixedNumericTypes
+    self assert: (0.50s + (1 / 3)) equals: (5 / 6).
+    self assert: ((1 / 3) + 0.50s) class equals: Fraction.
+    self assert: (0.25s + 0.5) class equals: Float.
+    self assert: 0.5 + 0.25s equals: 0.75.
+    self assert: 1.000s equals: 1.
+    self assert: 1 equals: 1.000s.
+    self assert: 0.50s equals: (1 / 2).
+    self assert: (1 / 2) equals: 0.50s.
+    self assert: 0.50s equals: 0.5.
+    self assert: 0.5 equals: 0.50s.
+    self assert: 1.230s equals: 1.23s.
+    self assert: 0.33s < (1 / 3).
+    self assert: (1 / 3) > 0.33s'.
+
+ANSISmalltalkTest compile: 'testScaledDecimalConversions
+    self assert: (42 asScaledDecimal: 3) printString equals: ''42s0''.
+    self assert: (9000000000000000000000000 asScaledDecimal: 2) scale equals: 0.
+    self assert: ((1 / 8) asScaledDecimal: 2) equals: 0.13s.
+    self assert: ((-1 / 8) asScaledDecimal: 2) equals: -0.13s.
+    self assert: (0.125 asScaledDecimal: 4) printString equals: ''0.1250s4''.
+    self assert: (2.675 asScaledDecimal: 2) equals: 2.67s.
+    self assert: (7.25s asScaledDecimal: 1) equals: 7.3s.
+    self assert: (7.25s asScaledDecimal: 4) printString equals: ''7.2500s4''.
+    self assert: 1.250s asFraction equals: (5 / 4).
+    self assert: -1.50s asInteger equals: -2.
+    self assert: -1.50s integerPart printString equals: ''-2.00s2''.
+    self assert: -1.50s fractionPart equals: 0.50s.
+    self assert: -1.50s truncated equals: -1.
+    self assert: -1.50s floor equals: -2.
+    self assert: -1.50s ceiling equals: -1'.
+
+ANSISmalltalkTest compile: 'testScaledDecimalWithWideCoefficient
+    | number |
+    number := 123456789012345678901234567890.000000000000000000000000000001s.
+    self assert: number scale equals: 30.
+    self assert: (number - 123456789012345678901234567890) printString
+        equals: ''0.000000000000000000000000000001s30''.
+    self assert: number printString equals: ''123456789012345678901234567890.000000000000000000000000000001s30''.
+    self assert: (1s1024 * 2.0s) scale equals: 1024.
+    self assert: (1s1024 * 2.0s) equals: 2'.
+
 ANSISmalltalkTest compile: 'testFloatLiteralsAndPrecisionOrdering
     self assert: 1.25 * 2 equals: 2.5.
     self assert: 1.25e2 equals: 125.0.

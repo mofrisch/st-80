@@ -100,6 +100,8 @@ extension SmalltalkRuntime {
                     if identity || BigInteger(exactly: b) != a { return false }
                 case (.fraction(let a), .float(let b)), (.float(let b), .fraction(let a)):
                     if identity || a.doubleValue != b { return false }
+                case (.scaledDecimal(let decimal), let other), (let other, .scaledDecimal(let decimal)):
+                    if try !equalScaledDecimal(decimal, other: other, identity: identity) { return false }
                 case (.character(let a), .character(let b)): if a != b { return false }
                 case (.string(let a), .string(let b)), (.symbol(let a), .symbol(let b)): if a != b { return false }
                 case (.boolean(let a), .boolean(let b)): if a != b { return false }

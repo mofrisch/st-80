@@ -22,6 +22,7 @@ extension SmalltalkRuntime {
         case .integer(let number): return Double(number)
         case .largeInteger(let number): return try finiteDouble(number.doubleValue)
         case .fraction(let number): return try finiteDouble(number.doubleValue)
+        case .scaledDecimal(let number): return try finiteDouble(number.doubleValue)
         case .float(let number): return number
         default: throw SmalltalkError("Expected a number.")
         }
@@ -52,6 +53,7 @@ extension SmalltalkRuntime {
         case "abs": return .float(abs(number))
         case "squared": return try finiteFloat(number * number)
         case "asFloat", "asFloatE", "asFloatD", "asFloatQ": return .float(number)
+        case "asScaledDecimal:": return try convertToScaledDecimal(.float(number), scale: arguments[0])
         case "ceiling", "floor", "truncated", "rounded":
             let rule: FloatingPointRoundingRule
             switch selector {

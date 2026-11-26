@@ -20,7 +20,7 @@ extension SmalltalkRuntime {
     }
 
     func validateSuperclass(_ superclass: STClass) throws {
-        guard superclass.name == "Object" || !Self.builtinNames.contains(superclass.name) else {
+        guard Self.heapBuiltinNames.contains(superclass.name) || !Self.builtinNames.contains(superclass.name) else {
             throw SmalltalkError("Subclassing primitive classes is not implemented.")
         }
     }

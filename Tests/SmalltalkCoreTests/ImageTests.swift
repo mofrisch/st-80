@@ -3,6 +3,20 @@ import Testing
 @testable import SmalltalkCore
 
 struct ImageTests {
+    @Test func storedExceptionsCanBeSignaledAfterImageLoad() async throws {
+        let session = SmalltalkSession()
+        let saved = await session.evaluate("savedError := Error new messageText: 'saved'; tag: #example; yourself")
+        try #require(saved.executionError == nil)
+        let restored = SmalltalkSession()
+        _ = try await restored.loadImage(session.imageData())
+        let handled = await restored.evaluate("""
+            [ savedError signal ] on: Exception do: [ :exception |
+                Array with: exception == savedError with: exception messageText with: exception tag ]
+            """)
+        #expect(handled.executionError == nil)
+        #expect(handled.value == "#(true 'saved' #example)")
+    }
+
     @Test(arguments: [
         #"{"largeInteger":{"_0":{"negative":true,"words":[123456789,234567890,345678901,12]}}}"#,
         #"{"fraction":{"_0":{"denominator":{"negative":false,"words":[7]},"numerator":{"negative":true,"words":[1,0,1000000]}}}}"#,

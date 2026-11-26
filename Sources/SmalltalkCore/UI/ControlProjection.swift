@@ -3,13 +3,7 @@ import Foundation
 extension SmalltalkRuntime {
     static let valueTableRowLimit = 4_096
     func isUIClass(_ stClass: STClass, named name: String) -> Bool {
-        guard let base = classes[name] else { return false }
-        var current: STClass? = stClass
-        while let candidate = current {
-            if candidate === base { return true }
-            current = candidate.superclass
-        }
-        return false
+        classes[name].map { stClass.inherits(from: $0) } ?? false
     }
 
     private struct ProjectedControl {

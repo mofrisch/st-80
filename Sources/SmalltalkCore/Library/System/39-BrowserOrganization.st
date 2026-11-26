@@ -121,6 +121,7 @@ BrowserOrganization compileClass: 'shippedClassCategories
     ^ #(
         (''Kernel'' (''Object'' ''Class'' ''UndefinedObject'' ''Boolean'' ''True'' ''False''
             ''Number'' ''Integer'' ''SmallInteger'' ''LargeInteger'' ''Fraction'' ''ScaledDecimal'' ''Float'' ''BlockClosure'' ''FailedMessage''))
+        (''Exceptions'' (''Exception'' ''Error''))
         (''Collections & Text'' (''Array'' ''String'' ''Character'' ''Symbol''))
         (''Compiler'' (''STCompilerList'' ''STScanner'' ''STCompiler''))
         (''MVC'' (''Model'' ''Controller'' ''UIBinding''))
@@ -140,7 +141,7 @@ BrowserOrganization compileClass: 'shippedClassCategories
         (''Examples'' (''Counter'' ''WorkspaceExamples''))
         (''Tests'' (''TestCase'' ''TestOutcome'' ''TestResult'' ''TestRunner''
             ''CounterTest'' ''CollectionsTest'' ''BindingTestModel'' ''UIBindingTest''
-            ''ANSIDispatchProbe'' ''ANSISmalltalkTest'')))'.
+            ''ANSIDispatchProbe'' ''ANSIProbeError'' ''ANSIProbeException'' ''ANSISmalltalkTest'')))'.
 
 BrowserOrganization compile: 'classCategories
     ^ classCategories'.

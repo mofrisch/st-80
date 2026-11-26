@@ -8,6 +8,18 @@ ANSIDispatchProbe compile: 'touch
 ANSIDispatchProbe compile: 'doesNotUnderstand: aMessage
     ^ aMessage'.
 
+ANSIDispatchProbe compile: 'handles: anException
+    ^ anException messageText = ''selected'''.
+
+Error subclass: #ANSIProbeError instanceVariableNames: ''.
+Exception subclass: #ANSIProbeException instanceVariableNames: ''.
+
+ANSIProbeException compile: 'defaultAction
+    ^ 40'.
+
+ANSIProbeException compile: 'isResumable
+    ^ true'.
+
 TestCase subclass: #ANSISmalltalkTest instanceVariableNames: ''.
 
 ANSISmalltalkTest compile: 'testMessagePrecedence
@@ -200,6 +212,81 @@ ANSISmalltalkTest compile: 'returnThroughCleanup: order
     [ [ ^ 42 ] ensure: [ order at: 1 put: 1 ] ]
         ifCurtailed: [ order at: 2 put: (order at: 1) + 1 ].
     ^ 0'.
+
+ANSISmalltalkTest compile: 'testExceptionNormalCompletion
+    | called |
+    called := false.
+    self assert: ([ 42 ] on: Error do: [ :exception | called := true ]) equals: 42.
+    self deny: called'.
+
+ANSISmalltalkTest compile: 'testExceptionSignalersAndMetadata
+    | instance handled |
+    instance := ANSIProbeError new.
+    self assert: instance messageText isNil.
+    self deny: instance isResumable.
+    self assert: (Error handles: instance).
+    self assert: (Exception handles: instance).
+    self deny: (ANSIProbeException handles: instance).
+    instance messageText: ''instance''; tag: #example.
+    self assert: ([ instance signal ] on: Error do: [ :exception | exception ]) == instance.
+    self assert: instance messageText equals: ''instance''.
+    self assert: instance tag equals: #example.
+    instance tag: nil.
+    self assert: instance tag isNil.
+    handled := [ ANSIProbeError signal: ''class'' ] on: Exception do: [ :exception | exception ].
+    self assert: handled class equals: ANSIProbeError.
+    self assert: handled description equals: ''class''.
+    self assert: handled tag equals: ''class''.
+    self assert: ([ Error signal ] on: Error do: [ :exception | exception messageText ]) isNil.
+    self assert: ([ self error: ''object'' ] on: Error do: [ :exception | exception messageText ]) equals: ''object'''.
+
+ANSISmalltalkTest compile: 'testExceptionSelectsNearestMatchingHandler
+    self assert: ([
+        [ [ ANSIProbeError signal ] on: ANSIProbeException do: [ :exception | 1 ] ]
+            on: Error do: [ :exception | 42 ] ]
+        on: Exception do: [ :exception | 0 ]) equals: 42'.
+
+ANSISmalltalkTest compile: 'testExceptionFromAnActionUsesTheOuterEnvironment
+    | handled |
+    handled := [
+        [ ANSIProbeError signal: ''original'' ] on: Error do: [ :exception |
+            self assert: exception messageText equals: ''original''.
+            Error signal: ''replacement'' ] ]
+        on: Exception do: [ :exception | exception messageText ].
+    self assert: handled equals: ''replacement'''.
+
+ANSISmalltalkTest compile: 'testExceptionHandlerRunsBeforeUnwindBlocks
+    | order answer |
+    order := ''''.
+    answer := [
+        [ [ Error signal. self fail: ''The signal should not return.'' ]
+            ensure: [ order := order , ''ensure '' ] ]
+            ifCurtailed: [ order := order , ''curtailed'' ] ]
+        on: Error do: [ :exception | order := order , ''handler ''. Array with: 42 ].
+    self assert: answer equals: #(42).
+    self assert: order equals: ''handler ensure curtailed'''.
+
+ANSISmalltalkTest compile: 'testExceptionActionCanReturnFromItsHomeMethod
+    | order |
+    order := Array new: 2.
+    self assert: (self returnThroughException: order) equals: 42.
+    self assert: order equals: #(1 2)'.
+
+ANSISmalltalkTest compile: 'returnThroughException: order
+    [ [ Error signal ] ensure: [ order at: 2 put: (order at: 1) + 1 ] ]
+        on: Error do: [ :exception | order at: 1 put: 1. ^ 42 ].
+    ^ 0'.
+
+ANSISmalltalkTest compile: 'testExceptionSelectorUsesHandles
+    | selector |
+    selector := ANSIDispatchProbe new.
+    self assert: ([ Error signal: ''selected'' ] on: selector do: [ :exception | 42 ]) equals: 42.
+    self assert: ([
+        [ Error signal: ''different'' ] on: selector do: [ :exception | 1 ] ]
+        on: Error do: [ :exception | 42 ]) equals: 42'.
+
+ANSISmalltalkTest compile: 'testExceptionDefaultAction
+    self assert: ANSIProbeException signal + 2 equals: 42'.
 
 ANSISmalltalkTest compile: 'testArrayFactoriesAndIndexedCopy
     | original copy |

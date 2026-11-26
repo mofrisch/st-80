@@ -10,7 +10,7 @@ BrowserOrganization compile: 'shippedProtocols
                 ''perform:with:with:with:'' ''perform:withArguments:''))
             (''Printing'' (''printString''))
             (''Identity'' (''yourself''))
-            (''Error Reporting'' (''error:line:column:''))))
+            (''Error Reporting'' (''error:'' ''error:line:column:''))))
         (''Class'' (
             (''Instance Creation'' (''new'' ''new:''))
             (''Class Structure'' (''name'' ''superclass'' ''subclasses'' ''instanceVariableNamesText''))
@@ -63,9 +63,13 @@ BrowserOrganization compile: 'shippedProtocols
             (''Converting'' (''joinedStringFrom:to:''))))
         (''BlockClosure'' (
             (''Evaluation'' (''value'' ''value:'' ''value:value:'' ''argumentCount'' ''valueWithArguments:''))
+            (''Exception Handling'' (''on:do:''))
             (''Termination'' (''ensure:'' ''ifCurtailed:''))
             (''Looping'' (''whileTrue'' ''whileFalse'' ''whileTrue:'' ''whileFalse:''))))
         (''FailedMessage'' ((''Accessing'' (''selector'' ''arguments''))))
+        (''Exception'' (
+            (''Exception Description'' (''messageText'' ''messageText:'' ''tag'' ''tag:'' ''description'' ''isResumable''))
+            (''Signaling'' (''signal'' ''signal:'' ''defaultAction'' ''_signalException'' ''_failUnhandledException''))))
         (''Transcript'' (
             (''Writing'' (''show:'' ''cr''))
             (''Buffer Management'' (''clear'' ''record:''))))
@@ -264,7 +268,8 @@ BrowserOrganization compile: 'shippedProtocols
         (''UIBindingTest'' (
             (''Fixtures'' (''setUp'' ''tearDown''))
             (''Tests'' (''testBindingReadsAndUpdatesTheLabel'' ''testUnbindingStopsUpdates''))))
-        (''ANSIDispatchProbe'' ((''Dispatch'' (''touch'' ''doesNotUnderstand:''))))
+        (''ANSIDispatchProbe'' ((''Dispatch'' (''touch'' ''doesNotUnderstand:'')) (''Exception Selection'' (''handles:''))))
+        (''ANSIProbeException'' ((''Signaling'' (''defaultAction'' ''isResumable''))))
         (''ANSISmalltalkTest'' (
             (''Language Tests'' (''testMessagePrecedence'' ''testCascadeUsesTheSameReceiver''
                 ''testMethodReturnAndSuper'' ''testFailedSendCarriesSelectorAndArguments''
@@ -276,5 +281,9 @@ BrowserOrganization compile: 'shippedProtocols
                 ''testScaledDecimalLiterals'' ''testScaledDecimalExactArithmetic'' ''testScaledDecimalDivision''
                 ''testScaledDecimalMixedNumericTypes'' ''testScaledDecimalConversions'' ''testScaledDecimalWithWideCoefficient''))
             (''Collection Tests'' (''testArrayFactoriesAndIndexedCopy'' ''testLargeArrayIsOneBasedAndInitiallyNil''))
-            (''Test Support'' (''returnThroughCleanup:''))))
+            (''Exception Tests'' (''testExceptionNormalCompletion'' ''testExceptionSignalersAndMetadata''
+                ''testExceptionSelectsNearestMatchingHandler'' ''testExceptionFromAnActionUsesTheOuterEnvironment''
+                ''testExceptionHandlerRunsBeforeUnwindBlocks'' ''testExceptionActionCanReturnFromItsHomeMethod''
+                ''testExceptionSelectorUsesHandles'' ''testExceptionDefaultAction''))
+            (''Test Support'' (''returnThroughCleanup:'' ''returnThroughException:''))))
     )'.

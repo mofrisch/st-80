@@ -308,6 +308,7 @@ The prototype has these limits.
 - Assigning an undeclared name in a workspace creates a persistent workspace variable. `| temp |` declares a local that lasts for the evaluation.
 - Arithmetic between integers and fractions stays exact. The VM uses [attaswift/BigInt](https://github.com/attaswift/BigInt) for large integers and charges the execution budget before expensive library calls.
 - Scaled decimals preserve fractional trailing zeros. For example, `1.20s` prints as `1.20s2`. The scale can be at most 1,024. Division is exact when its decimal expansion fits, and other quotients round to at least 30 fractional places. Rounding breaks ties away from zero. Mixed arithmetic follows the ANSI conversion table.
+- Use `[ Error signal: 'Missing data' ] on: Error do: [ :exception | exception messageText ]` to handle a signaled exception. The closest matching handler runs before the protected block's cleanup, and the handler's result becomes the result of `on:do:`. Applications can define subclasses of `Exception` and `Error`. Sending `error:` to an object signals an `Error`.
 - Strings are Unicode values and `==` compares them by value.
 - Value previews and `printString` produce at most 64 KiB and visit at most 4,096 values, ending with `…` when truncated. Binding previews share a 64 KiB budget per snapshot and use at most 4 KiB per binding.
 - Object memory uses the collector described above. The system does not yet include Smalltalk processes or BitBlt.
@@ -327,7 +328,7 @@ The project generator preserves the asset catalog and app icon settings for Debu
 
 ## Smalltalk tests
 
-Run `TestRunner runAll summary` in a fresh Workspace to run all bundled tests. `ANSISmalltalkTest run summary` runs 23 tests for supported behavior from the ANSI Smalltalk draft, including scaled decimals, exact arithmetic, message dispatch, blocks, and arrays. You can browse their source under **Tests** in the System Browser.
+Run `TestRunner runAll summary` in a fresh Workspace to run all bundled tests. `ANSISmalltalkTest run summary` runs 31 tests for supported behavior from the ANSI Smalltalk draft, including exceptions, scaled decimals, exact arithmetic, message dispatch, blocks, and arrays. You can browse their source under **Tests** in the System Browser.
 
 Define a subclass of `TestCase` in the Workspace or Browser. Its own parameterless instance methods named `testSomething` run in alphabetical order. Each method runs on a fresh instance. Override `setUp` and `tearDown` for fixtures.
 

@@ -169,19 +169,9 @@ extension SmalltalkRuntime {
             case "value", "value:", "value:value:": return try invokeBlock(receiver, args)
             case "argumentCount": return .integer(Int64(block.parameters.count))
             case "valueWithArguments:": return try invokeBlock(receiver, sequenceElements(args[0]))
+            case "on:do:": return try evaluateProtectedBlock(receiver, selector: args[0], action: args[1])
             case "ensure:", "ifCurtailed:":
-                let result: Value
-                do {
-                    result = try invokeBlock(receiver)
-                } catch {
-                    let returnValues = (error as? ReturnSignal).map { [$0.value] } ?? []
-                    try withRoots(returnValues) { _ in _ = try invokeBlock(args[0]) }
-                    throw error
-                }
-                return try withRoots([result]) { _ in
-                    if selector == "ensure:" { _ = try invokeBlock(args[0]) }
-                    return result
-                }
+                return try evaluateBlock(receiver, cleanup: args[0], always: selector == "ensure:")
             case "whileTrue", "whileFalse", "whileTrue:", "whileFalse:":
                 let condition = selector == "whileTrue" || selector == "whileTrue:"
                 while try boolean(invokeBlock(receiver)) == condition {
@@ -195,7 +185,8 @@ extension SmalltalkRuntime {
             try appendTranscript(string(args[0]))
             return receiver
         case .object(let object):
-            return object.stClass === classes["ToolServices"] ? try toolPrimitive(selector, args) : nil
+            if object.stClass === classes["ToolServices"] { return try toolPrimitive(selector, args) }
+            return try exceptionPrimitive(receiver, object, selector)
         default: return nil
         }
     }
@@ -250,7 +241,7 @@ extension SmalltalkRuntime {
         case "new":
             if stClass.name == "Array" { return try array([]) }
             if stClass.name == "String" { return .string("") }
-            guard stClass.name == "Object" || Self.primitiveDescriptions[stClass.name] == nil && !["True", "False", "SmallInteger", "LargeInteger", "Number", "UndefinedObject"].contains(stClass.name) else {
+            guard Self.heapBuiltinNames.contains(stClass.name) || Self.primitiveDescriptions[stClass.name] == nil && !["True", "False", "SmallInteger", "LargeInteger", "Number", "UndefinedObject"].contains(stClass.name) else {
                 throw SmalltalkError("\(stClass.name) cannot be instantiated with new.")
             }
             let object = try object(stClass)

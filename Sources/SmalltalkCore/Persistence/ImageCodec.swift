@@ -175,6 +175,7 @@ enum ImageCodec {
         }
         try runtime.validateCompilerClasses()
         if records["ScaledDecimal"] == nil { try runtime.upgradeCompilerForScaledDecimals() }
+        if records["Exception"] == nil { try runtime.installExceptionProtocol() }
         guard runtime.classes["UIBinding"]?.lookup("reconcileMount:") != nil else {
             throw invalid("The image is missing UIBinding>>reconcileMount:. Start a fresh session.")
         }
@@ -185,7 +186,9 @@ enum ImageCodec {
         for node in image.nodes {
             switch node {
             case .object(let record):
-                guard let stClass = runtime.classes[record.className], stClass.name == "Object" || !SmalltalkRuntime.builtinNames.contains(stClass.name), Set(record.fields.keys) == Set(stClass.fields) else { throw invalid("Invalid object layout.") }
+                guard let stClass = runtime.classes[record.className],
+                      SmalltalkRuntime.heapBuiltinNames.contains(stClass.name) || !SmalltalkRuntime.builtinNames.contains(stClass.name),
+                      Set(record.fields.keys) == Set(stClass.fields) else { throw invalid("Invalid object layout.") }
                 let object = try runtime.object(stClass)
                 shells.append(.value(.object(object)))
             case .array(let values):

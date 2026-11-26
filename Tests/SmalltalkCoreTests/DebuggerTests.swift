@@ -3,6 +3,33 @@ import Testing
 
 struct DebuggerTests {
     @Test(.timeLimit(.minutes(1)))
+    func onlyAnUnhandledExceptionPausesTheDebuggerAsAnError() async throws {
+        let session = SmalltalkSession()
+        let handled = await session.debugSource("[ Error signal: 'handled' ] on: Error do: [ :exception | 42 ]")
+        defer { handled.send(.stop) }
+        var handledEvents = handled.events.makeAsyncIterator()
+        #expect(try requirePause(await handledEvents.next()).reason == .entry)
+        handled.send(.resume)
+        let result = try requireResult(await handledEvents.next())
+        #expect(result.value == "42")
+        #expect(result.executionError == nil)
+
+        let unhandled = await session.debugSource("Error signal: 'unhandled'")
+        defer { unhandled.send(.stop) }
+        var unhandledEvents = unhandled.events.makeAsyncIterator()
+        #expect(try requirePause(await unhandledEvents.next()).reason == .entry)
+        unhandled.send(.resume)
+        let failure = try requirePause(await unhandledEvents.next())
+        if case .error(let message) = failure.reason {
+            #expect(message.contains("unhandled"))
+        } else {
+            Issue.record("Expected the debugger to pause on the unhandled exception.")
+        }
+        unhandled.send(.stop)
+        #expect(try requireResult(await unhandledEvents.next()).executionError?.contains("unhandled") == true)
+    }
+
+    @Test(.timeLimit(.minutes(1)))
     func debuggerStepsThroughACompiledMethodAndPreservesItsSideEffects() async throws {
         let session = SmalltalkSession()
         let method = """

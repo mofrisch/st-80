@@ -13,6 +13,8 @@ final class SmalltalkRuntime {
         ("Object", nil),
         ("Class", "Object"),
         ("UndefinedObject", "Object"),
+        ("Exception", "Object"),
+        ("Error", "Exception"),
         ("Boolean", "Object"),
         ("True", "Boolean"),
         ("False", "Boolean"),
@@ -31,7 +33,8 @@ final class SmalltalkRuntime {
         ("Transcript", "Object"),
     ]
     static let builtinNames = Set(builtinHierarchy.map(\.name))
-    static let additiveBuiltinNames: Set<String> = ["Character", "Float", "LargeInteger", "Fraction", "ScaledDecimal"]
+    static let heapBuiltinNames: Set<String> = ["Object", "Exception", "Error"]
+    static let additiveBuiltinNames: Set<String> = ["Character", "Float", "LargeInteger", "Fraction", "ScaledDecimal", "Exception", "Error"]
     static let floatAliases: Set<String> = ["FloatE", "FloatD", "FloatQ"]
     static let classLimit = 128 + additiveBuiltinNames.count
     static let executionStepLimit = 100_000
@@ -64,6 +67,7 @@ final class SmalltalkRuntime {
     var pendingMessages: [(receiver: Value, lookup: MessageLookup)] = []
     var debugger: DebuggerExecution?
     var executionCancellation: (any ExecutionCancellation)?
+    var exceptionHandler: SmalltalkExceptionHandler?
     var useASTInterpreterForTesting = false
     let compilationMode: Bool
     var arrayLimit: Int { compilationMode ? 524_288 : 65_535 }
@@ -78,7 +82,8 @@ final class SmalltalkRuntime {
         self.memory = memory ?? ObjectMemory(hardLimit: compilationMode ? 1_000_000 : 100_000,
                                              initialThreshold: compilationMode ? 32_768 : 4096)
         for (name, superclass) in Self.builtinHierarchy {
-            let stClass = STClass(name, superclass: superclass.flatMap { classes[$0] })
+            let fields = name == "Exception" ? ["messageText", "tagValue", "tagAssigned"] : []
+            let stClass = STClass(name, superclass: superclass.flatMap { classes[$0] }, fields: fields)
             classes[name] = stClass
             globals[name] = .classObject(stClass)
         }

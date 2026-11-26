@@ -115,9 +115,14 @@ extension SmalltalkRuntime {
         "BlockClosure": [
             "value": "Evaluates the block.", "value:": "Evaluates the block with one argument.", "value:value:": "Evaluates the block with two arguments.",
             "argumentCount": "Returns the number of block arguments.", "valueWithArguments:": "Evaluates the block with the elements of a collection as arguments.",
+            "on:do:": "Evaluates the block in the scope of an exception handler.",
             "ensure:": "Runs a cleanup block when evaluation finishes or unwinds.", "ifCurtailed:": "Runs a cleanup block only if evaluation unwinds.",
             "whileTrue": "Evaluates the block repeatedly until it returns false.", "whileFalse": "Evaluates the block repeatedly until it returns true.",
             "whileTrue:": "Repeats while the block evaluates to true.", "whileFalse:": "Repeats while the block evaluates to false.",
+        ],
+        "Exception": [
+            "_signalException": "Finds and activates the closest matching exception handler.",
+            "_failUnhandledException": "Ends the evaluation and reports the unhandled exception.",
         ],
         "Transcript": ["record:": "Records transcript output for the current evaluation."],
     ]

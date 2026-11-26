@@ -45,6 +45,15 @@ final class STClass {
         if let method = self[side][selector] { return (method, self) }
         return superclass?.lookup(selector, side: side)
     }
+
+    func inherits(from ancestor: STClass) -> Bool {
+        var current: STClass? = self
+        while let candidate = current {
+            if candidate === ancestor { return true }
+            current = candidate.superclass
+        }
+        return false
+    }
 }
 
 final class STObject {

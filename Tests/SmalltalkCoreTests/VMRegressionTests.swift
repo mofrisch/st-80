@@ -3,6 +3,34 @@ import Testing
 @testable import SmalltalkCore
 
 struct VMRegressionTests {
+    @Test func exceptionHandlerResultRemainsRootedDuringUnwind() async {
+        let session = SmalltalkSession()
+        let result = await session.worker.submit { runtime in
+            runtime.memory.stressCollection = true
+            return runtime.run("""
+                [ [ Error signal ] ensure: [ ToolVM collectGarbage ] ]
+                    on: Error do: [ :exception | Array with: 42 ]
+                """)
+        }
+        #expect(result.executionError == nil)
+        #expect(result.value == "#(42)")
+    }
+
+    @Test func exceptionTransferCrossesNestedToolEvaluation() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            [ ToolVM evaluateSource: 'Error signal: ''nested'''. 0 ]
+                on: Error do: [ :exception | exception messageText ]
+            """)
+        #expect(result.executionError == nil)
+        #expect(result.value == "'nested'")
+        let returned = await session.evaluate("""
+            [ ToolVM evaluateSource: 'Error signal'. 0 ] on: Error do: [ :exception | ^ 42 ]
+            """)
+        #expect(returned.executionError == nil)
+        #expect(returned.value == "42")
+    }
+
     private func sharedArrayGraph(levels: Int, in runtime: SmalltalkRuntime) throws -> Value {
         var graph: Value = .integer(1)
         for _ in 0..<levels { graph = try runtime.array([graph, graph]) }

@@ -234,13 +234,14 @@ struct SmalltalkCoreTests {
         #expect(runtime.run("Object := 3").error?.contains("reassigned") == true)
     }
 
-    @Test func executionAndNestingLimitsLeaveSessionUsable() {
-        let runtime = SmalltalkRuntime()
-        #expect(runtime.run("[ true ] whileTrue: [ ]").error != nil)
-        #expect(runtime.run("Counter compile: 'loop ^ self loop'. Counter new loop").error?.contains("call depth") == true)
-        #expect(runtime.run(String(repeating: "(", count: 200) + "1" + String(repeating: ")", count: 200)).error?.contains("nesting") == true)
-        #expect(runtime.run("1" + String(repeating: " squared", count: 500)).error != nil)
-        #expect(value("6 * 7", in: runtime) == "42")
+    @Test func executionAndNestingLimitsLeaveSessionUsable() async {
+        let session = SmalltalkSession()
+        #expect(await session.evaluate("[ true ] whileTrue: [ ]").error != nil)
+        #expect(await session.evaluate("Counter compile: 'loop ^ self loop'. Counter new loop").error?.contains("call depth") == true)
+        let nested = String(repeating: "(", count: 200) + "1" + String(repeating: ")", count: 200)
+        #expect(await session.evaluate(nested).error?.contains("nesting") == true)
+        #expect(await session.evaluate("1" + String(repeating: " squared", count: 500)).error != nil)
+        #expect(await session.evaluate("6 * 7").value == "42")
     }
 
     @Test func cyclicArraysCanBeInspected() {

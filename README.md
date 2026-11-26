@@ -312,7 +312,7 @@ The prototype has these limits.
 - Strings are Unicode values and `==` compares them by value.
 - Value previews and `printString` produce at most 64 KiB and visit at most 4,096 values, ending with `…` when truncated. Binding previews share a 64 KiB budget per snapshot and use at most 4 KiB per binding.
 - Object memory uses the collector described above. The system does not yet include Smalltalk processes or BitBlt.
-- The default evaluation budget is 100,000 execution steps, including bytecode instructions and call entry. The VM allows 128 call levels and 32 syntactic nesting levels. The normal heap permits up to 100,000 registered nodes after collection, and arrays can hold 65,535 elements. A class can have 127 named instance variables including inherited fields and can define 1,000 methods per side. Changes already performed survive an evaluation error.
+- The default evaluation budget is 100,000 execution steps, including bytecode instructions and call entry. The VM allows 256 call levels and 32 syntactic nesting levels. The normal heap permits up to 100,000 registered nodes after collection, and arrays can hold 65,535 elements. A class can have 127 named instance variables including inherited fields and can define 1,000 methods per side. Changes already performed survive an evaluation error.
 
 ## App icon
 

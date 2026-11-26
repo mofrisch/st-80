@@ -25,6 +25,9 @@ struct ToolExecutionBudgetTests {
     @Test(arguments: ["evaluateSource:", "inspectSource:"])
     func deepToolSourcesCannotRefillTheCallDepthBudget(_ selector: String) async throws {
         let session = SmalltalkSession()
+        let limit = SmalltalkRuntime.evaluationDepthLimit
+        let innerDepth = limit / 2
+        let outerDepth = limit - innerDepth / 2
         #expect(await session.evaluate("Object subclass: #ToolDepthProbe instanceVariableNames: ''").error == nil)
         #expect(await session.compile("""
             plainDown: n
@@ -34,14 +37,14 @@ struct ToolExecutionBudgetTests {
         #expect(await session.compile("""
             toolDown: n selector: aSelector
                 n = 0 ifTrue: [
-                    ^ ToolVM perform: aSelector with: 'ToolDepthProbe new plainDown: 60' ].
+                    ^ ToolVM perform: aSelector with: 'ToolDepthProbe new plainDown: \(innerDepth)' ].
                 ^ self toolDown: n - 1 selector: aSelector
             """, in: "ToolDepthProbe").error == nil)
 
-        // Each recursion fits separately. Their real combined native stack
-        // must still obey the one 128-level interpreter limit.
-        #expect(await session.evaluate("ToolDepthProbe new plainDown: 60").value == "7")
-        let deep = await session.evaluate("ToolDepthProbe new toolDown: 100 selector: #\(selector)")
+        // Both recursions fit separately. Together they exceed the shared depth limit.
+        #expect(await session.evaluate("ToolDepthProbe new plainDown: \(innerDepth)").value == "7")
+        #expect(await session.evaluate("ToolDepthProbe new plainDown: \(outerDepth)").value == "7")
+        let deep = await session.evaluate("ToolDepthProbe new toolDown: \(outerDepth) selector: #\(selector)")
         #expect(deep.executionError == nil)
         #expect(deep.value?.hasPrefix("#(false ") == true)
         #expect(deep.value?.contains("Maximum call depth") == true)
@@ -53,7 +56,7 @@ struct ToolExecutionBudgetTests {
         let session = SmalltalkSession()
         let failure = await session.worker.submit { runtime -> String? in
             runtime.steps = depthLimit ? 0 : 99_999
-            runtime.depth = depthLimit ? 127 : 0
+            runtime.depth = depthLimit ? SmalltalkRuntime.evaluationDepthLimit - 1 : 0
             defer { runtime.steps = 0; runtime.depth = 0 }
             do {
                 try runtime.requestInspection(.integer(42))

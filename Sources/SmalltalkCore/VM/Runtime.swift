@@ -38,6 +38,8 @@ final class SmalltalkRuntime {
     static let floatAliases: Set<String> = ["FloatE", "FloatD", "FloatQ"]
     static let classLimit = 128 + additiveBuiltinNames.count
     static let executionStepLimit = 100_000
+    static let evaluationDepthLimit = 256
+    private static let compilerDepthLimit = 1_400
     static let methodsPerSideLimit = 1_000
     static let namedFieldsLimit = 127
 
@@ -157,7 +159,8 @@ final class SmalltalkRuntime {
 
     func enter() throws {
         try tick()
-        guard depth < (compilationMode ? 1400 : 128) else { throw SmalltalkError("Maximum call depth reached.") }
+        let limit = compilationMode ? Self.compilerDepthLimit : Self.evaluationDepthLimit
+        guard depth < limit else { throw SmalltalkError("Maximum call depth reached.") }
         depth += 1
     }
 

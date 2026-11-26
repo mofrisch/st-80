@@ -205,6 +205,7 @@ struct VMRegressionTests {
         let nesting = 32 // The Smalltalk compiler's source nesting limit.
         let deepest = String(repeating: "[", count: nesting) + "1" + String(repeating: "]", count: nesting)
         let tooDeep = "[" + deepest + "]"
+        let deepestCall = SmalltalkRuntime.evaluationDepthLimit - 4
         let results = try onWorkerStack { () -> [EvaluationResult] in
             let runtime = SmalltalkRuntime()
             let setup = runtime.run("""
@@ -216,11 +217,10 @@ struct VMRegressionTests {
                 """)
             return [
                 setup,
-                // 124 is the deepest call at which compile: still runs; 125 hits the
-                // 128-frame limit first.
-                runtime.run("StackProbe new down: 124 source: 'deep ^ \(deepest)'"),
+                // The initial send, the two ifTrue: activations and compile: use four levels.
+                runtime.run("StackProbe new down: \(deepestCall) source: 'deep ^ \(deepest)'"),
                 runtime.run("StackProbe new deep value"),
-                runtime.run("StackProbe new down: 125 source: 'deeper ^ 1'"),
+                runtime.run("StackProbe new down: \(deepestCall + 1) source: 'deeper ^ 1'"),
                 runtime.run("StackProbe new down: 0 source: 'tooDeep ^ \(tooDeep)'"),
             ]
         }
@@ -231,6 +231,42 @@ struct VMRegressionTests {
         // The nesting limit is what bounds the compiler's recursion. If it is raised,
         // revisit this test together with the worker stack size.
         #expect(results[4].error?.contains("nesting limit of 32") == true)
+    }
+
+    @Test func compilerRecursionAtTheWorkspaceDepthLimitFitsTheWorkerStack() async throws {
+        // Each recursive step adds five levels: two value: sends, two block
+        // activations and the recursive send. The base case needs four levels.
+        let iterations = (SmalltalkRuntime.evaluationDepthLimit - 4) / 5
+        let session = SmalltalkSession()
+        let (compiler, workspace, next) = try await session.worker.submitThrowing { runtime in
+            _ = try runtime.evaluate("""
+                Object subclass: #StackProbe instanceVariableNames: ''.
+                StackProbe compile: 'down: n source: aString
+                    n = 0 ifTrue: [ ^ StackProbe compile: aString ].
+                    ^ [ :x | [ :y | self down: n - 1 source: aString ] value: x ] value: 1'.
+                nil
+                """)
+            guard let compiler = runtime.classes["STCompiler"] else { throw SmalltalkError("Missing STCompiler.") }
+            _ = try runtime.compile("""
+                stackProbeRecurse
+                    "Keep two block activations live on each recursive send.
+                    All recursion runs on line four to identify the compiler error."
+                    ^ [ :x | [ :y | self stackProbeRecurse ] value: x ] value: 1
+                """, in: compiler)
+            _ = try runtime.compile("method: source ^ self stackProbeRecurse", in: compiler)
+
+            return (
+                runtime.run("StackProbe new down: \(iterations) source: 'deep ^ 1'"),
+                runtime.run("StackProbe new down: \(iterations + 1) source: 'deeper ^ 1'"),
+                runtime.run("6 * 7")
+            )
+        }
+        #expect(compiler.executionError?.hasPrefix("Line 4,") == true, "\(compiler.executionError ?? "")")
+        #expect(compiler.executionError?.contains("Maximum call depth reached") == true)
+        #expect(workspace.executionError?.contains("Maximum call depth reached") == true)
+        #expect(workspace.executionError?.hasPrefix("Line 4,") == false)
+        #expect(next.value == "42")
+        #expect(next.executionError == nil)
     }
 
     @Test func compilerModeRecursionStopsAtItsDepthLimitWithoutOverflowingTheWorkerStack() throws {

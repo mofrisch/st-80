@@ -39,6 +39,8 @@ The Object Inspector shows a value's class, instance variables, and one-based ar
 
 An open inspector keeps its current value and navigation history reachable for garbage collection. `ObjectInspectorWindow` defines the title, dimensions, and control actions in `42-Inspector.st`. The shared native backend hosts the window. `InspectorPresentation` builds its controls, and `InspectorModel` manages the path, follows references, and pages through members. Loading an image or resetting the session closes the inspectors.
 
+**Smalltalk/80 → Settings…** (**⌘,**) opens `SettingsWindow` from the image in a native window. Older images use the bundled Smalltalk definition.
+
 The debugger pauses at entry. `DebuggerWindow` defines its title, dimensions, frame selection, command policy, and recovery view in the image. `DebuggerPresentation` builds the controls from immutable stack snapshots on a separate interpreter thread. The shared native window backend hosts the window. **Stop** and closing the window use a direct command channel to end the evaluation and keep effects already performed. Select a stack frame to see its source, current instruction, receiver, and variables. **Step Into** follows calls, **Step Over** runs to the next location in the current frame or its caller, and **Step Out** returns to the caller. **Continue** runs until completion or a runtime error. An error shows the failing stack.
 
 ## Save and load images
@@ -69,7 +71,7 @@ Saving produces three related files.
 | `Smalltalk80-<sources-id>.sources` | Immutable source archive for the base system, shareable by multiple images |
 | `MyWorld.changes` | Append-only log of accepted class and method definitions, including earlier versions |
 
-The original sources live in `Sources/SmalltalkCore/Library/*.st`. Xcode and Swift Package Manager bundle the generated `Smalltalk80.sources` with the executable `Kernel.seed.json`. On a cold start, the VM installs the precompiled methods and the Smalltalk compiler compiles `InitialWorld.st`.
+The original Smalltalk sources live under `Sources/SmalltalkCore/Library`. Xcode and Swift Package Manager bundle the generated `Smalltalk80.sources` with the executable `Kernel.seed.json`. On a cold start, the VM installs the precompiled methods and the Smalltalk compiler compiles `InitialWorld.st`.
 
 Accepting code writes and syncs the changes entry before installing the method in the live image. This also applies to `SomeClass compile:` and `SomeClass compileClass:` in a workspace. A write failure prevents installation. Before the first image save, the log lives in `~/Library/Application Support/Smalltalk80/Changes/`. The Code Changes window shows its path. **Smalltalk → Open Changes File …** can import a log for review even if its session never saved an image. The import checks the size and entry limits before appending the entries in one write, then rolls back the write if it fails.
 
@@ -84,7 +86,7 @@ If the image write fails, the save removes its newly created, unchanged changes 
 
 ## Smalltalk compiler and boot image
 
-`02-Scanner.st` and `03-Compiler.st` contain the scanner and parser. The same compiler handles **Do it**, browser **Accept**, `Class>>compile:`, and `Class>>compileClass:`. It builds syntax trees in temporary object memory. Swift validates the trees and lowers them to stack instructions. The VM executes those instructions with the same message lookup, primitives, and lexical scopes for workspace code, methods, and blocks. Each instruction carries a source position for runtime errors. Image loading validates bytecode operands, stack shape, and block scopes before installing the restored world.
+`Library/Bootstrap` contains the compiler, scanner, and compiler list. The same compiler handles **Do it**, browser **Accept**, `Class>>compile:`, and `Class>>compileClass:`. It builds syntax trees in temporary object memory. Swift validates the trees and lowers them to stack instructions. The VM executes those instructions with the same message lookup, primitives, and lexical scopes for workspace code, methods, and blocks. Each instruction carries a source position for runtime errors. Image loading validates bytecode operands, stack shape, and block scopes before installing the restored world.
 
 After changing a numbered system source file, rebuild both bundled artifacts from the project directory.
 
@@ -92,7 +94,7 @@ After changing a numbered system source file, rebuild both bundled artifacts fro
 python3 scripts/generate-sources.py
 ```
 
-The bootstrap loads the previous Smalltalk compiler from the boot image, generates a new compiler, and verifies that the new compiler can rebuild itself reproducibly. Use `--check` to verify the existing artifacts. The regular Xcode build bundles them. Opening a saved image loads the compiler stored in that image.
+The bootstrap loads the previous compiler from the boot image and rebuilds `Library/Bootstrap` before reading `Library/System`. The rebuilt compiler then compiles the system library, including the core extensions, desktop, tools, syntax highlighter, examples, and tests. The bootstrap checks both stages for reproducibility and packages them into the same boot image. Use `--check` to verify the existing artifacts. Opening a saved image loads the compiler stored in that image.
 
 ## Garbage collection
 

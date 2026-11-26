@@ -8,7 +8,32 @@ package struct TransientWindowInfo: Sendable {
     package let minimumHeight: Int64
 }
 
+extension SmalltalkSession {
+    private static let bundledSettingsWorker = InterpreterWorker()
+
+    package func settingsWindow() async throws -> (info: TransientWindowInfo, content: UIElementInfo) {
+        if let presentation = try await worker.submitThrowing({ try $0.settingsWindow() }) { return presentation }
+        return try await Self.bundledSettingsWorker.submitThrowing { runtime in
+            guard let presentation = try runtime.settingsWindow() else {
+                throw SmalltalkError("The Settings window class is missing.")
+            }
+            return presentation
+        }
+    }
+}
+
 extension SmalltalkRuntime {
+    fileprivate func settingsWindow() throws -> (info: TransientWindowInfo, content: UIElementInfo)? {
+        guard let windowClass = classes["SettingsWindow"] else { return nil }
+        steps = 0
+        let window = try send(.classObject(windowClass), "new", [])
+        let info = try projectTransientWindow(window)
+        guard case .object(let object) = window, let content = try projectWindowContent(object) else {
+            throw SmalltalkError("The Settings window has no content.")
+        }
+        return (info, content)
+    }
+
     func projectTransientWindow(_ value: Value) throws -> TransientWindowInfo {
         guard case .object(let window) = value, isUIClass(window.stClass, named: "UIWindow"),
               case .string(let identifier)? = window.fields["identifier"], !identifier.isEmpty, identifier.utf8.count <= 128,

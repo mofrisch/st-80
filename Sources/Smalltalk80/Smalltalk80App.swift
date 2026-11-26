@@ -7,8 +7,13 @@ struct Smalltalk80App: App {
     private var controller: AppController { delegate.controller }
 
     var body: some Scene {
-        Settings { Text("Windows and session state are stored in the Smalltalk image.").padding(24) }
+        // The scene hosts the menu commands. SettingsWindow comes from the image.
+        Settings { EmptyView() }
         .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") { Task { await controller.showSettings() } }
+                    .keyboardShortcut(",").disabled(controller.isRunning)
+            }
             CommandGroup(replacing: .newItem) {
                 if controller.activeKind == .browser {
                     Button("Accept") { Task { await controller.performCommand("acceptMethod") } }

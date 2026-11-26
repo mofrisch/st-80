@@ -36,6 +36,7 @@ final class AppController {
     let session = SmalltalkSession()
     @ObservationIgnored var inspectors: [UUID: InspectorPresentationState] = [:]
     var keyInspectorID: UUID?
+    private let settingsWindowID = UUID()
     @ObservationIgnored var debugSession: WorkspaceDebugSession?
     @ObservationIgnored var debuggerStopRequested = false
     private var hasLoaded = false
@@ -170,6 +171,7 @@ final class AppController {
         latestRevision = evaluation.windowCommands.revision
         if replacingWindows {
             closeInspectors()
+            nativeWindows?.closeTransientWindow(settingsWindowID)
         }
         changesPath = evaluation.changesPath
         projectionError = evaluation.windowProjectionError
@@ -328,6 +330,20 @@ final class AppController {
             nativeWindows?.activateWindowForRecovery(workspace.info.id, identity: workspace.info.identity)
         } else {
             await sendWindowAction(.showWorkspace)
+        }
+    }
+
+    func showSettings() async {
+        guard let nativeWindows, !nativeWindows.activateTransientWindow(settingsWindowID) else { return }
+        await runOperation {
+            do {
+                let presentation = try await session.settingsWindow()
+                let content = SnapshotWindowContentView(content: { presentation.content }, click: { _ in }, select: { _, _ in })
+                nativeWindows.showTransientWindow(settingsWindowID, info: presentation.info, content: AnyView(content))
+            } catch {
+                self.error = error.localizedDescription
+                presentErrorWithoutActiveWindow(error.localizedDescription, title: "Could not open Settings")
+            }
         }
     }
 

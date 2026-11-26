@@ -19,6 +19,26 @@ struct DesktopTests {
         return evaluation.value
     }
 
+    @Test func settingsUsesBundledSmalltalkForImagesWithoutTheSettingsClass() async throws {
+        let original = SmalltalkSession()
+        await original.worker.submit { runtime in
+            runtime.classes["SettingsWindow"] = nil
+            runtime.globals["SettingsWindow"] = nil
+        }
+        let restored = SmalltalkSession()
+        _ = try await restored.loadImage(original.imageData())
+
+        let settings = try await restored.settingsWindow()
+        #expect(settings.info.identifier == "settingsWindow")
+        #expect(settings.info.title == "Settings")
+        #expect(settings.content.firstVisible { $0.accessibilityID == "settingsImageNote" }?.text
+            == "Windows and session state are stored in the Smalltalk image.")
+        let snapshot = await restored.snapshot()
+        #expect(snapshot.windows.isEmpty)
+        #expect(!snapshot.classes.contains { $0.name == "SettingsWindow" })
+        #expect(snapshot.changes.isEmpty)
+    }
+
     @Test func desktopDecidesWhichToolsRefreshAtTheEvaluationBoundary() async throws {
         let session = SmalltalkSession()
         let configured = await session.evaluate("""

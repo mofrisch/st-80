@@ -8,31 +8,36 @@ public enum SmalltalkBootstrap {
     }
 
     public static func rebuild(in directory: URL, checkOnly: Bool, progress: (String) -> Void) throws {
-        progress("Loading the boot image and system sources …")
+        progress("Loading the previous compiler and bootstrap sources …")
         let oldLibrary = try SystemLibrary(directory: directory)
-        let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
-            .filter { $0.pathExtension == "st" && $0.lastPathComponent.first?.isNumber == true }
-            .sorted { $0.lastPathComponent < $1.lastPathComponent }
-        let sources = try files.map { try String(contentsOf: $0, encoding: .utf8) }
-        let compiler = SmalltalkRuntime(bootstrap: false)
-        try oldLibrary.install(in: compiler)
+        let bootstrap = try scripts(in: directory.appendingPathComponent("Bootstrap", isDirectory: true))
+        let previous = SmalltalkRuntime(bootstrap: false)
+        for name in SmalltalkRuntime.compilerClassNames {
+            let stClass = try oldLibrary.bundledClass(name, in: previous)
+            previous.classes[name] = stClass
+            previous.globals[name] = .classObject(stClass)
+        }
+        try previous.validateCompilerClasses()
 
-        // The previous compiler builds a transition generation. The resulting
-        // compiler then builds itself twice to verify a stable executable.
-        progress("[1/3] Compiling the system sources with the previous compiler …")
-        let transition = try compilerFor(build(sources, using: compiler))
-        progress("[2/3] Compiling the system sources with the new compiler …")
-        let final = try build(sources, using: transition)
-        let rebuilt = try compilerFor(final)
+        progress("[1/4] Building the bootstrap compiler with the previous compiler …")
+        let transition = try makeRuntime(build(bootstrap, using: previous))
+        progress("[2/4] Rebuilding the compiler with itself …")
+        let compiler = try build(bootstrap, using: transition)
+        let rebuilt = try makeRuntime(compiler)
+        progress("[3/4] Compiling the system library …")
+        let system = try scripts(in: directory.appendingPathComponent("System", isDirectory: true))
+        let final = try build(system, using: rebuilt, extending: compiler)
         let artifacts = try encode(final)
-        progress("[3/3] Checking that the bootstrap is reproducible …")
-        let repeated = try encode(build(sources, using: rebuilt))
+        progress("[4/4] Checking that the bootstrap and system library are reproducible …")
+        let repeatedCompiler = try build(bootstrap, using: rebuilt)
+        let repeated = try encode(build(system, using: makeRuntime(repeatedCompiler), extending: repeatedCompiler))
         guard artifacts.0 == repeated.0, artifacts.1 == repeated.1 else {
-            throw SmalltalkError("The new Smalltalk compiler produces different code when it rebuilds itself.")
+            throw SmalltalkError("The new Smalltalk compiler produces different code when it rebuilds the library.")
         }
         progress("Running InitialWorld.st …")
-        _ = try rebuilt.evaluate(oldLibrary.initialWorld)
-        if let error = rebuilt.projectWindows().error { throw SmalltalkError(error) }
+        let runtime = try makeRuntime(final)
+        _ = try runtime.evaluate(oldLibrary.initialWorld)
+        if let error = runtime.projectWindows().error { throw SmalltalkError(error) }
 
         let sourcesURL = directory.appendingPathComponent("Smalltalk80.sources")
         let seedURL = directory.appendingPathComponent("Kernel.seed.json")
@@ -53,14 +58,26 @@ public enum SmalltalkBootstrap {
         let methods: [MethodSide: [String: [String: Method]]]
     }
 
-    private static func compilerFor(_ build: Build) throws -> SmalltalkRuntime {
+    private static func scripts(in directory: URL) throws -> [String] {
+        let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "st" && $0.lastPathComponent.first?.isNumber == true }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        return try files.map { try String(contentsOf: $0, encoding: .utf8) }
+    }
+
+    private static func makeRuntime(definitions: [LibrarySources.Definition]) throws -> SmalltalkRuntime {
         let runtime = SmalltalkRuntime(bootstrap: false)
-        for definition in build.sources.definitions {
+        for definition in definitions {
             guard let parent = runtime.classes[definition.superclass] else {
                 throw SmalltalkError("System superclass \(definition.superclass) is missing.")
             }
             _ = try runtime.subclass(of: parent, name: definition.name, fields: definition.fields.joined(separator: " "))
         }
+        return runtime
+    }
+
+    private static func makeRuntime(_ build: Build) throws -> SmalltalkRuntime {
+        let runtime = try makeRuntime(definitions: build.sources.definitions)
         for (side, tables) in build.methods {
             for (name, methods) in tables { runtime.classes[name]?[side] = methods }
         }
@@ -68,10 +85,10 @@ public enum SmalltalkBootstrap {
         return runtime
     }
 
-    private static func build(_ scripts: [String], using compiler: SmalltalkRuntime) throws -> Build {
-        let classes = SmalltalkRuntime(bootstrap: false)
-        var definitions: [LibrarySources.Definition] = []
-        var methods: [MethodSide: [String: [String: Method]]] = [:]
+    private static func build(_ scripts: [String], using compiler: SmalltalkRuntime, extending base: Build? = nil) throws -> Build {
+        var definitions = base?.sources.definitions ?? []
+        let classes = try makeRuntime(definitions: definitions)
+        var methods = base?.methods ?? [:]
         for script in scripts {
             let body = try compiler.compileWorkspace(script)
             guard body.temporaries.isEmpty else { throw SmalltalkError("System sources cannot declare workspace variables.") }

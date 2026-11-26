@@ -88,7 +88,7 @@ final class NativeWindowBackend {
     }
 
     func showTransientWindow(_ id: UUID, info: TransientWindowInfo, content: AnyView,
-                             onKeyChange: ((Bool) -> Void)? = nil, onClose: @escaping () -> Void) {
+                             onKeyChange: ((Bool) -> Void)? = nil, onClose: (() -> Void)? = nil) {
         let window = makeWindow(contentRect: NSRect(x: 0, y: 0, width: CGFloat(info.width), height: CGFloat(info.height)),
                                 title: info.title, identifier: info.identifier)
         window.identifier = NSUserInterfaceItemIdentifier("\(info.identifier)-\(id.uuidString)")
@@ -100,14 +100,20 @@ final class NativeWindowBackend {
         window.center()
         let delegate = TransientWindowDelegate(onKeyChange: onKeyChange) { [weak self] in
             self?.removeTransientWindow(id, close: false)
-            onClose()
+            onClose?()
         }
         window.delegate = delegate
         transientWindows[id] = (window, delegate)
         window.makeKeyAndOrderFront(nil)
     }
 
-    func activateTransientWindow(_ id: UUID) { transientWindows[id]?.window.makeKeyAndOrderFront(nil) }
+    @discardableResult
+    func activateTransientWindow(_ id: UUID) -> Bool {
+        guard let window = transientWindows[id]?.window else { return false }
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        window.makeKeyAndOrderFront(nil)
+        return true
+    }
 
     func closeTransientWindow(_ id: UUID) { removeTransientWindow(id, close: true) }
 

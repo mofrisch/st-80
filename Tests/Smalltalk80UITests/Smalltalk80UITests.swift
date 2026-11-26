@@ -3,6 +3,46 @@ import XCTest
 
 @MainActor
 final class Smalltalk80UITests: XCTestCase {
+    func testSettingsMenuAndShortcutOpenOneSmalltalkWindow() throws {
+        let app = launchFreshApp(opening: [])
+        let menus = app.menuBars.menuBarItems
+        XCTAssertTrue(menus["File"].waitForExistence(timeout: 10))
+        let topLevelMenus = menus.allElementsBoundByIndex
+        let titles = topLevelMenus.map(\.title)
+        let fileIndex = try XCTUnwrap(titles.firstIndex(of: "File"), "Menu titles: \(titles)")
+        XCTAssertGreaterThan(fileIndex, 0, "Menu titles: \(titles)")
+        let appMenu = topLevelMenus[fileIndex - 1]
+        appMenu.click()
+        let settingsItem = appMenu.menuItems["Settings…"]
+        XCTAssertTrue(settingsItem.waitForExistence(timeout: 5))
+        settingsItem.click()
+        let settings = app.windows.matching(identifier: "settingsWindow")
+        let window = settings.firstMatch
+        let note = window.staticTexts["settingsImageNote"]
+        XCTAssertTrue(note.waitForExistence(timeout: 5))
+        XCTAssertEqual(note.value as? String ?? note.label, "Windows and session state are stored in the Smalltalk image.")
+
+        app.typeKey(",", modifierFlags: .command)
+        XCTAssertEqual(settings.count, 1)
+        XCTAssertEqual(app.windows.count, 1)
+        window.buttons[XCUIIdentifierCloseWindow].click()
+        let closed = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: window)
+        wait(for: [closed], timeout: 5)
+
+        openTool("Workspace", in: app)
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        replaceText(in: editor, with: """
+        SettingsWindow compile: 'buildContent
+            ^ UILabel new identifier: ''customSettingsNote''; text: ''Settings from the live image''; yourself'
+        """)
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(workspace.staticTexts["#buildContent"].waitForExistence(timeout: 5))
+        editor.typeKey(",", modifierFlags: .command)
+        XCTAssertTrue(window.staticTexts["customSettingsNote"].waitForExistence(timeout: 5))
+        XCTAssertEqual(settings.count, 1)
+    }
+
     func testToolAndCloseKeyboardShortcuts() throws {
         let app = launchFreshApp()
         let originalWorkspace = app.windows["toolWindow-1"]

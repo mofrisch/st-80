@@ -239,6 +239,11 @@ final class DebuggerExecution {
         }
         if case .object(let receiver) = context.receiver {
             values.merge(receiver.fields) { local, _ in local }
+        } else if case .classObject(let receiver) = context.receiver, context.methodSide == .classSide,
+                  let home = context.homeClass {
+            for name in home.metaclass.fields where values[name] == nil {
+                values[name] = receiver.classState[name]
+            }
         }
         if context.isWorkspace {
             for (name, value) in runtime.globals where values[name] == nil {

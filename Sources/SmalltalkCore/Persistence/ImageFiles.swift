@@ -23,9 +23,14 @@ enum ImageFiles {
         func depth(_ cls: STClass) -> Int { var n = 0; var c = cls.superclass; while let parent = c { n += 1; c = parent.superclass }; return n }
         for cls in runtime.classes.values.sorted(by: { depth($0) == depth($1) ? $0.name < $1.name : depth($0) < depth($1) }) where !SmalltalkRuntime.builtinNames.contains(cls.name) {
             let base = definitions[cls.name]
-            if base?.superclass == cls.superclass?.name && base?.fields == cls.ownFields { continue }
-            if !candidate.records.contains(where: { $0.kind == .classDefinition && $0.className == cls.name && $0.superclass == cls.superclass?.name && $0.fields == cls.ownFields }) {
-                try candidate.append(kind: .classDefinition, className: cls.name, superclass: cls.superclass?.name, fields: cls.ownFields, source: "\(cls.superclass!.name) subclass: #\(cls.name) instanceVariableNames: '\(cls.ownFields.joined(separator: " "))'")
+            let classFields = cls.metaclass.ownFields
+            if base?.superclass == cls.superclass?.name && base?.fields == cls.ownFields && (base?.classFields ?? []) == classFields { continue }
+            if !candidate.records.contains(where: {
+                $0.kind == .classDefinition && $0.className == cls.name && $0.superclass == cls.superclass?.name
+                    && $0.fields == cls.ownFields && ($0.classFields ?? []) == classFields
+            }) {
+                try candidate.append(kind: .classDefinition, className: cls.name, superclass: cls.superclass?.name,
+                                     fields: cls.ownFields, classFields: classFields, source: runtime.definitionSource(for: cls))
             }
         }
         var methods: [ImageFileArchive.CodeRecord] = []
@@ -137,7 +142,7 @@ enum ImageFiles {
         guard journal.id == archive.changesID, journal.sequence >= archive.checkpoint else { throw SmalltalkError("The changes log does not match the saved image.") }
         let changes = Dictionary(uniqueKeysWithValues: journal.records.map { ($0.id, $0) })
         var memory = archive.memory
-        guard memory.format == "st80-image", memory.version == ImageCodec.version, memory.executableMethods == nil,
+        guard memory.format == "st80-image", memory.version == archive.version, memory.executableMethods == nil,
               memory.executableClassMethods == nil else { throw SmalltalkError("The image contains invalid object memory.") }
         var code: [MethodSide: [String: [String: MethodCode]]] = [:]
         let records = Dictionary(memory.classes.enumerated().map { ($0.element.name, $0.offset) }, uniquingKeysWith: { first, _ in first })

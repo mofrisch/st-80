@@ -8,6 +8,7 @@ struct LibrarySources: Codable, Sendable {
         let name: String
         let superclass: String
         let fields: [String]
+        var classFields: [String]? = nil
     }
 
     var version = 1
@@ -81,7 +82,7 @@ struct SystemLibrary: Sendable {
               let parent = runtime.classes[definition.superclass] else {
             throw SmalltalkError("The bundled class \(name) is missing.")
         }
-        let target = STClass(name, superclass: parent, fields: definition.fields)
+        let target = STClass(name, superclass: parent, fields: definition.fields, classFields: definition.classFields ?? [])
         for side in MethodSide.allCases {
             for (selector, code) in seed[side][name] ?? [:] {
                 guard let source = sources[side][name]?[selector] else {
@@ -96,7 +97,8 @@ struct SystemLibrary: Sendable {
     func install(in runtime: SmalltalkRuntime) throws {
         for definition in definitions {
             guard let parent = runtime.classes[definition.superclass] else { throw SmalltalkError("System superclass \(definition.superclass) is missing.") }
-            _ = try runtime.subclass(of: parent, name: definition.name, fields: definition.fields.joined(separator: " "))
+            _ = try runtime.subclass(of: parent, name: definition.name, fields: definition.fields.joined(separator: " "),
+                                     classFields: definition.classFields ?? [])
         }
         for side in MethodSide.allCases {
             guard Set(seed[side].keys) == Set(sources[side].keys) else { throw SmalltalkError("The boot image contains a different method table.") }

@@ -20,6 +20,8 @@ struct ImageClass: Codable {
     var fields: [String]
     var methods: [String: String]
     var classMethods: [String: String]?
+    var classFields: [String]? = nil
+    var classState: [String: ImageValue]? = nil
 
     subscript(side: MethodSide) -> [String: String] {
         get { side == .instance ? methods : classMethods ?? [:] }
@@ -37,7 +39,7 @@ enum ImageValue: Codable {
     case largeInteger(BigInteger), fraction(ExactFraction)
     case scaledDecimal(ScaledDecimal)
     case character(UInt32), float(Double)
-    case classObject(String), reference(Int), transcript
+    case classObject(String), metaclass(String), reference(Int), transcript
 }
 
 enum ImageNode: Codable {

@@ -71,7 +71,8 @@ public enum SmalltalkBootstrap {
             guard let parent = runtime.classes[definition.superclass] else {
                 throw SmalltalkError("System superclass \(definition.superclass) is missing.")
             }
-            _ = try runtime.subclass(of: parent, name: definition.name, fields: definition.fields.joined(separator: " "))
+            _ = try runtime.subclass(of: parent, name: definition.name, fields: definition.fields.joined(separator: " "),
+                                     classFields: definition.classFields ?? [])
         }
         return runtime
     }
@@ -98,13 +99,22 @@ public enum SmalltalkBootstrap {
                     throw SmalltalkError("Invalid declaration in the system sources.")
                 }
                 switch selector {
-                case "subclass:instanceVariableNames:":
-                    guard arguments.count == 2, case .literal(.symbol(let child)) = arguments[0].kind,
+                case "subclass:instanceVariableNames:", "subclass:instanceVariableNames:classInstanceVariableNames:":
+                    guard arguments.count == CodeValidator.arity(of: selector),
+                          case .literal(.symbol(let child)) = arguments[0].kind,
                           case .literal(.string(let fields)) = arguments[1].kind else {
                         throw SmalltalkError("Invalid class declaration for \(name).")
                     }
-                    let newClass = try classes.subclass(of: stClass, name: child, fields: fields)
-                    definitions.append(.init(name: child, superclass: name, fields: newClass.ownFields))
+                    var classFields: [String] = []
+                    if arguments.count == 3 {
+                        guard case .literal(.string(let names)) = arguments[2].kind else {
+                            throw SmalltalkError("Invalid class instance variables for \(child).")
+                        }
+                        classFields = names.split(whereSeparator: \.isWhitespace).map(String.init)
+                    }
+                    let newClass = try classes.subclass(of: stClass, name: child, fields: fields, classFields: classFields)
+                    definitions.append(.init(name: child, superclass: name, fields: newClass.ownFields,
+                                             classFields: classFields.isEmpty ? nil : classFields))
                 case "compile:", "compileClass:":
                     guard arguments.count == 1, case .literal(.string(let source)) = arguments[0].kind else {
                         throw SmalltalkError("Invalid method declaration for \(name).")

@@ -197,6 +197,9 @@ extension SmalltalkRuntime {
 
     private var garbageCollectionRoots: [HeapReference] {
         var roots = globals.values.compactMap(HeapReference.init)
+        for stClass in classes.values {
+            roots.append(contentsOf: stClass.classState.values.lazy.compactMap(HeapReference.init))
+        }
         roots.append(contentsOf: inspectorRoots.lazy.compactMap(HeapReference.init))
         roots.append(contentsOf: evaluationRoots.compactMap(HeapReference.init))
         roots.append(contentsOf: bytecodeOperands.lazy.compactMap { HeapReference($0.value) })

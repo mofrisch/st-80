@@ -339,6 +339,76 @@ struct SourceJournalTests {
         #expect(await reopened.evaluate("SideChild new answer").value == "3")
     }
 
+    @Test func metaclassReferencesAndClassSlotsSurviveCollectionAndBothImageFormats() async throws {
+        let folder = try directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("Metaclasses.stimage")
+        let session = SmalltalkSession()
+        let setup = await session.evaluate("""
+            Object subclass: #MetaParent instanceVariableNames: '' classInstanceVariableNames: 'state'.
+            MetaParent subclass: #MetaChild instanceVariableNames: ''.
+            MetaChild class instanceVariableNames: 'meta'.
+            MetaParent class compile: 'state: value state := value'.
+            MetaParent class compile: 'readState ^ [ state ]'.
+            MetaChild class compile: 'remember meta := self class'.
+            MetaChild class compile: 'remembered ^ meta'.
+            MetaChild state: (Array with: 42).
+            MetaChild remember.
+            callback := MetaChild readState.
+            savedMetaclass := MetaChild class
+            """)
+        try #require(setup.executionError == nil, "\(setup.executionError ?? "")")
+        _ = await session.collectGarbage()
+        #expect(await session.evaluate("callback value first").value == "42")
+        #expect(await session.evaluate("MetaParent readState value isNil").value == "true")
+
+        let portable = try await session.imageData()
+        let reopened = SmalltalkSession()
+        _ = try await reopened.loadImage(portable)
+        #expect(await reopened.evaluate("savedMetaclass == MetaChild class and: [ savedMetaclass == MetaChild remembered ]").value == "true")
+        #expect(await reopened.evaluate("callback value first").value == "42")
+
+        try await reopened.saveImage(to: url, workspace: "", transcript: "")
+        let log = url.deletingPathExtension().appendingPathExtension("changes")
+        let journal = try SourceJournal.read(log)
+        let definition = try #require(journal.records.first { $0.kind == .classDefinition && $0.className == "MetaChild" })
+        #expect(definition.classFields == ["meta"])
+        #expect(journal.records.contains { $0.className == "MetaParent" && $0.selector == "readState" && $0.side == .classSide })
+        _ = try await reopened.loadImage(from: url)
+        #expect(await reopened.evaluate("savedMetaclass instanceClass == MetaChild").value == "true")
+        #expect(await reopened.evaluate("callback value first").value == "42")
+    }
+
+    @Test func metaclassLayoutChangesMigrateSubclassesAndCheckLexicalScope() async throws {
+        let session = SmalltalkSession()
+        let setup = await session.evaluate("""
+            Object subclass: #LayoutParent instanceVariableNames: '' classInstanceVariableNames: 'state'.
+            LayoutParent subclass: #LayoutChild instanceVariableNames: '' classInstanceVariableNames: 'childOnly'.
+            LayoutParent compileClass: 'state: value state := value'.
+            LayoutParent compileClass: 'state ^ state'.
+            LayoutParent compileClass: 'hidden ^ childOnly'.
+            LayoutChild state: 42
+            """)
+        try #require(setup.executionError == nil)
+        #expect(await session.evaluate("LayoutChild hidden").executionError?.contains("Unknown variable: childOnly") == true)
+        let invalid = await session.evaluate("LayoutParent class instanceVariableNames: 'state childOnly'")
+        #expect(invalid.executionError != nil)
+        #expect(await session.evaluate("LayoutChild class instanceVariableNamesText").value == "'state · childOnly'")
+        #expect(await session.evaluate("LayoutChild state").value == "42")
+        let added = await session.evaluate("""
+            ToolVM acceptDefinition: 'Object subclass: #LayoutParent
+                instanceVariableNames: ''''
+                classInstanceVariableNames: ''state added''' in: LayoutParent basedOn: (ToolVM definitionOf: LayoutParent)
+            """)
+        try #require(added.value == "#(true 'LayoutParent definition accepted.')")
+        #expect(await session.evaluate("LayoutChild class instanceVariableNamesText").value == "'state · added · childOnly'")
+        #expect(await session.evaluate("LayoutChild state").value == "42")
+        let reverted = try #require(added.changes.last { $0.kind == .classDefinition && $0.className == "LayoutParent" && $0.classFields == ["state"] })
+        #expect(await session.restoreChange(reverted.id).error == nil)
+        #expect(await session.evaluate("LayoutChild class instanceVariableNamesText").value == "'state · childOnly'")
+        #expect(await session.evaluate("LayoutChild state").value == "42")
+    }
+
     @Test func acceptedMethodsAreDurableBeforeSavingAndRejectedEditsNeverInstall() async throws {
         let folder = try directory(); defer { try? FileManager.default.removeItem(at: folder) }
         let log = folder.appendingPathComponent("Unsaved.changes")
@@ -370,7 +440,7 @@ struct SourceJournalTests {
         try await session.saveImage(to: url, workspace: "counter value", transcript: "hello")
         let bytes = try Data(contentsOf: url)
         let saved = try JSONDecoder().decode(ImageFileArchive.self, from: bytes)
-        #expect(saved.version == 6)
+        #expect(saved.version == ImageCodec.version)
         #expect(saved.memory.classes.allSatisfy { $0.methods.isEmpty })
         #expect(saved.methods.contains { $0.className == "Counter" && $0.code.selector == "answer" && $0.changeID != nil })
         #expect(!String(decoding: bytes, as: UTF8.self).contains("answer ^ 42"))

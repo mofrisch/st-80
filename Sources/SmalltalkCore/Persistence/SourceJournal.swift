@@ -13,6 +13,7 @@ public struct ChangeInfo: Identifiable, Codable, Sendable {
     public let fields: [String]?
     public let source: String
     var methodSide: MethodSide?
+    public internal(set) var classFields: [String]? = nil
     public var side: MethodSide { methodSide ?? .instance }
 }
 
@@ -109,10 +110,12 @@ final class SourceJournal {
         SmalltalkError("The changes log was modified outside this session. Reload the image.")
     }
     @discardableResult
-    func append(kind: ChangeInfo.Kind, className: String, selector: String? = nil, superclass: String? = nil, fields: [String]? = nil, side: MethodSide = .instance, source: String,
+    func append(kind: ChangeInfo.Kind, className: String, selector: String? = nil, superclass: String? = nil, fields: [String]? = nil,
+                classFields: [String] = [], side: MethodSide = .instance, source: String,
                 writing: (FileHandle, Data) throws -> Void = { try $0.write(contentsOf: $1) }) throws -> ChangeInfo {
         try checkCapacity(for: 1)
-        let record = ChangeInfo(id: UUID().uuidString, sequence: sequence + 1, timestamp: Date(), kind: kind, className: className, selector: selector, superclass: superclass, fields: fields, source: source, methodSide: side == .classSide ? side : nil)
+        let record = ChangeInfo(id: UUID().uuidString, sequence: sequence + 1, timestamp: Date(), kind: kind, className: className, selector: selector, superclass: superclass, fields: fields, source: source, methodSide: side == .classSide ? side : nil,
+                                classFields: classFields.isEmpty ? nil : classFields)
         try appendPrepared([record], writing: writing)
         return record
     }
@@ -127,7 +130,8 @@ final class SourceJournal {
         let prepared = history.enumerated().map { index, entry in
             ChangeInfo(id: UUID().uuidString, sequence: previousSequence + Int64(index) + 1, timestamp: timestamp,
                        kind: entry.kind, className: entry.className, selector: entry.selector, superclass: entry.superclass,
-                       fields: entry.fields, source: entry.source, methodSide: entry.side == .classSide ? .classSide : nil)
+                       fields: entry.fields, source: entry.source, methodSide: entry.side == .classSide ? .classSide : nil,
+                       classFields: entry.classFields)
         }
         try appendPrepared(prepared, writing: writing)
     }
@@ -301,9 +305,9 @@ extension SmalltalkRuntime {
                 throw SmalltalkError("The superclass of the class being restored is missing.")
             }
             if let existing = classes[record.className] {
-                try redefineClass(existing, superclass: parent, fields: fields, source: record.source)
+                try redefineClass(existing, superclass: parent, fields: fields, classFields: record.classFields ?? [], source: record.source)
             } else {
-                _ = try subclass(of: parent, name: record.className, fields: fields.joined(separator: " "))
+                _ = try subclass(of: parent, name: record.className, fields: fields.joined(separator: " "), classFields: record.classFields ?? [])
             }
         }
         return "Restored: \(record.side.displayName(for: record.className))\(record.selector.map { " » \($0)" } ?? "")"

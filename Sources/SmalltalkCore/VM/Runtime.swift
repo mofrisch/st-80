@@ -12,6 +12,7 @@ final class SmalltalkRuntime {
     private static let builtinHierarchy: [(name: String, superclass: String?)] = [
         ("Object", nil),
         ("Class", "Object"),
+        ("Metaclass", "Class"),
         ("UndefinedObject", "Object"),
         ("Exception", "Object"),
         ("Error", "Exception"),
@@ -34,7 +35,7 @@ final class SmalltalkRuntime {
     ]
     static let builtinNames = Set(builtinHierarchy.map(\.name))
     static let heapBuiltinNames: Set<String> = ["Object", "Exception", "Error"]
-    static let additiveBuiltinNames: Set<String> = ["Character", "Float", "LargeInteger", "Fraction", "ScaledDecimal", "Exception", "Error"]
+    static let additiveBuiltinNames: Set<String> = ["Character", "Float", "LargeInteger", "Fraction", "ScaledDecimal", "Exception", "Error", "Metaclass"]
     static let floatAliases: Set<String> = ["FloatE", "FloatD", "FloatQ"]
     static let classLimit = 128 + additiveBuiltinNames.count
     static let executionStepLimit = 100_000
@@ -89,6 +90,7 @@ final class SmalltalkRuntime {
             classes[name] = stClass
             globals[name] = .classObject(stClass)
         }
+        classes["Object"]?.rootMetaclassSuperclass = classes["Class"]
         globals["Transcript"] = .transcript
         for name in Self.floatAliases { globals[name] = globals["Float"] }
         if bootstrap {
@@ -101,6 +103,11 @@ final class SmalltalkRuntime {
         catalogDirty = false
         recordingChanges = bootstrap
         transcript = ""
+    }
+
+    deinit {
+        // Class state can refer back to the class that owns it.
+        for stClass in classes.values { stClass.classState.removeAll() }
     }
 
     func tick() throws {
@@ -268,6 +275,7 @@ final class SmalltalkRuntime {
         }
         if let environment = context.environment.binding(name), let value = environment.values[name] { return value }
         if case .object(let object) = context.receiver, let value = object.fields[name] { return value }
+        if let receiver = classFieldReceiver(name, context: context) { return receiver.classState[name] ?? .nilValue }
         if let value = globals[name] { return value }
         throw SmalltalkError("Unknown variable: \(name)")
     }
@@ -278,6 +286,7 @@ final class SmalltalkRuntime {
         }
         if let environment = context.environment.binding(name) { environment.values[name] = value; return }
         if case .object(let object) = context.receiver, object.fields[name] != nil { object.fields[name] = value; return }
+        if let receiver = classFieldReceiver(name, context: context) { receiver.classState[name] = value; return }
         guard name != "Transcript", classes[name] == nil, !Self.floatAliases.contains(name) else {
             throw SmalltalkError("\(name) cannot be reassigned.")
         }
@@ -287,6 +296,13 @@ final class SmalltalkRuntime {
             return
         }
         throw SmalltalkError("Variable \(name) is undeclared.")
+    }
+
+    private func classFieldReceiver(_ name: String, context: Context) -> STClass? {
+        guard context.methodSide == .classSide, case .classObject(let receiver) = context.receiver,
+              receiver.classState[name] != nil, let home = context.homeClass,
+              home.metaclass.fields.contains(name) else { return nil }
+        return receiver
     }
 
     func value(_ literal: Literal) throws -> Value {
@@ -326,7 +342,8 @@ final class SmalltalkRuntime {
         case .symbol: name = "Symbol"
         case .boolean(let b): name = b ? "True" : "False"
         case .nilValue: name = "UndefinedObject"
-        case .classObject: name = "Class"
+        case .classObject(let stClass):
+            return stClass.instanceClass == nil ? stClass.metaclass : classes["Metaclass"]!
         case .object(let object): return object.stClass
         case .array: name = "Array"
         case .block: name = "BlockClosure"

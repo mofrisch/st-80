@@ -55,6 +55,7 @@ extension SmalltalkRuntime {
     func compile(_ source: String, in stClass: STClass, side: MethodSide = .instance,
                  validating validate: ((Method) throws -> Void)? = nil) throws -> String {
         guard !compilationMode else { throw SmalltalkError("Compilation is already in progress.") }
+        guard stClass.instanceClass == nil else { throw SmalltalkError("Select the instance class to edit its class-side methods.") }
         let method = try compileMethod(source)
         try validate?(method)
         guard stClass[side].count < Self.methodsPerSideLimit || stClass[side][method.selector] != nil else {

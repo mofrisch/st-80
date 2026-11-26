@@ -13,9 +13,11 @@ BrowserOrganization compile: 'shippedProtocols
             (''Error Reporting'' (''error:'' ''error:line:column:''))))
         (''Class'' (
             (''Instance Creation'' (''new'' ''new:''))
-            (''Class Structure'' (''name'' ''superclass'' ''subclasses'' ''instanceVariableNamesText''))
-            (''Subclass Definition'' (''subclass:instanceVariableNames:'' ''subclass:instanceVariableNames:classVariableNames:poolDictionaries:category:''))
+            (''Class Structure'' (''name'' ''superclass'' ''subclasses'' ''allSuperclasses'' ''allSubclasses'' ''instanceVariableNamesText''))
+            (''Subclass Definition'' (''subclass:instanceVariableNames:'' ''subclass:instanceVariableNames:classInstanceVariableNames:''
+                ''subclass:instanceVariableNames:classVariableNames:poolDictionaries:category:''))
             (''Method Dictionary'' (''compile:'' ''compileClass:'' ''methodNames'' ''methodSourceAt:'' ''classMethodNames'' ''classMethodSourceAt:'' ''isPrimitiveAt:''))))
+        (''Metaclass'' ((''Class Structure'' (''instanceClass'' ''instanceVariableNames:''))))
         (''Integer'' (
             (''Arithmetic'' (''+'' ''-'' ''*'' ''/'' ''//'' ''\\'' ''negated'' ''abs'' ''squared''))
             (''Comparing'' (''<'' ''>'' ''<='' ''>=''))
@@ -269,6 +271,7 @@ BrowserOrganization compile: 'shippedProtocols
             (''Fixtures'' (''setUp'' ''tearDown''))
             (''Tests'' (''testBindingReadsAndUpdatesTheLabel'' ''testUnbindingStopsUpdates''))))
         (''ANSIDispatchProbe'' ((''Dispatch'' (''touch'' ''doesNotUnderstand:'')) (''Exception Selection'' (''handles:''))))
+        (''ANSIClassStateProbe'' ((''Accessing'' (''slot''))))
         (''ANSIProbeException'' ((''Signaling'' (''defaultAction'' ''isResumable''))))
         (''ANSISmalltalkTest'' (
             (''Language Tests'' (''testMessagePrecedence'' ''testCascadeUsesTheSameReceiver''
@@ -277,6 +280,7 @@ BrowserOrganization compile: 'shippedProtocols
                 ''testCharacterLiteralsAndStringElements'' ''testLiteralArrayValuesAndSymbolIdentity''
                 ''testLexicalBlockBindings'' ''testValuableProtocol'' ''testBooleanShortCircuitAndLoop''
                 ''testCleanupRunsInUnwindOrder''))
+            (''Class Tests'' (''testClassObjectsHaveDistinctMetaclasses'' ''testClassInstanceVariablesBelongToTheReceivingClass''))
             (''Number Tests'' (''testLargeIntegerArithmetic'' ''testLargeIntegerFloorDivision'' ''testExactFractions''
                 ''testScaledDecimalLiterals'' ''testScaledDecimalExactArithmetic'' ''testScaledDecimalDivision''
                 ''testScaledDecimalMixedNumericTypes'' ''testScaledDecimalConversions'' ''testScaledDecimalWithWideCoefficient''))

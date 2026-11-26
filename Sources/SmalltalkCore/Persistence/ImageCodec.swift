@@ -1,7 +1,8 @@
 import Foundation
 
 enum ImageCodec {
-    static let version = 6
+    static let version = 7
+    static let supportedVersions = 6...version
     static let maxBytes = 32 * 1_024 * 1_024
     static let maxNodes = 40_000
 
@@ -44,7 +45,9 @@ enum ImageCodec {
             case .symbol(let s): return .symbol(s)
             case .boolean(let b): return .boolean(b)
             case .nilValue: return .nilValue
-            case .classObject(let c): return .classObject(c.name)
+            case .classObject(let c):
+                if let owner = c.instanceClass { return .metaclass(owner.name) }
+                return .classObject(c.name)
             case .transcript: return .transcript
             case .object(let object): return .reference(try register(object, .object(object)))
             case .array(let array): return .reference(try register(array, .array(array)))
@@ -54,6 +57,15 @@ enum ImageCodec {
 
         var globals: [String: ImageValue] = [:]
         for name in runtime.globals.keys.sorted() { globals[name] = try value(runtime.globals[name]!) }
+        let classes = try runtime.classes.values.sorted { $0.name < $1.name }.map { stClass in
+            var state: [String: ImageValue] = [:]
+            for name in stClass.classState.keys.sorted() { state[name] = try value(stClass.classState[name]!) }
+            let classFields = stClass.metaclass.ownFields
+            return ImageClass(name: stClass.name, superclass: stClass.superclass?.name, fields: stClass.ownFields,
+                              methods: stClass.methods.mapValues(\.source),
+                              classMethods: stClass.classMethods.isEmpty ? nil : stClass.classMethods.mapValues(\.source),
+                              classFields: classFields.isEmpty ? nil : classFields, classState: state.isEmpty ? nil : state)
+        }
         var nodes: [ImageNode] = []
         var index = 0
         while index < pending.count {
@@ -79,9 +91,6 @@ enum ImageCodec {
             if case .object(let object) = node { return object }
             return nil
         })
-        let classes = runtime.classes.values.sorted { $0.name < $1.name }.map {
-            ImageClass(name: $0.name, superclass: $0.superclass?.name, fields: $0.ownFields, methods: $0.methods.mapValues(\.source), classMethods: $0.classMethods.isEmpty ? nil : $0.classMethods.mapValues(\.source))
-        }
         let code = includesCode ? runtime.classes.mapValues { $0.methods.mapValues(MethodCode.init) }.filter { !$0.value.isEmpty } : nil
         let classCode = includesCode ? runtime.classes.mapValues { $0.classMethods.mapValues(MethodCode.init) }.filter { !$0.value.isEmpty } : [:]
         return ImageArchive(classes: classes, globals: globals, nodes: nodes, workspace: workspace, transcript: transcript, executableMethods: code, executableClassMethods: classCode.isEmpty ? nil : classCode)
@@ -104,7 +113,9 @@ enum ImageCodec {
         do { header = try decoder.decode(Header.self, from: data) }
         catch { throw SmalltalkError("The file is not a valid Smalltalk/80 image.") }
         guard header.format == "st80-image" else { throw SmalltalkError("Unknown image format. Expected a Smalltalk/80 image.") }
-        guard header.version == ImageCodec.version else { throw SmalltalkError("Image version \(header.version) is unsupported. Expected version \(ImageCodec.version).") }
+        guard supportedVersions.contains(header.version) else {
+            throw SmalltalkError("Image version \(header.version) is unsupported. Supported versions are \(supportedVersions.lowerBound) through \(version).")
+        }
         return decoder
     }
 
@@ -113,7 +124,7 @@ enum ImageCodec {
     }
 
     static func restore(_ image: ImageArchive, journal: SourceJournal? = nil) throws -> (SmalltalkRuntime, LoadedImage) {
-        guard image.format == "st80-image", image.version == ImageCodec.version, let executableMethods = image.executableMethods else {
+        guard image.format == "st80-image", supportedVersions.contains(image.version), let executableMethods = image.executableMethods else {
             throw invalid("The executable method store is missing or incompatible.")
         }
         guard image.classes.count <= SmalltalkRuntime.classLimit, image.globals.count <= 1_152 + SmalltalkRuntime.floatAliases.count,
@@ -139,7 +150,8 @@ enum ImageCodec {
         }
         for builtin in runtime.classes.values {
             if records[builtin.name] == nil, SmalltalkRuntime.additiveBuiltinNames.contains(builtin.name) { continue }
-            guard let record = records[builtin.name], record.superclass == builtin.superclass?.name, record.fields == builtin.ownFields else {
+            guard let record = records[builtin.name], record.superclass == builtin.superclass?.name, record.fields == builtin.ownFields,
+                  record.classFields?.isEmpty != false else {
                 throw invalid("Built-in class \(builtin.name) is missing or has an invalid layout.")
             }
         }
@@ -150,8 +162,9 @@ enum ImageCodec {
             for record in remaining {
                 guard let parentName = record.superclass else { throw invalid("Superclass is missing.") }
                 if let parent = runtime.classes[parentName] {
-                    _ = try runtime.subclass(of: parent, name: record.name, fields: record.fields.joined(separator: " "))
-                    guard runtime.classes[record.name]?.ownFields == record.fields else { throw invalid("Invalid instance variables.") }
+                    let stClass = try runtime.subclass(of: parent, name: record.name, fields: record.fields.joined(separator: " "),
+                                                       classFields: record.classFields ?? [])
+                    guard stClass.ownFields == record.fields else { throw invalid("Invalid instance variables.") }
                 } else { unresolved.append(record) }
             }
             remaining = unresolved
@@ -231,6 +244,9 @@ enum ImageCodec {
             case .classObject(let name):
                 guard let stClass = runtime.classes[name] else { throw invalid("Unknown class reference \(name).") }
                 return .classObject(stClass)
+            case .metaclass(let name):
+                guard let stClass = runtime.classes[name] else { throw invalid("Unknown metaclass owner \(name).") }
+                return .classObject(stClass.metaclass)
             case .reference(let id):
                 guard case .value(let value) = try shell(id) else { throw invalid("A lexical context cannot be used as a Smalltalk value.") }
                 return value
@@ -274,6 +290,12 @@ enum ImageCodec {
                 block.context = Context(environment: try environment(record.environment), receiver: receiver, homeClass: homeClass, homeID: 0, isWorkspace: record.isWorkspace, methodSide: side)
             default: throw invalid("The object table is inconsistent.")
             }
+        }
+        for record in image.classes {
+            let stClass = runtime.classes[record.name]!
+            let state = record.classState ?? [:]
+            guard Set(state.keys) == Set(stClass.classState.keys) else { throw invalid("Invalid class instance variables for \(record.name).") }
+            stClass.classState = try state.mapValues(value)
         }
         var globals = try image.globals.mapValues(value)
         for name in SmalltalkRuntime.additiveBuiltinNames where records[name] == nil && globals[name] == nil {

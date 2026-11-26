@@ -18,7 +18,9 @@ extension SmalltalkRuntime {
         "Class": [
             "new": "Creates an object and sends initialize.", "new:": "Creates an array of the specified size.",
             "name": "Returns the class name.", "superclass": "Returns the superclass.", "subclasses": "Returns the immediate subclasses.",
+            "allSuperclasses": "Returns all superclasses.", "allSubclasses": "Returns all subclasses.",
             "subclass:instanceVariableNames:": "Creates a subclass.",
+            "subclass:instanceVariableNames:classInstanceVariableNames:": "Creates a subclass with per-class instance variables.",
             "subclass:instanceVariableNames:classVariableNames:poolDictionaries:category:": "Creates a subclass. Class variables and pools must be empty.",
             "compile:": "Compiles or replaces an instance method.",
             "compileClass:": "Compiles or replaces a class method.",
@@ -28,6 +30,10 @@ extension SmalltalkRuntime {
             "classMethodSourceAt:": "Returns the stored source code for a class method.",
             "isPrimitiveAt:": "Tests whether the selector names a VM primitive.",
             "instanceVariableNamesText": "Returns the instance variable names."
+        ],
+        "Metaclass": [
+            "instanceClass": "Returns the class whose metaclass is the receiver.",
+            "instanceVariableNames:": "Changes the receiver's declared instance variable names.",
         ],
         "Integer": [
             "+": "Addition.", "-": "Subtraction.", "*": "Multiplication.",
@@ -133,6 +139,7 @@ extension SmalltalkRuntime {
     }
 
     func reflectedMethods(on target: STClass, side: MethodSide) -> [MethodInfo] {
+        guard side == .instance || target.instanceClass == nil else { return [] }
         var methods = target[side].map { MethodInfo(selector: $0.key, source: $0.value.source, isPrimitive: false) }
         if side == .instance {
             for (selector, description) in Self.primitiveDescriptions[target.name] ?? [:] where target.methods[selector] == nil {
@@ -143,6 +150,7 @@ extension SmalltalkRuntime {
     }
 
     func reflectedMethodSource(_ selector: String, on target: STClass, side: MethodSide) -> String? {
+        guard side == .instance || target.instanceClass == nil else { return nil }
         if let method = target[side][selector] { return method.source }
         guard side == .instance, let description = Self.primitiveDescriptions[target.name]?[selector] else { return nil }
         return primitiveSource(selector, description)

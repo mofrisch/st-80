@@ -14,6 +14,32 @@ ANSIDispatchProbe compile: 'handles: anException
 Error subclass: #ANSIProbeError instanceVariableNames: ''.
 Exception subclass: #ANSIProbeException instanceVariableNames: ''.
 
+Object subclass: #ANSIClassStateProbe
+    instanceVariableNames: 'slot'
+    classInstanceVariableNames: 'slot'.
+
+ANSIClassStateProbe subclass: #ANSIClassStateChild
+    instanceVariableNames: ''
+    classInstanceVariableNames: 'detail'.
+
+ANSIClassStateProbe compile: 'slot
+    ^ slot'.
+
+ANSIClassStateProbe compileClass: 'slot
+    ^ slot'.
+
+ANSIClassStateProbe compileClass: 'slot: value
+    slot := value'.
+
+ANSIClassStateProbe compileClass: 'slotReader
+    ^ [ slot ]'.
+
+ANSIClassStateChild compileClass: 'inheritedSlot
+    ^ super slot'.
+
+ANSIClassStateChild compileClass: 'detail
+    ^ detail'.
+
 ANSIProbeException compile: 'defaultAction
     ^ 40'.
 
@@ -21,6 +47,37 @@ ANSIProbeException compile: 'isResumable
     ^ true'.
 
 TestCase subclass: #ANSISmalltalkTest instanceVariableNames: ''.
+
+ANSISmalltalkTest compile: 'testClassObjectsHaveDistinctMetaclasses
+    self assert: ANSIClassStateProbe new class == ANSIClassStateProbe.
+    self assert: ANSIClassStateProbe class == ANSIClassStateProbe class.
+    self deny: ANSIClassStateProbe class == ANSIClassStateChild class.
+    self assert: ANSIClassStateChild class superclass == ANSIClassStateProbe class.
+    self assert: ANSIClassStateChild class instanceClass == ANSIClassStateChild.
+    self assert: ANSIClassStateChild class class == Metaclass.
+    self assert: Metaclass class class == Metaclass.
+    self assert: Object class superclass == Class.
+    self assert: Object allSuperclasses isEmpty.
+    self assert: (ANSIClassStateChild allSuperclasses) equals: (Array with: ANSIClassStateProbe with: Object).
+    self assert: (Object allSubclasses includes: ANSIClassStateChild).
+    self assert: (ANSIClassStateProbe class allSubclasses includes: ANSIClassStateChild class)'.
+
+ANSISmalltalkTest compile: 'testClassInstanceVariablesBelongToTheReceivingClass
+    | read |
+    self assert: ANSIClassStateProbe slot isNil.
+    self assert: ANSIClassStateChild slot isNil.
+    self assert: ANSIClassStateChild detail isNil.
+    [
+        ANSIClassStateProbe slot: 7.
+        read := ANSIClassStateChild slotReader.
+        ANSIClassStateChild slot: 42.
+        self assert: ANSIClassStateProbe slot equals: 7.
+        self assert: ANSIClassStateChild inheritedSlot equals: 42.
+        self assert: read value equals: 42.
+        self assert: ANSIClassStateChild new slot isNil
+    ] ensure: [
+        ANSIClassStateProbe slot: nil.
+        ANSIClassStateChild slot: nil ]'.
 
 ANSISmalltalkTest compile: 'testMessagePrecedence
     self assert: 3 + 4 * 2 equals: 14.

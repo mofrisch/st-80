@@ -30,7 +30,7 @@ Local builds use ad hoc signing, so you can run the app without a development te
   If the selected method changed elsewhere while you were editing, Accept keeps your draft and reports the conflict. Reopen the method to work from its current version.
 - The Workspace and method editors show line numbers and highlight Smalltalk syntax. The image’s `STSourceScanner` shares the compiler’s lexical rules and tolerates unfinished input. It supplies text ranges to the native editor.
 - With a method selected, click **Bytecode** below the source editor to expand a read-only listing of the compiled method, including the instructions inside blocks. The listing updates when you accept a source edit. The browser identifies VM primitives that have no bytecode.
-- Selecting a class shows its definition in the source editor. **Definition** returns to it from a method. Edit the superclass or instance variable names in `subclass:instanceVariableNames:` and press **⌘S**. Use **Move Class …** to change the category.
+- Selecting a class shows its definition in the source editor. **Definition** returns to it from a method. Edit the superclass or variable names in `subclass:instanceVariableNames:` with optional `classInstanceVariableNames:` and press **⌘S**. Use **Move Class …** to change the category.
 - Create classes in the Workspace by evaluating `Object subclass: #Greeter instanceVariableNames: 'name'`. Use **New Method** in the browser to add a method. The browser shows the selected class's own methods. Select its superclass to browse inherited methods.
 - Evaluate `ToolVM bindingSummary` in a Workspace to list shared variables with their classes and values.
 - **Tools → Workspace** (**⌘W**) opens a new editor containing `Transcript show: 'Hello'; cr.`. Click **Do it** to run the example. **Tools → Browser** (**⌘B**) opens a new browser. **Tools → Transcript** (**⌘T**) opens the output window or brings the existing one forward. Use the macOS **Window** menu to switch between open windows and **File → Close** (**⇧⌘W**) to close the active window.
@@ -60,7 +60,7 @@ The VM builds and validates a separate session before replacing the active one. 
 
 **Reset Session** starts a fresh session with an empty desktop.
 
-The JSON image format (`format: st80-image`, `version: 6`) stores an object table, bytecode for methods and blocks, source positions, and source references. Use a fresh session when upgrading from an earlier image version. The core API `imageData` produces a portable image with embedded method sources. Each image can contain up to 32 MiB and 40,000 reachable reference objects.
+The JSON image format (`format: st80-image`, `version: 7`) stores an object table, metaclass references and class instance variables, bytecode for methods and blocks, source positions, and source references. Version 6 images can still be loaded. The core API `imageData` produces a portable image with embedded method sources. Each image can contain up to 32 MiB and 40,000 reachable reference objects.
 
 ### Sources and changes
 
@@ -302,7 +302,8 @@ Unary messages bind before binary messages, and binary messages before keyword m
 The prototype has these limits.
 
 - The interpreter uses this project's stack instruction set. Images are specific to this VM.
-- Classes share a simplified `Class` and have separate method dictionaries for the instance and class sides. Class methods inherit along the superclass chain. In a class method, `self` is the receiving class and `super` starts lookup above the defining class. The simplified model has no individual metaclass objects or class instance variables.
+- Each class has its own metaclass, which stores its class-side methods. `Greeter class` returns the metaclass and `Greeter class instanceClass` returns `Greeter`. In a class-side method, `self` is the receiving class and `super` starts lookup at the defining class's superclass on the class side.
+- Declare per-class state with `Object subclass: #Greeter instanceVariableNames: 'name' classInstanceVariableNames: 'defaultName'`. Inherited class instance variables start at `nil` independently on every class. Edit the declaration of an existing class with `Greeter class instanceVariableNames: 'defaultName'`.
 - `subclass:instanceVariableNames:` is the short form. The longer Smalltalk-80 message is accepted with empty class variables and pool dictionaries.
 - `new` sends `initialize`. With no explicit `^`, a method returns `self` and a block returns its last expression.
 - Assigning an undeclared name in a workspace creates a persistent workspace variable. `| temp |` declares a local that lasts for the evaluation.

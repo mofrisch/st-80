@@ -1,5 +1,5 @@
 extension SmalltalkRuntime {
-    func subclass(of superclass: STClass, name: String, fields source: String) throws -> STClass {
+    func subclass(of superclass: STClass, name: String, fields source: String, classFields: [String] = []) throws -> STClass {
         try validateSuperclass(superclass)
         guard name.first?.isUppercase == true && name.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" }) else {
             throw SmalltalkError("Class names must begin with an uppercase letter.")
@@ -8,11 +8,12 @@ extension SmalltalkRuntime {
         guard classes.count < Self.classLimit else { throw SmalltalkError("A session can contain at most \(Self.classLimit) classes.") }
         let fields = source.split(whereSeparator: \.isWhitespace).map(String.init)
         try validateFields(fields, inherited: superclass.fields)
+        try validateFields(classFields, inherited: superclass.metaclass.fields)
+        let stClass = STClass(name, superclass: superclass, fields: fields, classFields: classFields)
         if recordingChanges {
-            let escaped = source.replacingOccurrences(of: "'", with: "''")
-            try journal.append(kind: .classDefinition, className: name, superclass: superclass.name, fields: fields, source: "\(superclass.name) subclass: #\(name) instanceVariableNames: '\(escaped)'")
+            try journal.append(kind: .classDefinition, className: name, superclass: superclass.name,
+                               fields: fields, classFields: classFields, source: definitionSource(for: stClass))
         }
-        let stClass = STClass(name, superclass: superclass, fields: fields)
         classes[name] = stClass
         catalogDirty = true
         globals[name] = .classObject(stClass)
@@ -20,7 +21,8 @@ extension SmalltalkRuntime {
     }
 
     func validateSuperclass(_ superclass: STClass) throws {
-        guard Self.heapBuiltinNames.contains(superclass.name) || !Self.builtinNames.contains(superclass.name) else {
+        guard superclass.instanceClass == nil,
+              Self.heapBuiltinNames.contains(superclass.name) || !Self.builtinNames.contains(superclass.name) else {
             throw SmalltalkError("Subclassing primitive classes is not implemented.")
         }
     }
@@ -34,24 +36,37 @@ extension SmalltalkRuntime {
 
     func definitionSource(for target: STClass) -> String {
         let parent = target.superclass?.name ?? "nil"
-        return "\(parent) subclass: #\(target.name)\n    instanceVariableNames: '\(target.ownFields.joined(separator: " "))'"
+        let source = "\(parent) subclass: #\(target.name)\n    instanceVariableNames: '\(target.ownFields.joined(separator: " "))'"
+        let classFields = target.metaclass.ownFields
+        guard !classFields.isEmpty else { return source }
+        return source + "\n    classInstanceVariableNames: '\(classFields.joined(separator: " "))'"
     }
 
     func acceptDefinition(_ source: String, for target: STClass) throws {
         let body = try compileWorkspace(source)
         guard body.temporaries.isEmpty, body.expressions.count == 1,
-              case .send(let receiver, "subclass:instanceVariableNames:", let arguments) = body.expressions[0].kind,
-              case .variable(let parentName) = receiver.kind, arguments.count == 2,
+              case .send(let receiver, let selector, let arguments) = body.expressions[0].kind,
+              (selector == "subclass:instanceVariableNames:" && arguments.count == 2)
+                || (selector == "subclass:instanceVariableNames:classInstanceVariableNames:" && arguments.count == 3),
+              case .variable(let parentName) = receiver.kind,
               case .literal(.symbol(let name)) = arguments[0].kind,
               case .literal(.string(let fields)) = arguments[1].kind else {
-            throw SmalltalkError("Enter one class definition using subclass:instanceVariableNames:.")
+            throw SmalltalkError("Enter one class definition using subclass:instanceVariableNames: with optional classInstanceVariableNames:.")
         }
         guard name == target.name else { throw SmalltalkError("The definition must name the selected class \(target.name).") }
         guard let parent = classes[parentName] else { throw SmalltalkError("Superclass \(parentName) does not exist.") }
-        try redefineClass(target, superclass: parent, fields: fields.split(whereSeparator: \.isWhitespace).map(String.init), source: source)
+        var classFields: [String] = []
+        if arguments.count == 3 {
+            guard case .literal(.string(let names)) = arguments[2].kind else {
+                throw SmalltalkError("Enter class instance variable names as a string.")
+            }
+            classFields = names.split(whereSeparator: \.isWhitespace).map(String.init)
+        }
+        try redefineClass(target, superclass: parent, fields: fields.split(whereSeparator: \.isWhitespace).map(String.init),
+                          classFields: classFields, source: source)
     }
 
-    func redefineClass(_ target: STClass, superclass: STClass, fields: [String], source: String) throws {
+    func redefineClass(_ target: STClass, superclass: STClass, fields: [String], classFields: [String], source: String? = nil) throws {
         guard !Self.builtinNames.contains(target.name) else { throw SmalltalkError("Built-in class layouts are read-only.") }
         try validateSuperclass(superclass)
         var ancestor: STClass? = superclass
@@ -59,8 +74,9 @@ extension SmalltalkRuntime {
             guard current !== target else { throw SmalltalkError("A class cannot inherit from itself or one of its subclasses.") }
             ancestor = current.superclass
         }
-        guard target.superclass !== superclass || target.ownFields != fields else { return }
-        let children = Dictionary(grouping: classes.values.compactMap { item in
+        guard target.superclass !== superclass || target.ownFields != fields || target.metaclass.ownFields != classFields else { return }
+        let hierarchy = Array(classes.values) + classes.values.map(\.metaclass)
+        let children = Dictionary(grouping: hierarchy.compactMap { item in
             item.superclass.map { (ObjectIdentifier($0), item) }
         }, by: { $0.0 })
         var layouts: [ObjectIdentifier: [String]] = [:]
@@ -84,6 +100,7 @@ extension SmalltalkRuntime {
         }
 
         try plan(target, own: fields, inherited: superclass.fields)
+        try plan(target.metaclass, own: classFields, inherited: superclass.metaclass.fields)
         try validateRetainedCode(target: target, superclass: superclass, removedFields: removedFields)
         // The allocation registry also holds unreachable instances. Their old
         // field values must not veto an edit to the reachable object space.
@@ -96,22 +113,36 @@ extension SmalltalkRuntime {
             }
             return (object, object.fields, next)
         }
+        let classUpdates = try classes.values.compactMap { current -> (target: STClass, previous: [String: Value], next: [String: Value])? in
+            guard let layout = layouts[ObjectIdentifier(current.metaclass)] else { return nil }
+            let next = Dictionary(uniqueKeysWithValues: layout.map { ($0, current.classState[$0] ?? .nilValue) })
+            for (name, value) in current.classState where next[name] == nil && !isNil(value) {
+                throw SmalltalkError("Class instance variable \(name) still holds a value in \(current.name).")
+            }
+            return (current, current.classState, next)
+        }
 
         let previousSuperclass = target.superclass
         let previousFields = target.ownFields
+        let previousClassFields = target.metaclass.ownFields
         target.superclass = superclass
         target.ownFields = fields
+        target.metaclass.ownFields = classFields
         for update in updates { update.object.fields = update.next }
+        for update in classUpdates { update.target.classState = update.next }
         do {
             try validateCompilerClasses()
             if let error = projectWindows().error { throw SmalltalkError(error) }
             if recordingChanges {
-                try journal.append(kind: .classDefinition, className: target.name, superclass: superclass.name, fields: fields, source: source)
+                try journal.append(kind: .classDefinition, className: target.name, superclass: superclass.name,
+                                   fields: fields, classFields: classFields, source: source ?? definitionSource(for: target))
             }
         } catch {
             target.superclass = previousSuperclass
             target.ownFields = previousFields
+            target.metaclass.ownFields = previousClassFields
             for update in updates { update.object.fields = update.previous }
+            for update in classUpdates { update.target.classState = update.previous }
             throw error
         }
         if previousSuperclass !== superclass { reindexMVCBindings() }
@@ -122,18 +153,25 @@ extension SmalltalkRuntime {
         func validateHome(_ receiver: STClass, home: STClass) throws {
             var ancestor: STClass? = receiver
             while let current = ancestor, current !== home {
-                ancestor = current === target ? superclass : current.superclass
+                if current === target { ancestor = superclass }
+                else if current === target.metaclass { ancestor = superclass.metaclass }
+                else { ancestor = current.superclass }
             }
             guard ancestor != nil else {
                 throw SmalltalkError("A method or block on \(receiver.name) still depends on \(home.name) as a superclass.")
             }
         }
         func validate(_ body: BytecodeBody, context: Context, parameters: [String] = []) throws {
+            let owner: STClass
             if context.methodSide == .classSide, case .classObject(let receiver) = context.receiver, let home = context.homeClass {
                 try validateHome(receiver, home: home)
+                owner = home.metaclass
+            } else if case .object(let receiver) = context.receiver {
+                owner = receiver.stClass
+            } else {
+                return
             }
-            guard case .object(let receiver) = context.receiver,
-                  let removed = removedFields[ObjectIdentifier(receiver.stClass)] else { return }
+            guard let removed = removedFields[ObjectIdentifier(owner)] else { return }
             var locals = Set(parameters)
             var scope: Environment? = context.environment
             while let current = scope {
@@ -141,7 +179,7 @@ extension SmalltalkRuntime {
                 scope = current.parent
             }
             if let field = body.reference(to: removed, excluding: locals) {
-                throw SmalltalkError("A live method or block on \(receiver.stClass.name) still uses instance variable \(field).")
+                throw SmalltalkError("A live method or block on \(owner.name) still uses instance variable \(field).")
             }
         }
 

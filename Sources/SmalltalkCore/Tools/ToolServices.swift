@@ -17,7 +17,7 @@ extension SmalltalkRuntime {
             return try array([.boolean(result.0), .string(result.1)])
         }
         func target(_ argument: Value) throws -> STClass {
-            guard case .classObject(let stClass) = argument else { throw SmalltalkError("Expected a class.") }
+            guard case .classObject(let stClass) = argument, stClass.instanceClass == nil else { throw SmalltalkError("Expected an instance class.") }
             return stClass
         }
         func side(_ argument: Value) throws -> MethodSide {

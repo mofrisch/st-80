@@ -119,7 +119,7 @@ BrowserOrganization compile: 'initialize
 
 BrowserOrganization compileClass: 'shippedClassCategories
     ^ #(
-        (''Kernel'' (''Object'' ''Class'' ''UndefinedObject'' ''Boolean'' ''True'' ''False''
+        (''Kernel'' (''Object'' ''Class'' ''Metaclass'' ''UndefinedObject'' ''Boolean'' ''True'' ''False''
             ''Number'' ''Integer'' ''SmallInteger'' ''LargeInteger'' ''Fraction'' ''ScaledDecimal'' ''Float'' ''BlockClosure'' ''FailedMessage''))
         (''Exceptions'' (''Exception'' ''Error''))
         (''Collections & Text'' (''Array'' ''String'' ''Character'' ''Symbol''))
@@ -141,7 +141,8 @@ BrowserOrganization compileClass: 'shippedClassCategories
         (''Examples'' (''Counter'' ''WorkspaceExamples''))
         (''Tests'' (''TestCase'' ''TestOutcome'' ''TestResult'' ''TestRunner''
             ''CounterTest'' ''CollectionsTest'' ''BindingTestModel'' ''UIBindingTest''
-            ''ANSIDispatchProbe'' ''ANSIProbeError'' ''ANSIProbeException'' ''ANSISmalltalkTest'')))'.
+            ''ANSIDispatchProbe'' ''ANSIProbeError'' ''ANSIProbeException''
+            ''ANSIClassStateProbe'' ''ANSIClassStateChild'' ''ANSISmalltalkTest'')))'.
 
 BrowserOrganization compile: 'classCategories
     ^ classCategories'.

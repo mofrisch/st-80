@@ -218,8 +218,31 @@ extension SmalltalkRuntime {
             return try fractionValue(unboundedInteger(args[0]), unboundedInteger(args[1]), factory: true)
         case "name": return .symbol(stClass.name)
         case "superclass": return stClass.superclass.map(Value.classObject) ?? .nilValue
-        case "subclasses": return try array(classes.values.filter { $0.superclass === stClass }.sorted { $0.name < $1.name }.map(Value.classObject))
-        case "compile:": return .symbol(try compile(string(args[0]), in: stClass))
+        case "subclasses", "allSubclasses":
+            let root = stClass.instanceClass ?? stClass
+            var subclasses = classes.values.filter { candidate in
+                if selector == "subclasses" { return candidate.superclass === root }
+                return candidate !== root && candidate.inherits(from: root)
+            }
+            if stClass.instanceClass != nil { subclasses = subclasses.map(\.metaclass) }
+            return try array(subclasses.sorted { $0.name < $1.name }.map(Value.classObject))
+        case "allSuperclasses":
+            var superclasses: [Value] = []
+            var parent = stClass.superclass
+            while let ancestor = parent {
+                superclasses.append(.classObject(ancestor))
+                parent = ancestor.superclass
+            }
+            return try array(superclasses)
+        case "instanceClass": return stClass.instanceClass.map(Value.classObject)
+        case "instanceVariableNames:":
+            guard let owner = stClass.instanceClass, let parent = owner.superclass else { return nil }
+            let fields = try string(args[0]).split(whereSeparator: \.isWhitespace).map(String.init)
+            try redefineClass(owner, superclass: parent, fields: owner.ownFields, classFields: fields)
+            return .classObject(stClass)
+        case "compile:":
+            if let owner = stClass.instanceClass { return .symbol(try compile(string(args[0]), in: owner, side: .classSide)) }
+            return .symbol(try compile(string(args[0]), in: stClass))
         case "compileClass:": return .symbol(try compile(string(args[0]), in: stClass, side: .classSide))
         case "methodNames": return try array(reflectedMethods(on: stClass, side: .instance).map { .string($0.selector) })
         case "classMethodNames": return try array(reflectedMethods(on: stClass, side: .classSide).map { .string($0.selector) })
@@ -227,18 +250,21 @@ extension SmalltalkRuntime {
         case "classMethodSourceAt:": return try reflectedMethodSource(string(args[0]), on: stClass, side: .classSide).map(Value.string) ?? .nilValue
         case "isPrimitiveAt:": return try .boolean(isReflectedPrimitive(string(args[0]), on: stClass, side: .instance))
         case "instanceVariableNamesText": return .string(stClass.fields.isEmpty ? "None" : stClass.fields.joined(separator: " · "))
-        case "subclass:instanceVariableNames:", "subclass:instanceVariableNames:classVariableNames:poolDictionaries:category:":
+        case "subclass:instanceVariableNames:", "subclass:instanceVariableNames:classInstanceVariableNames:",
+             "subclass:instanceVariableNames:classVariableNames:poolDictionaries:category:":
             if args.count == 5 {
                 guard try string(args[2]).isEmpty && string(args[3]).isEmpty else { throw SmalltalkError("Class variables and pool dictionaries are not implemented.") }
                 _ = try string(args[4])
             }
-            return .classObject(try subclass(of: stClass, name: symbol(args[0]), fields: string(args[1])))
+            let classFields = try args.count == 3 ? string(args[2]).split(whereSeparator: \.isWhitespace).map(String.init) : []
+            return .classObject(try subclass(of: stClass, name: symbol(args[0]), fields: string(args[1]), classFields: classFields))
         case "new:":
             guard stClass.name == "Array" else { throw SmalltalkError("Only Array supports new:.") }
             let count = try integer(args[0])
             guard (0...Int64(arrayLimit)).contains(count) else { throw SmalltalkError("Array size must be between 0 and \(arrayLimit).") }
             return try array(Array(repeating: .nilValue, count: Int(count)))
         case "new":
+            guard stClass.instanceClass == nil else { throw SmalltalkError("Each class has exactly one instance of its metaclass.") }
             if stClass.name == "Array" { return try array([]) }
             if stClass.name == "String" { return .string("") }
             guard Self.heapBuiltinNames.contains(stClass.name) || Self.primitiveDescriptions[stClass.name] == nil && !["True", "False", "SmallInteger", "LargeInteger", "Number", "UndefinedObject"].contains(stClass.name) else {

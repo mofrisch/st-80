@@ -275,7 +275,13 @@ extension SmalltalkRuntime {
         case .object(let object):
             return object.stClass.fields.map { ($0, object.fields[$0] ?? .nilValue) }
         case .classObject(let target):
-            return [("superclass", target.superclass.map(Value.classObject) ?? .nilValue)]
+            var fields = classOf(value).fields.compactMap { name in
+                target.classState[name].map { (name, $0) }
+            }
+            if target.classState["superclass"] == nil {
+                fields.insert(("superclass", target.superclass.map(Value.classObject) ?? .nilValue), at: 0)
+            }
+            return fields
         case .block(let block):
             return [("receiver", block.context.receiver)]
         default:
@@ -313,7 +319,8 @@ extension SmalltalkRuntime {
         case .block(let block):
             text = "[Block · \(block.parameters.count) \(block.parameters.count == 1 ? "argument" : "arguments")]"
         case .classObject(let target):
-            text = "\(Self.previewText(target.name, limit: limit)) class"
+            let name = Self.previewText(target.name, limit: limit)
+            text = target.instanceClass == nil ? "\(name) class" : name
         case .string(let string):
             let sample = Self.previewText(string, limit: limit).replacingOccurrences(of: "'", with: "''")
             text = "'\(sample)'"

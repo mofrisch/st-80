@@ -19,16 +19,48 @@ enum Value {
 
 final class STClass {
     let name: String
-    var superclass: STClass?
+    private var directSuperclass: STClass?
+    private(set) weak var instanceClass: STClass?
+    weak var rootMetaclassSuperclass: STClass?
+    private lazy var pairedMetaclass = STClass(instanceClass: self)
+    var metaclass: STClass {
+        precondition(instanceClass == nil)
+        return pairedMetaclass
+    }
+    var superclass: STClass? {
+        get {
+            guard let instanceClass else { return directSuperclass }
+            return instanceClass.superclass?.metaclass ?? instanceClass.rootMetaclassSuperclass
+        }
+        set {
+            precondition(instanceClass == nil)
+            directSuperclass = newValue
+        }
+    }
     var ownFields: [String]
     var methods: [String: Method] = [:]
-    var classMethods: [String: Method] = [:]
+    var classMethods: [String: Method] {
+        get { metaclass.methods }
+        set { metaclass.methods = newValue }
+    }
+    var classState: [String: Value] = [:]
     var fields: [String] { (superclass?.fields ?? []) + ownFields }
 
-    init(_ name: String, superclass: STClass?, fields: [String] = []) {
+    init(_ name: String, superclass: STClass?, fields: [String] = [], classFields: [String] = []) {
         self.name = name
-        self.superclass = superclass
+        directSuperclass = superclass
         ownFields = fields
+        if !classFields.isEmpty { metaclass.ownFields = classFields }
+        if let superclass {
+            for name in superclass.classState.keys { classState[name] = .nilValue }
+        }
+        for name in classFields { classState[name] = .nilValue }
+    }
+
+    private init(instanceClass: STClass) {
+        name = "\(instanceClass.name) class"
+        self.instanceClass = instanceClass
+        ownFields = []
     }
 
     subscript(side: MethodSide) -> [String: Method] {
@@ -41,9 +73,13 @@ final class STClass {
         }
     }
 
-    func lookup(_ selector: String, side: MethodSide = .instance) -> (Method, STClass)? {
-        if let method = self[side][selector] { return (method, self) }
-        return superclass?.lookup(selector, side: side)
+    func lookup(_ selector: String) -> (Method, STClass)? {
+        var current: STClass? = self
+        while let candidate = current {
+            if let method = candidate.methods[selector] { return (method, candidate) }
+            current = candidate.superclass
+        }
+        return nil
     }
 
     func inherits(from ancestor: STClass) -> Bool {

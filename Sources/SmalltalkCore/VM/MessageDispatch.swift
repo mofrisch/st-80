@@ -14,22 +14,18 @@ extension SmalltalkRuntime {
     }
 
     func lookupMethod(_ selector: String, on receiver: Value, startingAt lookup: MessageLookup = .normal) -> (Method, STClass, MethodSide)? {
-        let classStart: STClass?
-        let instanceStart: STClass
+        let start: STClass
         switch lookup {
         case .normal:
-            if case .classObject(let target) = receiver { classStart = target } else { classStart = nil }
-            instanceStart = classOf(receiver)
+            start = classOf(receiver)
         case .classSuper(let parent):
-            classStart = parent
-            instanceStart = classOf(receiver)
+            start = parent?.metaclass ?? classes["Class"]!
         case .instanceSuper(let parent):
-            classStart = nil
-            instanceStart = parent
+            start = parent
         }
-        if let (method, owner) = classStart?.lookup(selector, side: .classSide) { return (method, owner, .classSide) }
-        if let (method, owner) = instanceStart.lookup(selector) { return (method, owner, .instance) }
-        return nil
+        guard let (method, owner) = start.lookup(selector) else { return nil }
+        if let instanceClass = owner.instanceClass { return (method, instanceClass, .classSide) }
+        return (method, owner, .instance)
     }
 
     func send(_ receiver: Value, _ selector: String, _ arguments: [Value], startingAt lookup: MessageLookup = .normal) throws -> Value {

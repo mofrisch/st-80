@@ -165,14 +165,14 @@ struct CompilerTests {
     @Test func imageLoadRejectsUnsupportedVersionsBeforeReplacingTheSession() async throws {
         let session = SmalltalkSession()
         _ = await session.evaluate("kept := 42")
-        let supported = ImageCodec.version
-        for version in [supported - 1, supported + 1] {
+        let supported = ImageCodec.supportedVersions
+        for version in [supported.lowerBound - 1, supported.upperBound + 1] {
             let header = Data(#"{"format":"st80-image","version":\#(version)}"#.utf8)
             do {
                 _ = try await session.loadImage(header)
                 Issue.record("An unsupported image version unexpectedly loaded.")
             } catch {
-                #expect(error.localizedDescription == "Image version \(version) is unsupported. Expected version \(supported).")
+                #expect(error.localizedDescription == "Image version \(version) is unsupported. Supported versions are \(supported.lowerBound) through \(supported.upperBound).")
             }
         }
         #expect(await session.evaluate("kept").value == "42")

@@ -6,6 +6,11 @@ import SwiftUI
 @Observable
 final class AppController {
     private(set) var windowPresentation = WindowPresentation()
+    private(set) var applicationMenu: UIElementInfo?
+    let recoveryMenuItems: [UIElementInfo]
+    private let bundledMenu: UIElementInfo?
+    @ObservationIgnored private var menuChangeID: String?
+    @ObservationIgnored private var menuRefresh: Task<Void, Never>?
     private var controlEdits = ControlEdits()
     private var operationError: String?
     private var projectionError: String?
@@ -52,6 +57,13 @@ final class AppController {
     private(set) var changesPath: String?
     @ObservationIgnored private(set) var nativeWindows: NativeWindowBackend?
 
+    init() {
+        let menus = try? SmalltalkSession.bundledApplicationMenus()
+        bundledMenu = menus?.bar
+        applicationMenu = menus?.bar
+        recoveryMenuItems = menus?.recovery.children.filter(\.visible) ?? []
+    }
+
     var activeKind: ToolKind? { windowPresentation.activeWindow?.info.kind }
     var activeWindowID: Int64? { windowPresentation.activeID }
     var workspaceWindow: ToolWindowInfo? { windowPresentation.workspace?.info }
@@ -60,6 +72,10 @@ final class AppController {
     }
 
     func presentedWindow(_ id: Int64) -> PresentedWindow? { windowPresentation.window(id) }
+
+    func menuGroup(_ role: String) -> [UIElementInfo] {
+        applicationMenu?.children.first { $0.role == role && $0.visible }?.children ?? []
+    }
 
     func load() async {
         guard !hasLoaded else { return }
@@ -172,11 +188,23 @@ final class AppController {
         if replacingWindows {
             closeInspectors()
             nativeWindows?.closeTransientWindow(settingsWindowID)
+            menuRefresh?.cancel()
+            menuChangeID = nil
+            applicationMenu = bundledMenu
         }
         changesPath = evaluation.changesPath
         projectionError = evaluation.windowProjectionError
         error = evaluation.executionError ?? (projectionError == nil ? evaluation.error : nil)
         windowPresentation.update(from: evaluation, replacingWindows: replacingWindows)
+        if !windowPresentation.isRecovering, replacingWindows || menuChangeID != evaluation.changes.last?.id {
+            menuChangeID = evaluation.changes.last?.id
+            menuRefresh?.cancel()
+            menuRefresh = Task { [weak self, session] in
+                let menu = try? await session.applicationMenu()
+                guard !Task.isCancelled, let self else { return }
+                applicationMenu = menu ?? bundledMenu
+            }
+        }
         controlEdits.reconcile(with: windowPresentation.windows.map(\.info))
         nativeWindows?.execute(evaluation.windowCommands, preservingWindows: windowPresentation.isRecovering,
                                recoveryWorkspace: windowPresentation.isRecovering ? windowPresentation.workspace?.info : nil)

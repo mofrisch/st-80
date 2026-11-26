@@ -77,6 +77,28 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertTrue(browser.exists && newWorkspace.exists && originalWorkspace.exists)
     }
 
+    func testToolMenuUsesTheTitleAndShortcutEditedInSmalltalk() {
+        let app = launchFreshApp()
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        replaceText(in: editor, with: """
+        ApplicationMenu compileClass: 'toolsMenu
+            ^ UIMenu new title: ''Utilities'';
+                add: (self command: #transcript title: ''Show Log'' shortcut: ''⌥⌘L''); yourself'.
+        #menuUpdated
+        """)
+        workspace.buttons["executeButton"].click()
+        let utilities = app.menuBars.menuBarItems["Utilities"]
+        XCTAssertTrue(utilities.waitForExistence(timeout: 5))
+        utilities.click()
+        XCTAssertTrue(utilities.menuItems["Show Log"].waitForExistence(timeout: 5))
+        app.typeKey(.escape, modifierFlags: [])
+        editor.typeKey("l", modifierFlags: [.command, .option])
+        let transcript = app.windows["toolWindow-2"]
+        XCTAssertTrue(transcript.waitForExistence(timeout: 5))
+        XCTAssertEqual(transcript.title, "Transcript")
+    }
+
     func testOpeningWorkspaceAtTheWindowLimitReportsFailureAndPreservesTheDraft() {
         let app = launchFreshApp()
         defer { app.terminate() }

@@ -544,6 +544,16 @@
 			"path" = "Tools";
 			"sourceTree" = "<group>";
 		};
+		"9918A5561D8B637197829912" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "ApplicationMenu.swift";
+			"sourceTree" = "<group>";
+		};
+		"F789B779A6A6A07C2BF2AD67" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "9918A5561D8B637197829912";
+		};
 		"E799BBC842673599149BB726" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -647,6 +657,7 @@
 		"3E2A384B62187BAF520B3B1A" = {
 			"isa" = "PBXGroup";
 			"children" = (
+				"9918A5561D8B637197829912",
 				"E799BBC842673599149BB726",
 				"D4B0B81994D20D0D8EE73321",
 				"4ABBAC013E1137D7C6180E6F",
@@ -869,6 +880,7 @@
 				"6AEE32D77721B485C8E9EF88",
 				"F833CBAC491AC6CBB2166767",
 				"0740159CBBD86BB76459AFF5",
+				"F789B779A6A6A07C2BF2AD67",
 				"64BB65AAD27BA52C00408F9D",
 				"D63843F8249DC986D7E32EDF",
 				"15ACA2FCAEB89882298670F6",

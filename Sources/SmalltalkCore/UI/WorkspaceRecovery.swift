@@ -1,15 +1,8 @@
-import Foundation
-
-package enum WorkspaceRecoveryAction: Equatable, Sendable {
-    case evaluate, print, inspect
+package enum WorkspaceRecoveryAction: String, Sendable {
+    case evaluate = "doIt", print = "printIt", inspect = "inspectIt"
 
     package init?(command: String) {
-        switch command {
-        case "doIt": self = .evaluate
-        case "printIt": self = .print
-        case "inspectIt": self = .inspect
-        default: return nil
-        }
+        self.init(rawValue: command)
     }
 }
 
@@ -45,26 +38,16 @@ extension SmalltalkRuntime {
             guard source.utf8.count <= 65_536 else {
                 throw SmalltalkError("Workspace recovery source is limited to 64 KiB.")
             }
-            if action == .inspect, source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                throw SmalltalkError("Enter an expression to inspect.")
+            guard let services = classes["ToolServices"] else { throw SmalltalkError("Tool services are missing.") }
+            let policy = try SystemLibrary.shared.get().bundledClass("WorkspaceRecoveryCommands", in: self)
+            let outcome = try send(.classObject(policy), "\(action.rawValue):services:transcript:", [
+                .string(source), .object(try object(services)), globals["Transcript"] ?? .nilValue,
+            ])
+            guard case .array(let result) = outcome, result.elements.count == 2,
+                  case .boolean(let success) = result.elements[0], case .string(let message) = result.elements[1] else {
+                throw SmalltalkError("Workspace recovery returned an invalid result.")
             }
-            guard !evaluatingToolSource else { throw SmalltalkError("A workspace evaluation is already running.") }
-            evaluatingToolSource = true
-            defer { evaluatingToolSource = false }
-            let evaluated = try evaluate(source)
-            switch action {
-            case .evaluate:
-                value = printValue(evaluated)
-            case .print:
-                let printed = printValue(evaluated)
-                guard let output = globals["Transcript"] else { throw SmalltalkError("Transcript is missing.") }
-                _ = try send(output, "show:", [.string("→ " + printed)])
-                _ = try send(output, "cr", [])
-                value = printed
-            case .inspect:
-                try requestInspection(evaluated)
-                value = "Object Inspector opened."
-            }
+            if success { value = message } else { failure = message }
         } catch {
             failure = error.localizedDescription
         }

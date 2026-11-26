@@ -81,11 +81,13 @@ extension AppController {
             return (editor.contextMenuItems ?? []).compactMap(EditorContextItem.init(projected:))
         }
         guard let window = presentedWindow(windowID)?.info, workspaceEditor(in: window)?.id == editor.id else { return [] }
-        return [
-            .command(title: "Do it", identifier: "doIt", action: .recovery(.evaluate, editorID: editor.id), enabled: true),
-            .command(title: "Print it", identifier: "printIt", action: .recovery(.print, editorID: editor.id), enabled: true),
-            .command(title: "Inspect it", identifier: "inspectIt", action: .recovery(.inspect, editorID: editor.id), enabled: true)
-        ]
+        return recoveryMenuItems.compactMap { item in
+            if item.kind == .divider { return .divider }
+            guard item.kind == .button, let command = item.command,
+                  let action = WorkspaceRecoveryAction(command: command) else { return nil }
+            return .command(title: item.text, identifier: item.accessibilityID ?? command,
+                            action: .recovery(action, editorID: editor.id), enabled: item.enabled)
+        }
     }
 
     func performEditorContextAction(_ action: EditorContextAction, windowID: Int64, selection: String) async {

@@ -34,6 +34,19 @@ struct WorkspaceRecoveryTests {
         #expect(WorkspaceRecoveryAction(command: "acceptMethod") == nil)
     }
 
+    @Test func bundledApplicationMenuProjectsToolsAndRecoveryShortcuts() throws {
+        let menus = try SmalltalkSession.bundledApplicationMenus()
+        let file = try #require(menus.bar.children.first { $0.role == "fileActions" })
+        #expect(file.children.first { $0.command == "openImage" }?.label == "⇧⌘O")
+        let app = try #require(menus.bar.children.first { $0.role == "appSettings" })
+        #expect(app.children.first { $0.command == "settings" }?.label == "⌘,")
+        let tools = try #require(menus.bar.children.first { $0.text == "Tools" })
+        #expect(tools.children.map(\.label) == ["⌘B", "⌘W", "⌘T"])
+        #expect(menus.recovery.children.compactMap { $0.command.flatMap(WorkspaceRecoveryAction.init(command:)) }
+            == [.evaluate, .print, .inspect])
+        #expect(menus.recovery.children.map(\.label) == ["⌘D", "⌘P", "⌘I"])
+    }
+
     @Test func aRetainedWorkspaceCanRestoreAnInvalidWindowList() async throws {
         let session = SmalltalkSession()
         let original = try await breakWindowList(in: session)

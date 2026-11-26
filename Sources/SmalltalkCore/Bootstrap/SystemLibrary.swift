@@ -128,9 +128,9 @@ struct SystemLibrary: Sendable {
         }
     }
 
-    func installANSICollections(in runtime: SmalltalkRuntime) throws -> Set<String> {
+    func installANSICollections(_ names: Set<String>, in runtime: SmalltalkRuntime) throws -> Set<String> {
         var added: Set<String> = []
-        for definition in definitions where SmalltalkRuntime.shippedCollectionNames.contains(definition.name) {
+        for definition in definitions where names.contains(definition.name) {
             guard runtime.classes[definition.name] == nil else { continue }
             guard let superclass = runtime.classes[definition.superclass] else {
                 throw SmalltalkError("Missing superclass \(definition.superclass) for \(definition.name).")
@@ -176,14 +176,19 @@ struct SystemLibrary: Sendable {
                 "3f96d04fe9b1bc6217026ac6fbf14e9862321ebb8a59610d9d6c4fe86b0a17f8",
                 "1198c24ac571e6f29f761121d6f07bf4ce67f09c8c262f038bb512a5b13729ac",
                 "7ea8d999df67b9777d1c79ae510d3f93677423a2b8407699d2d534c376349576",
+                "7fa293e8a83174d786a7453a592a3e45123750cda2b8b8f291375f2779bd18ab",
             ]),
-            (.instance, "shippedClassSideProtocols", ["7b2f2950f5dc051c01fdcd0afcdde26c8505606a3c1f370ad2c6910c5eff398c"]),
+            (.instance, "shippedClassSideProtocols", [
+                "7b2f2950f5dc051c01fdcd0afcdde26c8505606a3c1f370ad2c6910c5eff398c",
+                "a57049aae45eec58838977d232ca38087f17d6cadfc40092e4a23df2e68a9a13",
+            ]),
             (.classSide, "shippedClassCategories", [
                 "94b28fa4e197128a9942bda803c88b225ff4b73c86eb419a706c4b06c8dc4b1e",
                 "45dba024b3d32946974fd979d5c048df2d6902dffc037ce038e6a30303b1d4ff",
                 "8c81a5a21932001fa86c5ecb219bb36046bc083a3f9d0c58a1e468f957b630e1",
                 "d6f01cc25cefa6821ba8f6df8155881ce9448539865f2469d944a22fea670818",
                 "1fb93f9ae4e52958193acf210246958977090fde93fb71a743809d4a03c13362",
+                "e0bc5333d08db3e3d27d006ea23e374351a5e468cc5be4023e1ce012b8bb3421",
             ]),
         ]
         for (side, selector, hashes) in defaults {

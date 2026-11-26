@@ -241,6 +241,51 @@ struct ImageTests {
         #expect(await value("savedSorted add: 4. savedSorted asArray", in: restored) == "#(8 4 3 2)")
     }
 
+    @Test func dictionariesPreserveKeySemanticsAndAliasesAcrossImageLoad() async throws {
+        let original = SmalltalkSession()
+        let setup = await original.evaluate("""
+            firstKey := Array with: #key.
+            secondKey := Array with: #key.
+            dictionary := Dictionary new at: firstKey put: 1; at: secondKey put: 2; yourself.
+            identities := IdentityDictionary new at: firstKey put: nil; at: secondKey put: dictionary; yourself
+            """)
+        try #require(setup.error == nil)
+
+        let restored = SmalltalkSession()
+        _ = try await restored.loadImage(original.imageData())
+        #expect(await value("dictionary size", in: restored) == "1")
+        #expect(await value("dictionary at: (Array with: #key)", in: restored) == "2")
+        #expect(await value("identities size", in: restored) == "2")
+        #expect(await value("identities includesKey: firstKey", in: restored) == "true")
+        #expect(await value("(identities at: firstKey ifAbsent: [ 42 ]) isNil", in: restored) == "true")
+        #expect(await value("(identities at: secondKey) == dictionary", in: restored) == "true")
+        #expect(await value("identities includesKey: (Array with: #key)", in: restored) == "false")
+    }
+
+    @Test(arguments: [false, true])
+    func versionNineImagesBackfillDictionariesWithoutReplacingBindings(customBinding: Bool) async throws {
+        let original = SmalltalkSession()
+        let image = try await original.imageData()
+        var archive = try JSONDecoder().decode(ImageArchive.self, from: image)
+        let names = ["Dictionary", "IdentityDictionary"]
+        archive.classes.removeAll { names.contains($0.name) }
+        for name in names {
+            archive.globals.removeValue(forKey: name)
+            archive.executableMethods?.removeValue(forKey: name)
+            archive.executableClassMethods?.removeValue(forKey: name)
+        }
+        if customBinding { archive.globals["Dictionary"] = .symbol("custom") }
+
+        let restored = SmalltalkSession()
+        _ = try await restored.loadImage(JSONEncoder().encode(archive))
+        if customBinding {
+            #expect(await value("Dictionary", in: restored) == "#custom")
+        } else {
+            #expect(await value("(Dictionary new at: #key put: 42; yourself) at: #key", in: restored) == "42")
+            #expect(await value("IdentityDictionary new class == IdentityDictionary", in: restored) == "true")
+        }
+    }
+
     @Test func invalidImagesLeaveTheCurrentSessionUntouched() async throws {
         let current = SmalltalkSession()
         _ = await value("kept := Counter new. kept add: 42", in: current)

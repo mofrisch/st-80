@@ -252,6 +252,14 @@ struct ToolWindowTests {
             (SystemOrganization protocolsOf: OrderedCollection side: #instance)
                 groupOf: 'addAll:beforeIndex:' default: 'Unclassified'
             """).value == "'Adding'")
+        #expect(await session.evaluate("""
+            (SystemOrganization protocolsOf: Dictionary side: #instance)
+                groupOf: 'removeKey:ifAbsent:' default: 'Unclassified'
+            """).value == "'Removing'")
+        #expect(await session.evaluate("""
+            (SystemOrganization protocolsOf: Dictionary side: #class)
+                groupOf: 'withAll:' default: 'Unclassified'
+            """).value == "'Instance Creation'")
     }
 
     @Test func browserFiltersClassesAndMethodsThroughFourPanes() async throws {

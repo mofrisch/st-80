@@ -123,7 +123,8 @@ BrowserOrganization compileClass: 'shippedClassCategories
             ''Number'' ''Integer'' ''SmallInteger'' ''LargeInteger'' ''Fraction'' ''ScaledDecimal'' ''Float'' ''BlockClosure'' ''FailedMessage''))
         (''Exceptions'' (''Exception'' ''Error'' ''ExceptionSet'' ''MessageNotUnderstood'' ''ZeroDivide''))
         (''Collections & Text'' (''Collection'' ''SequenceableCollection'' ''Array'' ''ByteArray'' ''Interval''
-            ''OrderedCollection'' ''SortedCollection'' ''UnorderedCollection'' ''Bag'' ''Set'' ''String'' ''Character'' ''Symbol''))
+            ''OrderedCollection'' ''SortedCollection'' ''UnorderedCollection'' ''Bag'' ''Set''
+            ''Dictionary'' ''IdentityDictionary'' ''String'' ''Character'' ''Symbol''))
         (''Compiler'' (''STCompilerList'' ''STScanner'' ''STCompiler''))
         (''MVC'' (''Model'' ''Controller'' ''UIBinding''))
         (''Desktop'' (''SystemWindow'' ''DesktopModel'' ''DisplayScreen'' ''DesktopManager'' ''UIWindow''))

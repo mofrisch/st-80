@@ -629,3 +629,124 @@ ANSISmalltalkTest compile: 'testCollectionConversions
     self assert: descending asArray equals: #(3 3 1 0).
     self assert: descending asSortedCollection sortBlock == descending sortBlock.
     self assert: ([ #(0 256) asByteArray. false ] on: Error do: [ :exception | true ])'.
+
+ANSISmalltalkTest compile: 'testDictionaryUsesEquivalentKeys
+    | table first equivalent |
+    table := Dictionary new: 16.
+    self assert: table isEmpty.
+    first := Array with: #key.
+    equivalent := Array with: #key.
+    self deny: first == equivalent.
+    self assert: (table at: first put: 7) equals: 7.
+    self assert: (table at: equivalent) equals: 7.
+    table at: equivalent put: 42.
+    self assert: table size equals: 1.
+    self assert: (table at: first) equals: 42.
+    self assert: (table includesKey: equivalent).
+    self assert: (table removeKey: equivalent) equals: 42.
+    self deny: (table includesKey: first)'.
+
+ANSISmalltalkTest compile: 'testIdentityDictionaryKeepsEquivalentKeysSeparate
+    | table first second query copied |
+    first := String withAll: ''key''.
+    second := first copy.
+    query := first copy.
+    table := IdentityDictionary new: 4.
+    table at: first put: 1; at: second put: 2.
+    self assert: first equals: second.
+    self deny: first == second.
+    self assert: table size equals: 2.
+    self assert: table keys size equals: 2.
+    self assert: (table at: first) equals: 1.
+    self assert: (table at: second) equals: 2.
+    self assert: (table at: query ifAbsent: [ 42 ]) equals: 42.
+    copied := IdentityDictionary withAll: table.
+    self assert: copied size equals: 2.
+    self assert: (copied at: first) equals: 1.
+    self assert: (table removeKey: first) equals: 1.
+    self assert: (table at: second) equals: 2.
+    table at: second put: (Array with: 7).
+    self assert: (table includes: (Array with: 7)).
+    self assert: (table keyAtValue: (Array with: 7)) == second'.
+
+ANSISmalltalkTest compile: 'testDictionaryDistinguishesNilValuesFromAbsentKeys
+    | table calls answer |
+    table := Dictionary new.
+    calls := 0.
+    table at: #stored put: nil.
+    self assert: (table includesKey: #stored).
+    self assert: (table at: #stored ifAbsent: [ calls := calls + 1 ]) isNil.
+    self assert: (table at: #stored ifAbsentPut: [ calls := calls + 1 ]) isNil.
+    self assert: calls equals: 0.
+    answer := table at: #missing ifAbsentPut: [ calls := calls + 1. 42 ].
+    self assert: answer equals: 42.
+    self assert: (table at: #missing ifAbsentPut: [ calls := calls + 1 ]) equals: 42.
+    self assert: calls equals: 1.
+    self assert: (table removeKey: #stored ifAbsent: [ calls := calls + 1 ]) isNil.
+    self deny: (table includesKey: #stored).
+    self assert: calls equals: 1'.
+
+ANSISmalltalkTest compile: 'testDictionaryEnumeratesKeysAndValues
+    | table seen keys sum |
+    table := Dictionary new at: #a put: 7; at: #b put: 7; at: #c put: 3; yourself.
+    seen := Dictionary new.
+    keys := Set new.
+    table keysAndValuesDo: [ :key :value | seen at: key put: value ].
+    table keysDo: [ :key | keys add: key ].
+    self assert: keys size equals: 3.
+    self assert: (keys includes: #c).
+    self assert: (seen at: #a) equals: 7.
+    self assert: (seen at: #c) equals: 3.
+    sum := table inject: 0 into: [ :total :value | total + value ].
+    self assert: sum equals: 17.
+    self assert: table values size equals: 3.
+    self assert: (table occurrencesOf: 7) equals: 2.
+    self assert: (table keyAtValue: 3) equals: #c.
+    self assert: (table keyAtValue: 42 ifAbsent: [ #absent ]) equals: #absent'.
+
+ANSISmalltalkTest compile: 'testDictionaryCollectionOperationsPreserveKeysAndType
+    | dictionary first second mapped selected rejected |
+    first := Array with: 7.
+    second := Array with: 7.
+    dictionary := IdentityDictionary new at: first put: 2; at: second put: 3; yourself.
+    mapped := dictionary collect: [ :value | value squared ].
+    selected := dictionary select: [ :value | value even ].
+    rejected := dictionary reject: [ :value | value even ].
+    self assert: mapped class equals: IdentityDictionary.
+    self assert: selected class equals: IdentityDictionary.
+    self assert: rejected class equals: IdentityDictionary.
+    self assert: mapped size equals: 2.
+    self assert: (mapped at: first) equals: 4.
+    self assert: (mapped at: second) equals: 9.
+    self deny: (selected includesKey: second).
+    self assert: (selected at: first) equals: 2.
+    self assert: (rejected at: second) equals: 3'.
+
+ANSISmalltalkTest compile: 'testDictionaryCopiesMergesAndRemovesKeyGroups
+    | original copy updates missing |
+    original := Dictionary new at: #a put: 1; at: #b put: 2; yourself.
+    copy := Dictionary withAll: original.
+    updates := Dictionary new at: #b put: 42; at: #c put: 3; yourself.
+    copy addAll: updates.
+    self assert: (original at: #b) equals: 2.
+    self assert: (copy at: #b) equals: 42.
+    self assert: copy size equals: 3.
+    missing := OrderedCollection new.
+    copy removeAllKeys: #(missing a c) ifAbsent: [ :key | missing add: key ].
+    self assert: missing asArray equals: #(missing).
+    self assert: copy keys equals: #(b).
+    original removeAllKeys: #(a b).
+    self assert: original isEmpty'.
+
+ANSISmalltalkTest compile: 'testDictionaryEnumerationVisitsASnapshot
+    | table seen |
+    table := Dictionary new at: #a put: 1; at: #b put: 2; yourself.
+    seen := Dictionary new.
+    table keysAndValuesDo: [ :key :value |
+        seen at: key put: value.
+        table at: #b put: 99.
+        table at: #new put: 42 ].
+    self assert: seen size equals: 2.
+    self assert: (seen at: #b) equals: 2.
+    self assert: (table at: #b) equals: 99.
+    self assert: (table at: #new) equals: 42'.

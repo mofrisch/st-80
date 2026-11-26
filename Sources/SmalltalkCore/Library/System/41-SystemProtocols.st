@@ -96,6 +96,16 @@ BrowserOrganization compile: 'shippedProtocols
             (''Copying and Conversion'' (''copy'' ''asArray''))))
         (''Bag'' ((''Adding'' (''add:'' ''add:withOccurrences:''))))
         (''Set'' ((''Adding'' (''add:''))))
+        (''Dictionary'' (
+            (''Initialization'' (''initialize''))
+            (''Accessing'' (''at:'' ''at:ifAbsent:'' ''at:ifAbsentPut:'' ''keys'' ''values'' ''size'' ''isEmpty''))
+            (''Searching'' (''includesKey:'' ''includes:'' ''keyAtValue:'' ''keyAtValue:ifAbsent:''))
+            (''Updating'' (''at:put:'' ''addAll:''))
+            (''Removing'' (''removeKey:'' ''removeKey:ifAbsent:'' ''removeAllKeys:'' ''removeAllKeys:ifAbsent:''))
+            (''Enumerating'' (''do:'' ''keysDo:'' ''keysAndValuesDo:'' ''collect:'' ''select:''))
+            (''Copying'' (''copy''))
+            (''Private'' (''_reserve:'' ''_indexOfKey:'' ''_key:matches:''))))
+        (''IdentityDictionary'' ((''Private'' (''_key:matches:''))))
         (''ByteArray'' (
             (''Initialization'' (''initialize''))
             (''Accessing'' (''size'' ''at:'' ''isEmpty'' ''includes:''))
@@ -384,6 +394,10 @@ BrowserOrganization compile: 'shippedProtocols
                 ''testOrderedCollectionInsertsAndRemovesAtBoundaries'' ''testOrderedCollectionSnapshotsOverlappingUpdates''
                 ''testByteArrayFactoriesBoundsAndReplacement'' ''testSortedCollectionInsertionAndResorting''
                 ''testSortedCollectionResultsKeepTheirRequiredOrdering'' ''testCollectionConversions''))
+            (''Dictionary Tests'' (''testDictionaryUsesEquivalentKeys'' ''testIdentityDictionaryKeepsEquivalentKeysSeparate''
+                ''testDictionaryDistinguishesNilValuesFromAbsentKeys'' ''testDictionaryEnumeratesKeysAndValues''
+                ''testDictionaryCollectionOperationsPreserveKeysAndType'' ''testDictionaryCopiesMergesAndRemovesKeyGroups''
+                ''testDictionaryEnumerationVisitsASnapshot''))
             (''Exception Tests'' (''testExceptionNormalCompletion'' ''testExceptionSignalersAndMetadata''
                 ''testExceptionSelectsNearestMatchingHandler'' ''testExceptionFromAnActionUsesTheOuterEnvironment''
                 ''testExceptionHandlerRunsBeforeUnwindBlocks'' ''testExceptionActionCanReturnFromItsHomeMethod''
@@ -396,6 +410,7 @@ BrowserOrganization compile: 'shippedClassSideProtocols
     ^ #(
         (''Collection'' ((''Instance Creation'' (''with:'' ''with:with:'' ''with:with:with:'' ''with:with:with:with:'' ''withAll:''))))
         (''UnorderedCollection'' ((''Instance Creation'' (''new:''))))
+        (''Dictionary'' ((''Instance Creation'' (''new:'' ''withAll:''))))
         (''ByteArray'' ((''Instance Creation'' (''new:'' ''withAll:''))))
         (''OrderedCollection'' ((''Instance Creation'' (''new:''))))
         (''SortedCollection'' (

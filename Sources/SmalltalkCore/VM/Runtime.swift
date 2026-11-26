@@ -45,8 +45,9 @@ final class SmalltalkRuntime {
     static let additiveBuiltinNames: Set<String> = ["Character", "Float", "LargeInteger", "Fraction", "ScaledDecimal", "Exception", "Error", "Metaclass",
                                                    "MessageNotUnderstood", "ZeroDivide", "ExceptionSet", "Collection", "SequenceableCollection", "Interval"]
     static let shippedCollectionNames: Set<String> = ["UnorderedCollection", "Bag", "ByteArray", "OrderedCollection", "Set", "SortedCollection"]
+    static let shippedDictionaryNames: Set<String> = ["Dictionary", "IdentityDictionary"]
     static let floatAliases: Set<String> = ["FloatE", "FloatD", "FloatQ"]
-    static let classLimit = 128 + additiveBuiltinNames.count + shippedCollectionNames.count
+    static let classLimit = 128 + additiveBuiltinNames.count + shippedCollectionNames.count + shippedDictionaryNames.count
     static let executionStepLimit = 100_000
     static let evaluationDepthLimit = 256
     private static let compilerDepthLimit = 1_400

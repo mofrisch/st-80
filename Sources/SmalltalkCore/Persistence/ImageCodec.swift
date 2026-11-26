@@ -198,10 +198,17 @@ enum ImageCodec {
         if records["Exception"] == nil { try runtime.installExceptionProtocol() }
         var refreshBrowserProtocols = false
         var addedCollections: Set<String> = []
-        if image.version < 9 {
+        var missingCollections = image.version < 9 ? SmalltalkRuntime.shippedCollectionNames : []
+        let dictionaryNames = SmalltalkRuntime.shippedDictionaryNames
+        // Version 9 images can predate the dictionaries. Preserve any existing
+        // bindings, including a custom Dictionary hierarchy.
+        if dictionaryNames.allSatisfy({ records[$0] == nil && image.globals[$0] == nil }) {
+            missingCollections.formUnion(dictionaryNames)
+        }
+        if !missingCollections.isEmpty {
             let library = try SystemLibrary.shared.get()
             if image.version < 8 { try library.installANSIProtocols(in: runtime) }
-            addedCollections = try library.installANSICollections(in: runtime)
+            addedCollections = try library.installANSICollections(missingCollections, in: runtime)
             refreshBrowserProtocols = try library.upgradeBrowserProtocols(in: runtime)
         }
         guard runtime.classes["UIBinding"]?.lookup("reconcileMount:") != nil else {

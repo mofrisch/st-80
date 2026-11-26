@@ -155,6 +155,7 @@ BrowserOrganization compile: 'shippedProtocols
         (''UIWindow'' (
             (''Initialization'' (''initialize''))
             (''Window Content'' (''content'' ''content:''))))
+        (''UIVerticalSplit'' ((''Initialization'' (''initialize''))))
         (''UIScroll'' ((''Context Menu'' (''contextMenu:''))))
         (''UIMenu'' (
             (''Initialization'' (''initialize''))
@@ -176,6 +177,7 @@ BrowserOrganization compile: 'shippedProtocols
             (''Initialization'' (''initialize''))
             (''Presenting Edits'' (''edit:name:do:'' ''move:choices:selected:do:''))
             (''Applying Edits'' (''chooseDestination:'' ''apply'' ''cancel''))))
+        (''BrowserNavigationPane'' ((''Initialization'' (''initialize''))))
         (''ChangesBrowser'' (
             (''Layout'' (''initialize'' ''buildContent''))
             (''History'' (''showClass:selector:side:'' ''allChanges'' ''synchronizeHistory'' ''reload''))
@@ -216,6 +218,8 @@ BrowserOrganization compile: 'shippedProtocols
             (''Output Buffer'' (''text'' ''append:'' ''clear''))))
         (''TranscriptWindow'' (
             (''Initialization'' (''initialize''))))
+        (''SettingsWindow'' (
+            (''Layout'' (''initialize'' ''buildContent''))))
         (''TestCase'' (
             (''Fixtures'' (''setUp'' ''tearDown''))
             (''Assertions'' (''assert:'' ''deny:'' ''assert:equals:'' ''fail:''))))

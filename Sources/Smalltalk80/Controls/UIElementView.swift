@@ -123,7 +123,10 @@ struct UIElementView: View {
             row
         case .split:
             Group {
-                if element.role == "vertical" {
+                if element.role == "resizableVertical" || isLegacyBrowserSplit {
+                    NativeVerticalSplit(host: host, identifier: identifier,
+                                        panes: element.children.filter { $0.visible && !$0.isWindowChrome })
+                } else if element.role == "vertical" {
                     VSplitView { children }
                 } else {
                     HSplitView { children }
@@ -144,6 +147,12 @@ struct UIElementView: View {
         case .divider:
             Divider()
         }
+    }
+
+    private var isLegacyBrowserSplit: Bool {
+        // Saved Browser windows used UISplit around the navigation and source panes.
+        element.role == "vertical" &&
+            element.children.first?.children.contains { $0.accessibilityID == "browserNavigation" } == true
     }
 
     @ViewBuilder

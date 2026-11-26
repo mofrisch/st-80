@@ -130,6 +130,12 @@ UIValueTable compile: 'valueLines: count
 
 UIContainer subclass: #UISplit instanceVariableNames: ''.
 
+UISplit subclass: #UIVerticalSplit instanceVariableNames: ''.
+
+UIVerticalSplit compile: 'initialize
+    super initialize.
+    self role: #resizableVertical'.
+
 UIContainer subclass: #UIScroll instanceVariableNames: 'contextMenu'.
 
 UIScroll compile: 'contextMenu: aMenu

@@ -150,6 +150,12 @@ WorkspaceWindow compile: 'exampleButton: aTitle key: exampleKey
         workspace := Desktop openWorkspace.
         workspace notNil ifTrue: [ workspace text: source ] ]; yourself'.
 
+UIColumn subclass: #BrowserNavigationPane instanceVariableNames: ''.
+
+BrowserNavigationPane compile: 'initialize
+    super initialize.
+    self spacing: 0; heightFrom: 140 to: nil'.
+
 DevelopmentWindow subclass: #BrowserWindow instanceVariableNames: 'categoryList classList protocolList methodList queryField editor category className protocolName selector originalSource header hint accept versions versionMenu organizationForm renameCategoryItem moveClassItem newProtocolItem renameProtocolItem moveMethodItem methodSide instanceSideButton classSideButton otherSideState editingDefinition definitionButton bytecodeToggle bytecodeView'.
 
 BrowserWindow compile: 'initialize
@@ -198,7 +204,7 @@ BrowserWindow compile: 'initialize
     classSideButton := UIButton new title: ''Class''; identifier: ''classMethodSide''; onClickSend: #showClassMethods to: self; yourself.
     sideBar := UIRow new role: #segmented; add: instanceSideButton; add: classSideButton; yourself.
     actions := UIRow new role: #compactBar; add: queryField; add: UISpacer new; add: sideBar; yourself.
-    navigation := UIColumn new spacing: 0; heightFrom: 140 to: 255;
+    navigation := BrowserNavigationPane new
         add: actions; add: UIDivider new; add: panes; yourself.
 
     versionMenu := UIMenu new title: ''Method Actions''; identifier: ''methodActions''; role: #paneMenu; add: versions; yourself.
@@ -210,7 +216,8 @@ BrowserWindow compile: 'initialize
         heightFrom: 64 to: 184; visible: false; yourself.
     source := UIColumn new spacing: 0; heightFrom: 145 to: nil; add: toolbar; add: UIDivider new;
         add: organizationForm; add: editor; add: bytecodeToggle; add: bytecodeView; add: self resultPane; yourself.
-    self content: (UISplit new role: #vertical; add: navigation; add: source; yourself).
+    self content: (UIVerticalSplit new identifier: ''browserContentSplit'';
+        add: navigation; add: source; yourself).
     self showDefinition.
     self refreshTools'.
 

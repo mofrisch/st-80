@@ -873,10 +873,48 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertFalse(app.menuItems.matching(createClass).firstMatch.exists)
     }
 
+    func testBrowserVerticalSplitResizesNavigationAndSource() {
+        let app = launchFreshApp(opening: ["Browser"])
+        let browser = app.windows["toolWindow-1"]
+        browser.staticTexts["Compiler"].firstMatch.click()
+        XCTAssertTrue(browser.staticTexts["STCompiler"].firstMatch.waitForExistence(timeout: 5))
+        let editor = browser.textViews["methodEditor"]
+        let dividers = browser.splitters.allElementsBoundByIndex.filter { $0.frame.width > $0.frame.height }
+        guard dividers.count == 1, let divider = dividers.first else {
+            return XCTFail("Expected one splitter between the Browser navigation and source panes.")
+        }
+
+        let initialPosition = divider.frame.midY
+        let initialEditorHeight = editor.frame.height
+        let center = divider.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        center.click(forDuration: 0.1, thenDragTo: center.withOffset(CGVector(dx: 0, dy: -60)))
+        let raisedPosition = divider.frame.midY
+        XCTAssertGreaterThan(initialPosition - raisedPosition, 45)
+        XCTAssertGreaterThan(editor.frame.height - initialEditorHeight, 45)
+
+        browser.staticTexts["Collections & Text"].firstMatch.click()
+        XCTAssertTrue(browser.staticTexts["Array"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertEqual(divider.frame.midY, raisedPosition, accuracy: 1)
+
+        let start = center.withOffset(CGVector(dx: 0, dy: 6))
+        let end = center.withOffset(CGVector(dx: 0, dy: 116))
+        start.click(forDuration: 0.1, thenDragTo: end)
+        XCTAssertGreaterThan(divider.frame.midY - initialPosition, 30)
+        XCTAssertGreaterThan(initialEditorHeight - editor.frame.height, 30)
+        XCTAssertTrue(editor.isHittable)
+    }
+
     func testBrowserOrganizationMenusCreateCategoriesAndProtocols() {
         let app = launchFreshApp(opening: ["Browser"])
         let browser = app.windows["toolWindow-1"]
         XCTAssertTrue(browser.waitForExistence(timeout: 5))
+
+        browser.staticTexts["Compiler"].firstMatch.click()
+        XCTAssertTrue(browser.staticTexts["STCompiler"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(browser.staticTexts["STSourceScanner"].exists)
+        browser.staticTexts["MVC"].firstMatch.click()
+        XCTAssertTrue(browser.staticTexts["UIBinding"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(browser.staticTexts["STCompiler"].exists)
 
         func add(_ menu: String, item: String, named name: String) {
             let actions = browser.descendants(matching: .any).matching(identifier: menu).firstMatch

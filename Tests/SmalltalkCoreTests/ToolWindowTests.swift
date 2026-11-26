@@ -158,10 +158,40 @@ struct ToolWindowTests {
         #expect(Set(selectorsByClass.keys) == shippedClasses)
     }
 
+    @Test func everyShippedBrowserClassBelongsToExactlyOneCategory() throws {
+        let runtime = SmalltalkRuntime()
+        let organization = try #require(runtime.classes["BrowserOrganization"])
+        let result = try runtime.send(.classObject(organization), "shippedClassCategories", [])
+        guard case .array(let declarations) = result else {
+            throw SmalltalkError("Expected an array of shipped class categories.")
+        }
+        var categories: Set<String> = []
+        var classes: Set<String> = []
+        for declaration in declarations.elements {
+            guard case .array(let row) = declaration, row.elements.count == 2,
+                  case .array(let members) = row.elements[1], !members.elements.isEmpty else {
+                throw SmalltalkError("Expected a named category with at least one class.")
+            }
+            let category = try runtime.string(row.elements[0])
+            #expect(categories.insert(category).inserted, "Repeated category \(category)")
+            for member in members.elements {
+                let name = try runtime.string(member)
+                #expect(classes.insert(name).inserted, "Repeated class \(name)")
+            }
+        }
+        let shipped = Set(runtime.classes.keys)
+        #expect(shipped.subtracting(classes).isEmpty, "Missing classes: \(shipped.subtracting(classes).sorted())")
+        #expect(classes.subtracting(shipped).isEmpty, "Unknown classes: \(classes.subtracting(shipped).sorted())")
+    }
+
     @Test func browserFiltersClassesAndMethodsThroughFourPanes() async throws {
         let session = SmalltalkSession()
         let snapshot = try await openTools(.browser, in: session)
         let browser = try #require(snapshot.windows.first(where: { $0.kind == .browser }))
+        let split = try #require(element("browserContentSplit", in: browser.content))
+        #expect(split.role == "resizableVertical")
+        #expect(split.children.map(\.minimumHeight) == [140, 145])
+        #expect(split.children.allSatisfy { $0.maximumHeight == nil })
         let navigation = try #require(element("browserNavigation", in: browser.content))
         #expect(navigation.children.map { $0.children.last?.accessibilityID } == ["categoryList", "classList", "protocolList", "methodList"])
 
@@ -181,6 +211,12 @@ struct ToolWindowTests {
         let kernel = await select(categories, "Kernel")
         #expect(element("classList", in: kernel)?.items.contains("Object") == true)
         #expect(element("classList", in: kernel)?.selection == nil)
+        let editing = await select(categories, "Source Editing")
+        #expect(element("classList", in: editing)?.items == ["STSourceScanner", "UICodeEditor", "UISourceView"])
+        let recovery = await select(categories, "Recovery")
+        #expect(element("classList", in: recovery)?.items == ["ToolWindowFeedback", "WorkspaceRecoveryCommands"])
+        let userClasses = await select(categories, "User Classes")
+        #expect(element("classList", in: userClasses)?.items.isEmpty == true)
         let examples = await select(categories, "Examples")
         #expect(element("classList", in: examples)?.items == ["Counter", "WorkspaceExamples"])
         let counter = await select(classes, "Counter")
@@ -197,6 +233,11 @@ struct ToolWindowTests {
         #expect(element("protocolList", in: content)?.selection == "Counting")
         #expect(element("methodList", in: content)?.items == ["add:", "adjusted:", "increment"])
         #expect(element("methodList", in: content)?.selection == "adjusted:")
+
+        let created = await session.evaluate("Object subclass: #CategoryProbe instanceVariableNames: ''")
+        #expect(created.error == nil)
+        let custom = await select(categories, "User Classes")
+        #expect(element("classList", in: custom)?.items == ["CategoryProbe"])
     }
 
     @Test func browserSwitchesSidesWithoutLosingDraftsOrMixingProtocols() async throws {

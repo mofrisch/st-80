@@ -110,10 +110,36 @@ BrowserGrouping compile: 'move: item to: name
 Object subclass: #BrowserOrganization instanceVariableNames: 'classCategories catalogs systemProtocols'.
 
 BrowserOrganization compile: 'initialize
+    | defaults |
+    defaults := self class shippedClassCategories collect: [ :entry | entry at: 1 ].
     classCategories := BrowserGrouping new.
-    classCategories defineDefaults: #(''Kernel'' ''Compiler'' ''Interface'' ''Tools'' ''Examples'' ''Tests'' ''User Classes'').
+    classCategories defineDefaults: (defaults copyWith: ''User Classes'').
     systemProtocols := self shippedProtocols.
     catalogs := #()'.
+
+BrowserOrganization compileClass: 'shippedClassCategories
+    ^ #(
+        (''Kernel'' (''Object'' ''Class'' ''UndefinedObject'' ''Boolean'' ''True'' ''False''
+            ''Number'' ''Integer'' ''SmallInteger'' ''BlockClosure''))
+        (''Collections & Text'' (''Array'' ''String'' ''Symbol''))
+        (''Compiler'' (''STCompilerList'' ''STScanner'' ''STCompiler''))
+        (''MVC'' (''Model'' ''Controller'' ''UIBinding''))
+        (''Desktop'' (''SystemWindow'' ''DesktopModel'' ''DisplayScreen'' ''DesktopManager'' ''UIWindow''))
+        (''Interface'' (''UIElement'' ''UILabel'' ''UIButton'' ''UITextField'' ''UIContainer''
+            ''UIColumn'' ''UIRow'' ''UISpacer'' ''UIList'' ''UIHistoryList'' ''UIValueTable''
+            ''UISplit'' ''UIVerticalSplit'' ''UIScroll'' ''UIMenu'' ''UIDivider''))
+        (''Source Editing'' (''STSourceScanner'' ''UICodeEditor'' ''UISourceView''))
+        (''Browser'' (''BrowserGroup'' ''BrowserGrouping'' ''BrowserOrganization''
+            ''BrowserOrganizationForm'' ''BrowserNavigationPane'' ''BrowserWindow''))
+        (''Tools'' (''ToolServices'' ''DevelopmentWindow'' ''WorkspaceWindow'' ''Transcript''
+            ''TranscriptModel'' ''TranscriptWindow'' ''ChangesBrowser''))
+        (''Debugging'' (''DebuggerWindow'' ''DebuggerPresentation'' ''InspectorModel''
+            ''ObjectInspectorWindow'' ''InspectorPresentation''))
+        (''Application'' (''ApplicationMenu'' ''SettingsWindow''))
+        (''Recovery'' (''ToolWindowFeedback'' ''WorkspaceRecoveryCommands''))
+        (''Examples'' (''Counter'' ''WorkspaceExamples''))
+        (''Tests'' (''TestCase'' ''TestOutcome'' ''TestResult'' ''TestRunner''
+            ''CounterTest'' ''CollectionsTest'' ''BindingTestModel'' ''UIBindingTest'')))'.
 
 BrowserOrganization compile: 'classCategories
     ^ classCategories'.
@@ -122,17 +148,8 @@ BrowserOrganization compile: 'categoryOf: name
     ^ classCategories groupOf: name default: (self defaultCategoryOf: name)'.
 
 BrowserOrganization compile: 'defaultCategoryOf: name
-    (#(''Object'' ''Class'' ''UndefinedObject'' ''Boolean'' ''True'' ''False'' ''Number'' ''Integer'' ''SmallInteger'' ''String'' ''Symbol'' ''Array'' ''BlockClosure'') includes: name) ifTrue: [ ^ ''Kernel'' ].
-    (#(''STCompilerList'' ''STScanner'' ''STSourceScanner'' ''STCompiler'') includes: name) ifTrue: [ ^ ''Compiler'' ].
-    (#(''Transcript'' ''TranscriptModel'' ''ToolServices'' ''DevelopmentWindow'' ''ChangesBrowser'' ''InspectorModel'' ''ObjectInspectorWindow'' ''InspectorPresentation'' ''DebuggerWindow'' ''DebuggerPresentation'' ''WorkspaceWindow'' ''BrowserWindow'' ''TranscriptWindow''
-       ''BrowserGroup'' ''BrowserGrouping'' ''BrowserOrganization'' ''BrowserOrganizationForm''
-       ''TestCase'' ''TestOutcome'' ''TestResult'' ''TestRunner'') includes: name) ifTrue: [ ^ ''Tools'' ].
-    (#(''Model'' ''Controller'' ''UIBinding'' ''SystemWindow'' ''DesktopModel'' ''DisplayScreen'' ''DesktopManager''
-       ''UIElement'' ''UILabel'' ''UIButton'' ''UITextField'' ''UIContainer'' ''UIColumn'' ''UIRow'' ''UISpacer''
-       ''UIWindow'' ''UICodeEditor'' ''UIList'' ''UIHistoryList'' ''UISourceView'' ''UIValueTable'' ''UISplit'' ''UIScroll'' ''UIMenu'' ''UIDivider'') includes: name)
-        ifTrue: [ ^ ''Interface'' ].
-    (#(''Counter'' ''WorkspaceExamples'') includes: name) ifTrue: [ ^ ''Examples'' ].
-    (#(''CounterTest'' ''CollectionsTest'' ''BindingTestModel'' ''UIBindingTest'') includes: name) ifTrue: [ ^ ''Tests'' ].
+    self class shippedClassCategories do: [ :entry |
+        ((entry at: 2) includes: name) ifTrue: [ ^ entry at: 1 ] ].
     ^ ''User Classes'''.
 
 BrowserOrganization compile: 'protocolsOf: target

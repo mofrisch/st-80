@@ -166,6 +166,8 @@ Smalltalk workspace actions use the native text selection when present and the w
 
 The **⋯** menus in **Class Categories** and **Protocols** let you create and rename groups and move the selected class or method. Select an existing group before choosing **Rename Category …** or **Rename Protocol …**. Use **Move Class …** or **Move Method …** to choose a destination. The browser files new classes and methods into the current category or protocol when one is selected. A method with no assignment appears under **Unclassified**.
 
+`BrowserOrganization class>>shippedClassCategories` defines the class groups in the startup image. The Browser lists the compiler, source editor, desktop, MVC, debugging, and recovery classes in dedicated groups. New classes without an explicit category appear under **User Classes**.
+
 Protocols are specific to each class. The shipped system groups methods by purpose in `41-SystemProtocols.st`. For example, `Integer` has **Arithmetic** and **Bounds**, and `Model` has **Managing Dependents** and **Change Notifications**. `SystemOrganization` holds protocol names and assignments in Smalltalk. Saving the image preserves them even if the browser is closed.
 
 Accepting a revised class definition updates existing instances of the class and its subclasses. Fields with matching names retain their values. New fields start as `nil`. The editor rejects cycles and conflicting fields. Fields cannot be removed while they hold values or are referenced by installed methods, running code, or retained blocks. A superclass change is rejected if it would detach a retained class-side block or running class method from its defining class. The selected class name identifies the definition being edited. Built-in VM class layouts are read-only. Accepted definitions appear in **Code Changes**, and saving an image preserves the new layout.
@@ -239,7 +241,7 @@ The VM reads the window and control fields to detect attachment changes, then se
 | `UITextField` | `label:`, `placeholder:`, `text:`, `text`, `onChangeSend:to:` |
 | `UICodeEditor` | Text field messages, plus `readOnly:`, native text selection, and `contextMenu:` to attach a `UIMenu` of buttons and dividers |
 | `UIList` | `items:` with unique strings, `selection:`, `onSelectSend:to:` |
-| `UISplit`, `UIScroll`, `UIMenu` | Containers for split views, scrolling, and menus. `UISplit` stacks its panes with `role: #vertical`. `UIMenu` also supports `title:`. `UIScroll` accepts `contextMenu:` for a menu of buttons and dividers. |
+| `UISplit`, `UIVerticalSplit`, `UIScroll`, `UIMenu` | Containers for split views, scrolling, and menus. `UISplit` stacks its panes with `role: #vertical`. `UIVerticalSplit` stacks resizable panes and applies their height limits to the divider. `UIMenu` also supports `title:`. `UIScroll` accepts `contextMenu:` for a menu of buttons and dividers. |
 | `UIDivider` | Separator |
 | `UIColumn`, `UIRow` | `add:`, `remove:`, `removeAll`, `children:`, `spacing:`, `padding:` |
 | `UISpacer` | Flexible space in a row or column |

@@ -249,6 +249,8 @@ You can nest rows and columns. `add:` returns the added element. `spacing:` acce
 
 Smalltalk objects stay on the interpreter thread. `SmalltalkCore` projects immutable snapshots and runs the Smalltalk tool operations. `Smalltalk80` renders the snapshots and keeps native window state, unsent edits, selections, and file associations. `AppController` forwards native events and publishes the resulting snapshots. Smalltalk handles change notifications directly without polling.
 
+`ToolWindowFeedback` in `48-ToolWindowFeedback.st` builds the error and repair views on a separate interpreter thread using the bundled Smalltalk definition. This allows a retained Workspace to show feedback while the active image's desktop or control tree is invalid.
+
 Text fields with an input controller send changes after an 80 ms pause while keeping the field active. Before button actions, workspace evaluations, and image saves, the app flushes pending input in order. Model-driven changes do not generate more input events. If a model or controller method fails, the workspace and browser remain available for repair. Once repaired, the app retries pending input.
 
 ### Images

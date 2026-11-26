@@ -76,6 +76,30 @@ struct WorkspaceRecoveryTests {
         #expect(await session.evaluate("recoveryRuns").value == "1")
     }
 
+    @Test func bundledSmalltalkBuildsFeedbackForAStillInvalidDesktop() async throws {
+        let session = SmalltalkSession()
+        let original = try await breakWindowList(in: session)
+        let recovery = try await recover("6 * 7", in: session, from: original)
+        let error = try #require(recovery.windowProjectionError)
+        let feedback = try #require(ToolWindowFeedback(recoveryResult: recovery.value, inputError: nil,
+                                                     activeError: error, displayedResult: nil))
+        let content = await SmalltalkSession.toolWindowFeedback(feedback)
+        #expect(content?.children.map(\.kind) == [.divider, .column, .divider, .column])
+        #expect(element("workspaceRecoveryResult", in: content)?.text == "42")
+        #expect(element("toolWindowError", in: content)?.text == error)
+        #expect(element("toolWindowError", in: content)?.role == "error")
+
+        let inputError = "The editor's draft was rejected."
+        let localFeedback = try #require(ToolWindowFeedback(recoveryResult: nil, inputError: inputError,
+                                                          activeError: error, displayedResult: nil))
+        let localContent = await SmalltalkSession.toolWindowFeedback(localFeedback)
+        #expect(element("toolWindowError", in: localContent)?.text == inputError)
+
+        let duplicate = try #require(ToolWindowFeedback(recoveryResult: nil, inputError: inputError,
+                                                       activeError: error, displayedResult: inputError))
+        #expect(await SmalltalkSession.toolWindowFeedback(duplicate) == nil)
+    }
+
     @Test func recoveryPrintsAndInspectsTheSourceExactlyOnce() async throws {
         let printing = SmalltalkSession()
         _ = await printing.evaluate("recoveryRuns := 0")

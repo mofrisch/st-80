@@ -17,29 +17,33 @@ struct WindowToolbarView: View {
 struct ToolContentView: View {
     @Bindable var controller: AppController
     let windowID: Int64
+    @State private var feedbackContent: (request: ToolWindowFeedback, content: UIElementInfo)?
 
     var body: some View {
         Group {
             if let window = controller.presentedWindow(windowID) {
+                let feedback = ToolWindowFeedback(
+                    recoveryResult: window.recoveryResult,
+                    inputError: window.inputError,
+                    activeError: controller.activeWindowID == windowID ? controller.error : nil,
+                    displayedResult: window.info.content?.firstVisible { $0.accessibilityID == "evaluationResult" }?.text
+                )
                 VStack(spacing: 0) {
                     if let content = window.info.content {
                         UIElementView(controller: controller, windowID: windowID, element: content)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     }
-                    if let result = window.recoveryResult {
-                        Divider()
-                        Text(result).font(.system(size: 13, design: .monospaced))
-                            .textSelection(.enabled).padding(12)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .accessibilityIdentifier("workspaceRecoveryResult")
-                    }
-                    if let error = window.inputError ?? (controller.activeWindowID == windowID ? controller.error : nil),
-                       window.info.content?.firstVisible(where: { $0.accessibilityID == "evaluationResult" })?.text != error {
-                        Divider()
-                        Text(error).foregroundStyle(.red)
-                            .textSelection(.enabled).padding(12)
+                    if let feedbackContent, feedbackContent.request == feedback {
+                        UIElementView(host: .snapshot(isLoading: false, click: { _ in }, select: { _, _ in }),
+                                      element: feedbackContent.content)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                }
+                .task(id: feedback) {
+                    guard let feedback else { feedbackContent = nil; return }
+                    let content = await SmalltalkSession.toolWindowFeedback(feedback)
+                    guard !Task.isCancelled else { return }
+                    feedbackContent = content.map { (feedback, $0) }
                 }
             }
         }.background(Color(nsColor: .windowBackgroundColor))

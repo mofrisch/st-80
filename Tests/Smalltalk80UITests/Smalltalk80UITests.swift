@@ -207,8 +207,9 @@ final class Smalltalk80UITests: XCTestCase {
         replaceText(in: editor, with: damage)
         workspace.buttons["executeButton"].click()
         let message = "Desktop has no valid window list."
-        let failure = workspace.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", message, message)).firstMatch
+        let failure = workspace.staticTexts["toolWindowError"]
         XCTAssertTrue(failure.waitForExistence(timeout: 5))
+        XCTAssertTrue((failure.value as? String ?? failure.label).contains(message))
         XCTAssertTrue(editor.isHittable)
         XCTAssertEqual(editor.value as? String, damage)
         XCTAssertTrue(workspace.buttons["executeButton"].isEnabled)

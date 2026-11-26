@@ -169,7 +169,21 @@ extension SmalltalkRuntime {
         case .custom, .changes: return
         }
         try updateStockMethod(selector, on: desktop, in: "DesktopManager", replacing: legacySource)
-        if kind == .transcript, let buffer = globals["TranscriptBuffer"] {
+        if kind == .transcript {
+            let legacyCreation = """
+            createKind: aKind title: aTitle
+                | window |
+                self windows size >= 128 ifTrue: [ ^ nil ].
+                window := self windowClassFor: aKind.
+                window := window new.
+                window kind: aKind; title: aTitle.
+                (aKind = #browser or: [ aKind = #changes ]) ifTrue: [ window moveToX: 850 y: 200; resizeWidth: 850 height: 650 ].
+                aKind = #transcript ifTrue: [ window moveToX: 100 y: 40; resizeWidth: 720 height: 200 ].
+                self cascadeTool: window.
+                ^ self open: window
+            """
+            try updateStockMethod("createKind:title:", on: desktop, in: "DesktopManager", replacing: legacyCreation)
+            guard let buffer = globals["TranscriptBuffer"] else { return }
             let legacyText = """
             text
                 contents size = 0 ifTrue: [ ^ 'Transcript show: ''Hello''; cr.' ].

@@ -180,7 +180,21 @@ DesktopManager compile: 'createKind: aKind title: aTitle
     window := window new.
     window kind: aKind; title: aTitle.
     (aKind = #browser or: [ aKind = #changes ]) ifTrue: [ window moveToX: 850 y: 200; resizeWidth: 850 height: 650 ].
-    aKind = #transcript ifTrue: [ window moveToX: 100 y: 40; resizeWidth: 720 height: 200 ].
+    aKind = #transcript ifTrue: [
+        | screen inset width height |
+        inset := 24. width := 720. height := 260.
+        screen := self screens isEmpty ifFalse: [
+            self activeWindow isNil
+                ifTrue: [ self screens at: 1 ]
+                ifFalse: [ self screenFor: self activeWindow ] ].
+        screen isNil
+            ifTrue: [ window placeX: 100 y: inset width: width height: height ]
+            ifFalse: [
+                width := (width min: ((screen width - inset) max: window minimumWidth)) min: screen width.
+                height := (height min: ((screen height - inset) max: window minimumHeight)) min: screen height.
+                window placeX: screen x + ((screen width - width - inset) max: 0)
+                    y: screen y + (inset min: screen height - height)
+                    width: width height: height ] ].
     self cascadeTool: window.
     ^ self open: window'.
 DesktopManager compile: 'cascadeTool: aWindow

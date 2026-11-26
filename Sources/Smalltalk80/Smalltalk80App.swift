@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 @main
@@ -21,6 +22,10 @@ struct Smalltalk80App: App {
                 Button("Save Image As …") { Task { await controller.saveImage(asNewFile: true) } }
                     .keyboardShortcut("s", modifiers: [.command, .option, .shift]).disabled(controller.isRunning)
             }
+            CommandGroup(replacing: .saveItem) {
+                Button("Close") { NSApp.keyWindow?.performClose(nil) }
+                    .keyboardShortcut("w", modifiers: [.command, .shift])
+            }
             CommandMenu("Smalltalk") {
                 toolCommands
                 ForEach(controller.workspaceAppMenus) { menu in
@@ -38,11 +43,11 @@ struct Smalltalk80App: App {
             }
             CommandMenu("Tools") {
                 Button("Browser") { Task { await controller.openTool(.browser) } }
-                    .keyboardShortcut("2").disabled(controller.isRunning)
+                    .keyboardShortcut("b").disabled(controller.isRunning)
                 Button("Workspace") { Task { await controller.openTool(.workspace) } }
-                    .keyboardShortcut("1").disabled(controller.isRunning)
+                    .keyboardShortcut("w").disabled(controller.isRunning)
                 Button("Transcript") { Task { await controller.openTool(.transcript) } }
-                    .keyboardShortcut("3").disabled(controller.isRunning)
+                    .keyboardShortcut("t").disabled(controller.isRunning)
             }
         }
     }

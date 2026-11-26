@@ -163,6 +163,35 @@ struct DesktopTests {
         #expect(reopened.changes.isEmpty)
     }
 
+    @Test func newTranscriptUsesTheBottomRightOfTheActiveDisplay() async throws {
+        let session = SmalltalkSession()
+        let initial = await session.snapshot()
+        let screens = [
+            ScreenInfo(id: "primary", frame: WindowRect(x: 0, y: 60, width: 1_440, height: 840)),
+            ScreenInfo(id: "secondary", frame: WindowRect(x: 1_440, y: -120, width: 1_280, height: 800)),
+        ]
+        let configured = await session.windowEvents([
+            NativeWindowEvent(epoch: initial.windowCommands.epoch, sequence: 1, kind: .screens(screens)),
+        ])
+        try #require(configured.error == nil)
+
+        let opened = try await openTools(.transcript, in: session)
+        let transcript = try #require(opened.windows.first)
+        #expect(transcript.frame == WindowRect(x: 696, y: 84, width: 720, height: 260))
+
+        let moved = WindowRect(x: 100, y: 100, width: 640, height: 300)
+        _ = await session.windowAction(.frame(transcript.id, x: moved.x, y: moved.y, width: moved.width, height: moved.height))
+        let reused = try await openTools(.transcript, in: session)
+        #expect(reused.windows.first?.frame == moved)
+
+        _ = await session.windowAction(.close(transcript.id))
+        let workspace = try await openTools(.workspace, in: session)
+        let workspaceID = try #require(workspace.activeWindowID)
+        _ = await session.windowAction(.frame(workspaceID, x: 1_500, y: 0, width: 720, height: 600))
+        let reopened = try await openTools(.transcript, in: session)
+        #expect(reopened.windows.first { $0.kind == .transcript }?.frame == WindowRect(x: 1_976, y: -96, width: 720, height: 260))
+    }
+
     @Test func legacyOpenersUpgradeOnFirstUseWithoutReplacingAuthoredMethods() async throws {
         let original = SmalltalkSession()
         _ = try await openTools(.browser, .transcript, in: original)

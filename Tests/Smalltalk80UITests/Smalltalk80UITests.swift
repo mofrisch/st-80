@@ -3,6 +3,40 @@ import XCTest
 
 @MainActor
 final class Smalltalk80UITests: XCTestCase {
+    func testToolAndCloseKeyboardShortcuts() throws {
+        let app = launchFreshApp()
+        let originalWorkspace = app.windows["toolWindow-1"]
+        let editor = originalWorkspace.textViews["workspaceEditor"]
+        editor.click()
+
+        editor.typeKey("w", modifierFlags: .command)
+        let newWorkspace = app.windows["toolWindow-2"]
+        XCTAssertTrue(newWorkspace.textViews["workspaceEditor"].waitForExistence(timeout: 5))
+        XCTAssertTrue(originalWorkspace.exists)
+
+        newWorkspace.textViews["workspaceEditor"].typeKey("b", modifierFlags: .command)
+        let browser = app.windows["toolWindow-3"]
+        XCTAssertTrue(browser.waitForExistence(timeout: 5))
+        XCTAssertEqual(browser.title, "System Browser")
+
+        app.typeKey("t", modifierFlags: .command)
+        let transcript = app.windows["toolWindow-4"]
+        XCTAssertTrue(transcript.waitForExistence(timeout: 5))
+        XCTAssertEqual(transcript.title, "Transcript")
+        let frame = transcript.frame
+        let primaryScreen = try XCTUnwrap(NSScreen.screens.first)
+        XCTAssertEqual(frame.height, 260, accuracy: 2)
+        XCTAssertTrue(NSScreen.screens.contains { screen in
+            abs(screen.visibleFrame.maxX - frame.maxX - 24) <= 2
+                && abs(primaryScreen.frame.maxY - screen.visibleFrame.minY - frame.maxY - 24) <= 2
+        }, "Transcript frame: \(frame)")
+
+        app.typeKey("w", modifierFlags: [.command, .shift])
+        let closed = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: transcript)
+        wait(for: [closed], timeout: 5)
+        XCTAssertTrue(browser.exists && newWorkspace.exists && originalWorkspace.exists)
+    }
+
     func testOpeningWorkspaceAtTheWindowLimitReportsFailureAndPreservesTheDraft() {
         let app = launchFreshApp()
         defer { app.terminate() }

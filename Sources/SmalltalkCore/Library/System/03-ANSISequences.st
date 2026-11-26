@@ -1,49 +1,49 @@
 "ANSI collection, indexed access and text protocols (J20 5.7)."
 
-SequenceableCollection compile: 'allSatisfy: predicate
+Collection compile: 'allSatisfy: predicate
     self do: [ :each | (predicate value: each) ifFalse: [ ^ false ] ].
     ^ true'.
 
-SequenceableCollection compile: 'anySatisfy: predicate
+Collection compile: 'anySatisfy: predicate
     self do: [ :each | (predicate value: each) ifTrue: [ ^ true ] ].
     ^ false'.
 
-SequenceableCollection compile: 'asArray
+Collection compile: 'asArray
     ^ Array withAll: self'.
 
-SequenceableCollection compile: 'detect: predicate
+Collection compile: 'detect: predicate
     ^ self detect: predicate ifNone: [ self error: ''No matching element.'' ]'.
 
-SequenceableCollection compile: 'detect: predicate ifNone: alternative
+Collection compile: 'detect: predicate ifNone: alternative
     self do: [ :each | (predicate value: each) ifTrue: [ ^ each ] ].
     ^ alternative value'.
 
-SequenceableCollection compile: 'do: operation separatedBy: separator
+Collection compile: 'do: operation separatedBy: separator
     | first |
     first := true.
     self do: [ :each |
         first ifTrue: [ first := false ] ifFalse: [ separator value ].
         operation value: each ]'.
 
-SequenceableCollection compile: 'inject: initial into: operation
+Collection compile: 'inject: initial into: operation
     | result |
     result := initial.
     self do: [ :each | result := operation value: result value: each ].
     ^ result'.
 
-SequenceableCollection compile: 'notEmpty
+Collection compile: 'notEmpty
     ^ self size ~= 0'.
 
-SequenceableCollection compile: 'occurrencesOf: target
+Collection compile: 'occurrencesOf: target
     | count |
     count := 0.
     self do: [ :each | each = target ifTrue: [ count := count + 1 ] ].
     ^ count'.
 
-SequenceableCollection compile: 'rehash
+Collection compile: 'rehash
     ^ self'.
 
-SequenceableCollection compile: 'reject: predicate
+Collection compile: 'reject: predicate
     ^ self select: [ :each | (predicate value: each) not ]'.
 
 SequenceableCollection compile: 'copyWithout: target

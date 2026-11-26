@@ -1,7 +1,7 @@
 import Foundation
 
 enum ImageCodec {
-    static let version = 8
+    static let version = 9
     static let supportedVersions = 6...version
     static let maxBytes = 32 * 1_024 * 1_024
     static let maxNodes = 40_000
@@ -156,7 +156,11 @@ enum ImageCodec {
             let newLayout = record.superclass == builtin.superclass?.name && record.fields == builtin.ownFields
             let oldSequenceLayout = image.version < 8 && ["Array", "String", "Symbol"].contains(builtin.name)
                 && record.superclass == "Object" && record.fields.isEmpty
-            guard newLayout || oldSequenceLayout else { throw invalid("Built-in class \(builtin.name) has an invalid layout.") }
+            let oldCollectionHierarchy = image.version < 9 && builtin.name == "SequenceableCollection"
+                && record.superclass == "Object" && record.fields.isEmpty
+            guard newLayout || oldSequenceLayout || oldCollectionHierarchy else {
+                throw invalid("Built-in class \(builtin.name) has an invalid layout.")
+            }
         }
         var remaining = image.classes.filter { !SmalltalkRuntime.builtinNames.contains($0.name) }
         while !remaining.isEmpty {
@@ -193,9 +197,11 @@ enum ImageCodec {
         if records["ScaledDecimal"] == nil { try runtime.upgradeCompilerForScaledDecimals() }
         if records["Exception"] == nil { try runtime.installExceptionProtocol() }
         var refreshBrowserProtocols = false
-        if image.version < 8 {
+        var addedCollections: Set<String> = []
+        if image.version < 9 {
             let library = try SystemLibrary.shared.get()
-            try library.installANSIProtocols(in: runtime)
+            if image.version < 8 { try library.installANSIProtocols(in: runtime) }
+            addedCollections = try library.installANSICollections(in: runtime)
             refreshBrowserProtocols = try library.upgradeBrowserProtocols(in: runtime)
         }
         guard runtime.classes["UIBinding"]?.lookup("reconcileMount:") != nil else {
@@ -318,7 +324,7 @@ enum ImageCodec {
             stClass.classState = try state.mapValues(value)
         }
         var globals = try image.globals.mapValues(value)
-        for name in SmalltalkRuntime.additiveBuiltinNames where records[name] == nil && globals[name] == nil {
+        for name in SmalltalkRuntime.additiveBuiltinNames.union(addedCollections) where records[name] == nil && globals[name] == nil {
             if let stClass = runtime.classes[name] { globals[name] = .classObject(stClass) }
         }
         for name in SmalltalkRuntime.floatAliases where globals[name] == nil { globals[name] = globals["Float"] }

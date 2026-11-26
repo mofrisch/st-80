@@ -124,15 +124,34 @@ struct SystemLibrary: Sendable {
         ]
         for name in libraryClasses {
             guard let target = runtime.classes[name] else { throw SmalltalkError("Missing ANSI class \(name).") }
-            for side in MethodSide.allCases {
-                let methods = seed[side][name] ?? [:]
-                for (selector, code) in methods.sorted(by: { $0.key < $1.key }) where target[side][selector] == nil {
-                    guard target[side].count < SmalltalkRuntime.methodsPerSideLimit else { break }
-                    guard let source = sources[side][name]?[selector] else {
-                        throw SmalltalkError("Missing bundled source for \(side.displayName(for: name))>>\(selector).")
-                    }
-                    target[side][selector] = try code.validatedMethod(selector: selector, source: source)
+            try backfillMethods(on: target)
+        }
+    }
+
+    func installANSICollections(in runtime: SmalltalkRuntime) throws -> Set<String> {
+        var added: Set<String> = []
+        for definition in definitions where SmalltalkRuntime.shippedCollectionNames.contains(definition.name) {
+            guard runtime.classes[definition.name] == nil else { continue }
+            guard let superclass = runtime.classes[definition.superclass] else {
+                throw SmalltalkError("Missing superclass \(definition.superclass) for \(definition.name).")
+            }
+            let target = try runtime.subclass(of: superclass, name: definition.name, fields: definition.fields.joined(separator: " "))
+            try backfillMethods(on: target)
+            added.insert(definition.name)
+        }
+        try backfillMethods(on: runtime.classes["Collection"]!)
+        return added
+    }
+
+    private func backfillMethods(on target: STClass) throws {
+        for side in MethodSide.allCases {
+            let methods = seed[side][target.name] ?? [:]
+            for (selector, code) in methods.sorted(by: { $0.key < $1.key }) where target[side][selector] == nil {
+                guard target[side].count < SmalltalkRuntime.methodsPerSideLimit else { break }
+                guard let source = sources[side][target.name]?[selector] else {
+                    throw SmalltalkError("Missing bundled source for \(side.displayName(for: target.name))>>\(selector).")
                 }
+                target[side][selector] = try code.validatedMethod(selector: selector, source: source)
             }
         }
     }
@@ -141,9 +160,13 @@ struct SystemLibrary: Sendable {
     /// merged by Smalltalk the next time that browser's catalog is used.
     func upgradeBrowserProtocols(in runtime: SmalltalkRuntime) throws -> Bool {
         let name = "BrowserOrganization"
+        let shippedLookupHashes: Set<String> = [
+            "674b0cce59f3f6c8cd8f55cd14d06bb99f37075a1566e1da2b8e00f22de4fc67",
+            "4de254a1fef0e16569546ce5d1d69210996fca43e9acae7376744d4a03cc3123",
+        ]
         guard let target = runtime.classes[name],
               let previous = target.methods["protocolsOf:side:"],
-              Self.digest(Data(previous.source.utf8)) == "674b0cce59f3f6c8cd8f55cd14d06bb99f37075a1566e1da2b8e00f22de4fc67" else {
+              shippedLookupHashes.contains(Self.digest(Data(previous.source.utf8))) else {
             return false
         }
         let defaults: [(MethodSide, String, Set<String>)] = [
@@ -152,12 +175,15 @@ struct SystemLibrary: Sendable {
                 "809f589b0eb5d68b77d58170a7c5b7877bb1f42aabc1ba2cc5971e610cf50664",
                 "3f96d04fe9b1bc6217026ac6fbf14e9862321ebb8a59610d9d6c4fe86b0a17f8",
                 "1198c24ac571e6f29f761121d6f07bf4ce67f09c8c262f038bb512a5b13729ac",
+                "7ea8d999df67b9777d1c79ae510d3f93677423a2b8407699d2d534c376349576",
             ]),
+            (.instance, "shippedClassSideProtocols", ["7b2f2950f5dc051c01fdcd0afcdde26c8505606a3c1f370ad2c6910c5eff398c"]),
             (.classSide, "shippedClassCategories", [
                 "94b28fa4e197128a9942bda803c88b225ff4b73c86eb419a706c4b06c8dc4b1e",
                 "45dba024b3d32946974fd979d5c048df2d6902dffc037ce038e6a30303b1d4ff",
                 "8c81a5a21932001fa86c5ecb219bb36046bc083a3f9d0c58a1e468f957b630e1",
                 "d6f01cc25cefa6821ba8f6df8155881ce9448539865f2469d944a22fea670818",
+                "1fb93f9ae4e52958193acf210246958977090fde93fb71a743809d4a03c13362",
             ]),
         ]
         for (side, selector, hashes) in defaults {

@@ -130,6 +130,9 @@ extension SmalltalkRuntime {
             try appendTranscript(string(args[0]))
             return receiver
         case .object(let object):
+            if selector == "_spliceAt:remove:with:", let ordered = classes["OrderedCollection"], object.stClass.inherits(from: ordered) {
+                return try spliceCollectionStorage(object, arguments: args)
+            }
             if object.stClass === classes["String"], let contents = receiver.textContents {
                 return try stringPrimitive(receiver, contents: contents, selector, args)
             }
@@ -137,6 +140,36 @@ extension SmalltalkRuntime {
             return try exceptionPrimitive(receiver, object, selector, args)
         default: return nil
         }
+    }
+
+    private func spliceCollectionStorage(_ object: STObject, arguments: [Value]) throws -> Value {
+        guard case .array(let storage)? = object.fields["storage"],
+              case .integer(let used)? = object.fields["tally"], (0...storage.elements.count).contains(Int(used)),
+              case .array(let incoming) = arguments[2] else { throw SmalltalkError("Invalid collection storage.") }
+        let first = try integer(arguments[0])
+        let removed = try integer(arguments[1])
+        guard (1...used + 1).contains(first), (0...used - first + 1).contains(removed) else {
+            throw SmalltalkError("Invalid collection splice range.")
+        }
+        let start = Int(first - 1)
+        let tail = start + Int(removed)
+        let values = incoming.elements
+        let shift = values.count - Int(removed)
+        let previousCount = Int(used)
+        let count = previousCount + shift
+        guard count <= storage.elements.count else { throw SmalltalkError("Insufficient collection storage.") }
+
+        // The contents and tally change together, after the execution budget has been checked.
+        try chargeNumericWork(previousCount - tail + values.count + Int(removed))
+        if shift > 0 {
+            for index in (tail..<previousCount).reversed() { storage.elements[index + shift] = storage.elements[index] }
+        } else if shift < 0 {
+            for index in tail..<previousCount { storage.elements[index + shift] = storage.elements[index] }
+            for index in count..<previousCount { storage.elements[index] = .nilValue }
+        }
+        for (offset, value) in values.enumerated() { storage.elements[start + offset] = value }
+        object.fields["tally"] = .integer(Int64(count))
+        return .object(object)
     }
 
     private func stringPrimitive(_ receiver: Value, contents string: String, _ selector: String, _ args: [Value]) throws -> Value? {

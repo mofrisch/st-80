@@ -238,6 +238,22 @@ struct ToolWindowTests {
             """).value == "'My Factories'")
     }
 
+    @Test func ansiCollectionMethodsAreFiledByPurpose() async {
+        let session = SmalltalkSession()
+        #expect(await session.evaluate("""
+            (SystemOrganization protocolsOf: Collection side: #instance)
+                groupOf: 'asByteArray' default: 'Unclassified'
+            """).value == "'Converting'")
+        #expect(await session.evaluate("""
+            (SystemOrganization protocolsOf: SortedCollection side: #class)
+                groupOf: 'sortBlock:' default: 'Unclassified'
+            """).value == "'Instance Creation'")
+        #expect(await session.evaluate("""
+            (SystemOrganization protocolsOf: OrderedCollection side: #instance)
+                groupOf: 'addAll:beforeIndex:' default: 'Unclassified'
+            """).value == "'Adding'")
+    }
+
     @Test func browserFiltersClassesAndMethodsThroughFourPanes() async throws {
         let session = SmalltalkSession()
         let snapshot = try await openTools(.browser, in: session)

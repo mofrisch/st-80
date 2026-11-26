@@ -142,6 +142,9 @@ extension SmalltalkRuntime {
         ],
         "Array": ["size": "Returns the number of elements.", "at:": "Returns the element at a one-based index.", "at:put:": "Sets an element.", "do:": "Visits each element.", "collect:": "Transforms each element.", "select:": "Filters elements.", "isEmpty": "Tests whether the array is empty.", "includes:": "Tests whether the array contains an element.",
             "joinedStringFrom:to:": "Joins the strings in an index range."],
+        "OrderedCollection": [
+            "_spliceAt:remove:with:": "Splices the active storage range and updates the collection size.",
+        ],
         "BlockClosure": [
             "value": "Evaluates the block.", "value:": "Evaluates the block with one argument.", "value:value:": "Evaluates the block with two arguments.",
             "argumentCount": "Returns the number of block arguments.", "valueWithArguments:": "Evaluates the block with the elements of a collection as arguments.",

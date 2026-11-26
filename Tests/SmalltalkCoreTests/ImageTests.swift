@@ -219,6 +219,28 @@ struct ImageTests {
         #expect(await value("sameText at: 1 put: $B. mutableText", in: restored) == "'B猫'")
     }
 
+    @Test func ansiCollectionsKeepAliasesAndSortBlocksAcrossImageLoad() async throws {
+        let original = SmalltalkSession()
+        let setup = await original.evaluate("""
+            savedBytes := ByteArray with: 5 with: 255.
+            savedOrder := OrderedCollection with: 7 with: savedBytes.
+            savedBag := Bag with: 7 with: 7.
+            savedSet := Set with: 7 with: 7.
+            savedSorted := #(8 2 3) asSortedCollection: [ :left :right | left > right ].
+            savedBlock := savedSorted sortBlock
+            """)
+        try #require(setup.error == nil)
+
+        let restored = SmalltalkSession()
+        _ = try await restored.loadImage(original.imageData())
+        #expect(await value("(savedOrder at: 2) == savedBytes", in: restored) == "true")
+        #expect(await value("savedBytes at: 1 put: 0. (savedOrder at: 2) asArray", in: restored) == "#(0 255)")
+        #expect(await value("savedBag occurrencesOf: 7", in: restored) == "2")
+        #expect(await value("savedSet size", in: restored) == "1")
+        #expect(await value("savedSorted sortBlock == savedBlock", in: restored) == "true")
+        #expect(await value("savedSorted add: 4. savedSorted asArray", in: restored) == "#(8 4 3 2)")
+    }
+
     @Test func invalidImagesLeaveTheCurrentSessionUntouched() async throws {
         let current = SmalltalkSession()
         _ = await value("kept := Counter new. kept add: 42", in: current)

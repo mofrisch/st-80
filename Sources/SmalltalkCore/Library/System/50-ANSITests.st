@@ -505,3 +505,127 @@ ANSISmalltalkTest compile: 'testStandardErrorsCarryTheirArguments
     self assert: ([ 7 / 0 ] on: ZeroDivide do: [ :exception |
         self assert: exception dividend equals: 7.
         exception resume: 42 ]) equals: 42'.
+
+ANSISmalltalkTest compile: 'testBagCountsAndRemovesOccurrences
+    | bag copy |
+    bag := Bag new: 12.
+    self assert: bag isEmpty.
+    bag add: 7 withOccurrences: 3; addAll: #(7 9 9).
+    self assert: bag size equals: 6.
+    self assert: (bag occurrencesOf: 7) equals: 4.
+    self assert: (bag remove: 7) equals: 7.
+    bag removeAll: #(9 9).
+    self assert: (bag occurrencesOf: 7) equals: 3.
+    self assert: (bag remove: 9 ifAbsent: [ 42 ]) equals: 42.
+    copy := bag copy.
+    copy add: 7.
+    self assert: (bag occurrencesOf: 7) equals: 3.
+    self assert: (copy occurrencesOf: 7) equals: 4.
+    self assert: ((bag collect: [ :each | each + 1 ]) occurrencesOf: 8) equals: 3'.
+
+ANSISmalltalkTest compile: 'testSetUsesEqualityAndSuppressesDuplicates
+    | values transformed |
+    values := Set with: 1 with: 1.0 with: (1 / 2) with: 0.50s.
+    self assert: values size equals: 2.
+    values addAll: #(1 2 2).
+    self assert: values size equals: 3.
+    self assert: (values includes: 0.5).
+    self assert: (values occurrencesOf: 1) equals: 1.
+    self assert: (values remove: 1.0) equals: 1.
+    self deny: (values includes: 1).
+    transformed := values collect: [ :each | 9 ].
+    self assert: transformed class equals: Set.
+    self assert: transformed size equals: 1.
+    self deny: (values respondsTo: #at:)'.
+
+ANSISmalltalkTest compile: 'testOrderedCollectionInsertsAndRemovesAtBoundaries
+    | values |
+    values := OrderedCollection new: 8.
+    self assert: values isEmpty.
+    values addFirst: 3; addLast: 6; add: 5 before: 6; add: 4 afterIndex: 1.
+    values addAllFirst: #(1 2); addAllLast: #(7 8).
+    values addAll: #(0) afterIndex: 0.
+    values addAll: #(9 10) beforeIndex: values size + 1.
+    self assert: values asArray equals: #(0 1 2 3 4 5 6 7 8 9 10).
+    self assert: values removeFirst equals: 0.
+    self assert: values removeLast equals: 10.
+    self assert: (values removeAtIndex: 4) equals: 4.
+    values at: 4 put: 42.
+    self assert: values asArray equals: #(1 2 3 42 6 7 8 9)'.
+
+ANSISmalltalkTest compile: 'testOrderedCollectionSnapshotsOverlappingUpdates
+    | values copy |
+    values := OrderedCollection with: 1 with: 2 with: 3 with: 4.
+    values replaceFrom: 2 to: 4 with: values startingAt: 1.
+    self assert: values asArray equals: #(1 1 2 3).
+    values addAll: values afterIndex: 2.
+    self assert: values asArray equals: #(1 1 1 1 2 3 2 3).
+    copy := values copy.
+    copy atAll: #(1 8) put: nil.
+    self assert: copy first isNil.
+    self assert: values first equals: 1.
+    self assert: (values reverse class == OrderedCollection)'.
+
+ANSISmalltalkTest compile: 'testByteArrayFactoriesBoundsAndReplacement
+    | bytes sizeLimit |
+    sizeLimit := ByteArray new: 65535.
+    self assert: sizeLimit last equals: 0.
+    sizeLimit at: 65535 put: 255.
+    self assert: sizeLimit last equals: 255.
+    bytes := ByteArray with: 10 with: 20 with: 30.
+    bytes replaceFrom: 2 to: 3 with: bytes startingAt: 1.
+    self assert: bytes asArray equals: #(10 10 20).
+    self assert: ([ bytes replaceFrom: 1 to: 2 with: #(99 256). false ]
+        on: Error do: [ :exception | true ]).
+    self assert: bytes asArray equals: #(10 10 20).
+    self assert: ([ bytes at: 1 put: 1.0. false ] on: Error do: [ :exception | true ]).
+    self assert: (bytes reverse class == ByteArray)'.
+
+ANSISmalltalkTest compile: 'testSortedCollectionInsertionAndResorting
+    | values comparator |
+    values := SortedCollection withAll: #(5 3 1 3).
+    values add: 2; addAll: #(4 0).
+    self assert: values asArray equals: #(0 1 2 3 3 4 5).
+    comparator := [ :left :right | left > right ].
+    values sortBlock: comparator.
+    self assert: values asArray equals: #(5 4 3 3 2 1 0).
+    self assert: values sortBlock == comparator.
+    self assert: (values add: 3) equals: 3.
+    self assert: values removeFirst equals: 5.
+    self assert: values removeLast equals: 0.
+    self assert: values asArray equals: #(4 3 3 3 2 1).
+    self assert: ([ values sortBlock: [ :left :right | Error signal ]. false ]
+        on: Error do: [ :exception | true ]).
+    self assert: values sortBlock == comparator.
+    self assert: values asArray equals: #(4 3 3 3 2 1)'.
+
+ANSISmalltalkTest compile: 'testSortedCollectionResultsKeepTheirRequiredOrdering
+    | values filtered replaced mapped |
+    values := #(3 2 1 2) asSortedCollection: [ :left :right | left > right ].
+    filtered := values select: [ :each | each odd ].
+    self assert: filtered class equals: SortedCollection.
+    self assert: filtered asArray equals: #(3 1).
+    replaced := values copyReplaceFrom: 1 to: 2 with: #(0 9).
+    self assert: replaced asArray equals: #(9 2 1 0).
+    self assert: replaced sortBlock == values sortBlock.
+    mapped := values collect: [ :each | each negated ].
+    self assert: mapped class equals: OrderedCollection.
+    self assert: mapped asArray equals: #(-3 -2 -2 -1).
+    self assert: values reverse asArray equals: #(1 2 2 3).
+    self deny: (values respondsTo: #at:put:)'.
+
+ANSISmalltalkTest compile: 'testCollectionConversions
+    | source descending |
+    source := OrderedCollection withAll: #(3 1 3 0).
+    self assert: source asBag class equals: Bag.
+    self assert: (source asBag occurrencesOf: 3) equals: 2.
+    self assert: source asSet class equals: Set.
+    self assert: source asSet size equals: 3.
+    self assert: source asSet asOrderedCollection class equals: OrderedCollection.
+    self assert: source asByteArray class equals: ByteArray.
+    self assert: source asByteArray asArray equals: #(3 1 3 0).
+    self assert: source asSortedCollection asArray equals: #(0 1 3 3).
+    descending := source asSortedCollection: [ :left :right | left > right ].
+    self assert: descending asArray equals: #(3 3 1 0).
+    self assert: descending asSortedCollection sortBlock == descending sortBlock.
+    self assert: ([ #(0 256) asByteArray. false ] on: Error do: [ :exception | true ])'.

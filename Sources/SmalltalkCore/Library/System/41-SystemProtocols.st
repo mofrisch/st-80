@@ -60,17 +60,59 @@ BrowserOrganization compile: 'shippedProtocols
             (''Mathematical Functions'' (''sqrt'' ''exp'' ''ln'' ''log:'' ''floorLog:''))
             (''Trigonometry'' (''sin'' ''cos'' ''tan'' ''arcSin'' ''arcCos'' ''arcTan'' ''degreesToRadians'' ''radiansToDegrees''))
             (''Iteration'' (''to:do:'' ''to:by:do:''))))
+        (''Collection'' (
+            (''Testing'' (''notEmpty'' ''allSatisfy:'' ''anySatisfy:'' ''occurrencesOf:''))
+            (''Searching'' (''detect:'' ''detect:ifNone:''))
+            (''Enumerating'' (''do:separatedBy:'' ''inject:into:'' ''reject:''))
+            (''Converting'' (''asArray'' ''asBag'' ''asByteArray'' ''asOrderedCollection'' ''asSet''
+                ''asSortedCollection'' ''asSortedCollection:''))
+            (''Maintenance'' (''rehash''))))
         (''SequenceableCollection'' (
             (''Accessing'' (''at:ifAbsent:'' ''first'' ''last'' ''before:'' ''after:''))
-            (''Testing'' (''notEmpty'' ''allSatisfy:'' ''anySatisfy:'' ''occurrencesOf:''))
-            (''Searching'' (''detect:'' ''detect:ifNone:'' ''findFirst:'' ''findLast:'' ''indexOf:'' ''indexOf:ifAbsent:''
+            (''Searching'' (''findFirst:'' ''findLast:'' ''indexOf:'' ''indexOf:ifAbsent:''
                 ''indexOfSubCollection:startingAt:'' ''indexOfSubCollection:startingAt:ifAbsent:''))
-            (''Enumerating'' (''do:separatedBy:'' ''inject:into:'' ''from:to:do:'' ''from:to:keysAndValuesDo:''
-                ''keysAndValuesDo:'' ''reverseDo:'' ''with:do:'' ''reject:''))
+            (''Enumerating'' (''from:to:do:'' ''from:to:keysAndValuesDo:'' ''keysAndValuesDo:'' ''reverseDo:'' ''with:do:''))
             (''Copying'' (''copyFrom:to:'' ''copyWith:'' ''reverse'' ''copyReplacing:withObject:''
                 ''copyReplaceFrom:to:with:'' ''copyReplaceFrom:to:withObject:'' ''copyReplaceAll:with:'' ''copyWithout:''))
-            (''Converting'' (''asArray''))
-            (''Private'' (''_sequenceFrom:'' ''rehash''))))
+            (''Private'' (''_sequenceFrom:''))))
+        (''OrderedCollection'' (
+            (''Initialization'' (''initialize''))
+            (''Accessing'' (''size'' ''at:'' ''isEmpty'' ''includes:''))
+            (''Updating'' (''at:put:'' ''atAll:put:'' ''atAllPut:'' ''replaceFrom:to:with:''
+                ''replaceFrom:to:with:startingAt:'' ''replaceFrom:to:withObject:''))
+            (''Adding'' (''add:'' ''addFirst:'' ''addLast:'' ''add:after:'' ''add:before:'' ''add:afterIndex:'' ''add:beforeIndex:''
+                ''addAll:'' ''addAllFirst:'' ''addAllLast:'' ''addAll:after:'' ''addAll:before:'' ''addAll:afterIndex:'' ''addAll:beforeIndex:''))
+            (''Removing'' (''remove:'' ''remove:ifAbsent:'' ''removeAll:'' ''removeAtIndex:'' ''removeFirst'' ''removeLast''))
+            (''Enumerating'' (''do:'' ''collect:'' ''select:''))
+            (''Copying and Conversion'' (''copy'' '','' ''asArray''))
+            (''Private'' (''_reserve:'' ''_makeRoomFor:'' ''_checkIndex:'' ''_checkInsertionIndex:'' ''_positionOf:''
+                ''_spliceAt:remove:with:'' ''_sequenceFrom:''))))
+        (''UnorderedCollection'' (
+            (''Initialization'' (''initialize'' ''_reserve:''))
+            (''Accessing'' (''size'' ''isEmpty'' ''includes:''))
+            (''Adding'' (''addAll:''))
+            (''Removing'' (''remove:'' ''remove:ifAbsent:'' ''removeAll:''))
+            (''Enumerating'' (''do:'' ''collect:'' ''select:''))
+            (''Copying and Conversion'' (''copy'' ''asArray''))))
+        (''Bag'' ((''Adding'' (''add:'' ''add:withOccurrences:''))))
+        (''Set'' ((''Adding'' (''add:''))))
+        (''ByteArray'' (
+            (''Initialization'' (''initialize''))
+            (''Accessing'' (''size'' ''at:'' ''isEmpty'' ''includes:''))
+            (''Updating'' (''at:put:'' ''atAll:put:'' ''atAllPut:'' ''replaceFrom:to:with:''
+                ''replaceFrom:to:with:startingAt:'' ''replaceFrom:to:withObject:''))
+            (''Enumerating'' (''do:'' ''collect:'' ''select:''))
+            (''Copying and Conversion'' (''copy'' '','' ''asArray''))
+            (''Private'' (''_size:'' ''_initializeFrom:'' ''_checkByte:'' ''_sequenceFrom:''))))
+        (''SortedCollection'' (
+            (''Initialization'' (''initialize''))
+            (''Accessing'' (''size'' ''at:'' ''isEmpty'' ''includes:''))
+            (''Sorting'' (''sortBlock'' ''sortBlock:''))
+            (''Adding'' (''add:'' ''addAll:''))
+            (''Removing'' (''remove:'' ''remove:ifAbsent:'' ''removeAll:'' ''removeAtIndex:'' ''removeFirst'' ''removeLast''))
+            (''Enumerating'' (''do:'' ''collect:'' ''select:'' ''reverse''))
+            (''Copying and Conversion'' (''copy'' '','' ''asArray'' ''asSortedCollection''))
+            (''Private'' (''_elements'' ''_reserve:'' ''_sorted:by:'' ''_sequenceFrom:''))))
         (''String'' (
             (''Accessing'' (''size'' ''at:'' ''characters'' ''isEmpty''))
             (''Updating'' (''at:put:'' ''atAll:put:'' ''atAllPut:'' ''replaceFrom:to:with:''
@@ -337,7 +379,11 @@ BrowserOrganization compile: 'shippedProtocols
                 ''testScaledDecimalMixedNumericTypes'' ''testScaledDecimalConversions'' ''testScaledDecimalWithWideCoefficient''
                 ''testIntegerBitAndNumberTheoryProtocols'' ''testNumericConversionsAndIntervals''))
             (''Collection Tests'' (''testArrayFactoriesAndIndexedCopy'' ''testLargeArrayIsOneBasedAndInitiallyNil''
-                ''testCollectionSearchingAndEnumeration'' ''testSequenceCopyAndOverlappingReplacement''))
+                ''testCollectionSearchingAndEnumeration'' ''testSequenceCopyAndOverlappingReplacement''
+                ''testBagCountsAndRemovesOccurrences'' ''testSetUsesEqualityAndSuppressesDuplicates''
+                ''testOrderedCollectionInsertsAndRemovesAtBoundaries'' ''testOrderedCollectionSnapshotsOverlappingUpdates''
+                ''testByteArrayFactoriesBoundsAndReplacement'' ''testSortedCollectionInsertionAndResorting''
+                ''testSortedCollectionResultsKeepTheirRequiredOrdering'' ''testCollectionConversions''))
             (''Exception Tests'' (''testExceptionNormalCompletion'' ''testExceptionSignalersAndMetadata''
                 ''testExceptionSelectsNearestMatchingHandler'' ''testExceptionFromAnActionUsesTheOuterEnvironment''
                 ''testExceptionHandlerRunsBeforeUnwindBlocks'' ''testExceptionActionCanReturnFromItsHomeMethod''
@@ -348,6 +394,13 @@ BrowserOrganization compile: 'shippedProtocols
 
 BrowserOrganization compile: 'shippedClassSideProtocols
     ^ #(
+        (''Collection'' ((''Instance Creation'' (''with:'' ''with:with:'' ''with:with:with:'' ''with:with:with:with:'' ''withAll:''))))
+        (''UnorderedCollection'' ((''Instance Creation'' (''new:''))))
+        (''ByteArray'' ((''Instance Creation'' (''new:'' ''withAll:''))))
+        (''OrderedCollection'' ((''Instance Creation'' (''new:''))))
+        (''SortedCollection'' (
+            (''Instance Creation'' (''new:'' ''withAll:'' ''sortBlock:''))
+            (''Sorting'' (''_defaultSortBlock''))))
         (''Array'' ((''Instance Creation'' (''with:'' ''with:with:'' ''with:with:with:'' ''with:with:with:with:'' ''withAll:''))))
         (''String'' ((''Instance Creation'' (''with:'' ''with:with:'' ''with:with:with:'' ''with:with:with:with:'' ''withAll:''))))
         (''Character'' (

@@ -29,7 +29,8 @@ final class SmalltalkRuntime {
         ("Fraction", "Number"),
         ("ScaledDecimal", "Number"),
         ("Float", "Number"),
-        ("SequenceableCollection", "Object"),
+        ("Collection", "Object"),
+        ("SequenceableCollection", "Collection"),
         ("String", "SequenceableCollection"),
         ("Character", "Object"),
         ("Symbol", "SequenceableCollection"),
@@ -39,11 +40,13 @@ final class SmalltalkRuntime {
         ("Transcript", "Object"),
     ]
     static let builtinNames = Set(builtinHierarchy.map(\.name))
-    static let heapBuiltinNames: Set<String> = ["Object", "Exception", "Error", "MessageNotUnderstood", "ZeroDivide", "ExceptionSet", "Interval"]
+    static let heapBuiltinNames: Set<String> = ["Object", "Exception", "Error", "MessageNotUnderstood", "ZeroDivide", "ExceptionSet",
+                                                "Collection", "SequenceableCollection", "Interval"]
     static let additiveBuiltinNames: Set<String> = ["Character", "Float", "LargeInteger", "Fraction", "ScaledDecimal", "Exception", "Error", "Metaclass",
-                                                   "MessageNotUnderstood", "ZeroDivide", "ExceptionSet", "SequenceableCollection", "Interval"]
+                                                   "MessageNotUnderstood", "ZeroDivide", "ExceptionSet", "Collection", "SequenceableCollection", "Interval"]
+    static let shippedCollectionNames: Set<String> = ["UnorderedCollection", "Bag", "ByteArray", "OrderedCollection", "Set", "SortedCollection"]
     static let floatAliases: Set<String> = ["FloatE", "FloatD", "FloatQ"]
-    static let classLimit = 128 + additiveBuiltinNames.count
+    static let classLimit = 128 + additiveBuiltinNames.count + shippedCollectionNames.count
     static let executionStepLimit = 100_000
     static let evaluationDepthLimit = 256
     private static let compilerDepthLimit = 1_400

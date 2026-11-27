@@ -2,9 +2,15 @@ import Foundation
 
 /// An isolated, persistent object space. Evaluations run away from the UI actor.
 public actor SmalltalkSession {
-    let worker = InterpreterWorker()
+    let worker: InterpreterWorker
 
-    public init() {}
+    public init() {
+        worker = InterpreterWorker()
+    }
+
+    package init(confirmWarning: @escaping @Sendable (WarningPrompt) -> Bool) {
+        worker = InterpreterWorker(confirmWarning: confirmWarning)
+    }
 
     public func evaluate(_ source: String) async -> EvaluationResult {
         await worker.submit { $0.run(source) }

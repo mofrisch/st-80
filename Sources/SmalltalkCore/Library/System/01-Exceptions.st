@@ -1,5 +1,8 @@
 "Exception policy and descriptions. The VM maintains the dynamic handler environment."
 
+Exception subclass: #Notification instanceVariableNames: ''.
+Notification subclass: #Warning instanceVariableNames: ''.
+
 Object compile: 'error: aString
     ^ Error signal: aString'.
 
@@ -47,6 +50,22 @@ Exception compile: 'isResumable
 
 Exception compile: 'defaultAction
     ^ self _failUnhandledException'.
+
+Notification compile: 'isResumable
+    ^ true'.
+
+Notification compile: 'defaultAction
+    ^ nil'.
+
+Warning compile: 'defaultAction
+    | text decision |
+    text := self description asString.
+    decision := self _confirmWarning: text title: ''Smalltalk Warning'' continue: ''Continue'' abort: ''Abort''.
+    decision isNil ifTrue: [
+        Transcript show: ''Warning: ''; show: text; cr.
+        ^ nil ].
+    decision ifFalse: [ ^ self _failUnhandledException ].
+    ^ nil'.
 
 Exception compileClass: ', another
     ^ ExceptionSet new selectors: (Array with: self with: another); yourself'.

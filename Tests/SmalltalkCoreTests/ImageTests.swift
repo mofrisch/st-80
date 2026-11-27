@@ -442,6 +442,35 @@ struct ImageTests {
         }
     }
 
+    @Test(arguments: [false, true])
+    func versionNineImagesBackfillNotificationsWithoutReplacingBindings(customBinding: Bool) async throws {
+        let original = SmalltalkSession()
+        var archive = try JSONDecoder().decode(ImageArchive.self, from: await original.imageData())
+        let names = SmalltalkRuntime.shippedNotificationNames.union(["ANSIProbeWarning"])
+        archive.classes.removeAll { names.contains($0.name) }
+        for name in names {
+            archive.globals.removeValue(forKey: name)
+            archive.executableMethods?.removeValue(forKey: name)
+            archive.executableClassMethods?.removeValue(forKey: name)
+        }
+        if customBinding { archive.globals["Notification"] = .symbol("custom") }
+
+        let restored = SmalltalkSession()
+        _ = try await restored.loadImage(JSONEncoder().encode(archive))
+        if customBinding {
+            #expect(await value("Notification", in: restored) == "#custom")
+            #expect(await restored.evaluate("Warning").error != nil)
+        } else {
+            #expect(await value("Warning superclass == Notification", in: restored) == "true")
+            #expect(await value("Notification signal isNil", in: restored) == "true")
+            #expect(await value("SystemOrganization categoryOf: 'Warning'", in: restored) == "'Exceptions'")
+            #expect(await value("""
+                (SystemOrganization protocolsOf: Warning side: #instance)
+                    groupOf: 'defaultAction' default: 'Unclassified'
+                """, in: restored) == "'Signaling'")
+        }
+    }
+
     @Test func textStreamSizeLimitLeavesPositionAndContentsIntact() async throws {
         let session = SmalltalkSession()
         let setup = try await session.worker.submitThrowing { runtime in

@@ -27,7 +27,7 @@ final class InterpreterWorker: Sendable {
 
     private let queue: Queue
 
-    init(bootstrap: Bool = true) {
+    init(bootstrap: Bool = true, confirmWarning: (@Sendable (WarningPrompt) -> Bool)? = nil) {
         let queue = Queue()
         self.queue = queue
         // Foundation retains a started Thread until its entry closure finishes.
@@ -42,6 +42,7 @@ final class InterpreterWorker: Sendable {
                 queue.activeCancellation = job.cancellation
                 queue.condition.unlock()
                 autoreleasepool {
+                    runtime.confirmWarning = confirmWarning
                     job.operation(&runtime)
                     runtime.collectGarbageIfDue()
                 }

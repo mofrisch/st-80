@@ -334,7 +334,7 @@ extension SmalltalkRuntime {
         }
     }
 
-    private func readableString(_ value: Value) throws -> String {
+    func readableString(_ value: Value) throws -> String {
         if case .symbol(let name) = value { return name }
         return try string(value)
     }

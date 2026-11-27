@@ -141,7 +141,8 @@ struct SystemLibrary: Sendable {
             try backfillMethods(on: target)
             added.insert(definition.name)
         }
-        if !names.isSubset(of: SmalltalkRuntime.shippedDateTimeNames) {
+        let nonCollectionNames = SmalltalkRuntime.shippedDateTimeNames.union(SmalltalkRuntime.shippedNotificationNames)
+        if !names.isSubset(of: nonCollectionNames) {
             try backfillMethods(on: runtime.classes["Collection"]!)
         }
         return added
@@ -184,6 +185,7 @@ struct SystemLibrary: Sendable {
                 "cc354ef0e71fc134f9f19929c4a44403584e9ebcc7dbd9085efa9bcb0716b8c3",
                 "653ab4efb336295ac621f4148d18c8514eee3a4c1bbbaa4494e4d8b653bed335",
                 "71d48031db4dc35c95db45ac06fb70d52359900c1fd9cbb3043998fc6c2c4180",
+                "c78aa3118354a6a154dd054e2f9eac77d18efd675f2542e748cfa762fc695f64",
             ]),
             (.instance, "shippedClassSideProtocols", [
                 "7b2f2950f5dc051c01fdcd0afcdde26c8505606a3c1f370ad2c6910c5eff398c",
@@ -203,6 +205,7 @@ struct SystemLibrary: Sendable {
                 "e1980acc550da5ca0237e0eac5c268fd24cb6f1226190fba9946133a2aef6f2c",
                 "8f14c680d8411bf47e591c778eb7b66fad36e7493fc9bee2484710a6998bf2dc",
                 "b2d934eaaf2b7476f68f04841e4b81db411ed9f5bbc5e24de5fa6f69f91fab7a",
+                "3075b28152eee65ef6d3c9ded49fa3e892aa0dce8c08cb00ea79086c85bef9fe",
             ]),
         ]
         var refresh = classesAdded

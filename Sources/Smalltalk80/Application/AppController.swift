@@ -40,7 +40,17 @@ final class AppController {
     @ObservationIgnored private var operationWaiter: CheckedContinuation<Void, Never>?
     private(set) var imageURL: URL?
     private var imageHasChanges = false
-    let session = SmalltalkSession()
+    let session = SmalltalkSession(confirmWarning: { prompt in
+        DispatchQueue.main.sync {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = prompt.title
+            alert.informativeText = prompt.message
+            alert.addButton(withTitle: prompt.continueTitle)
+            alert.addButton(withTitle: prompt.abortTitle).keyEquivalent = "\u{1b}"
+            return alert.runModal() == .alertFirstButtonReturn
+        }
+    })
     @ObservationIgnored var inspectors: [UUID: InspectorPresentationState] = [:]
     var keyInspectorID: UUID?
     private let settingsWindowID = UUID()

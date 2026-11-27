@@ -201,7 +201,8 @@ enum ImageCodec {
         // Version 9 images can predate these classes. Preserve existing
         // bindings, including small libraries authored under the same names.
         for names in [SmalltalkRuntime.shippedDictionaryNames, SmalltalkRuntime.shippedStreamNames,
-                      SmalltalkRuntime.shippedFileStreamNames, SmalltalkRuntime.shippedDateTimeNames] {
+                      SmalltalkRuntime.shippedFileStreamNames, SmalltalkRuntime.shippedDateTimeNames,
+                      SmalltalkRuntime.shippedNotificationNames] {
             if names.allSatisfy({ records[$0] == nil && image.globals[$0] == nil }) {
                 missingClasses.formUnion(names)
             }

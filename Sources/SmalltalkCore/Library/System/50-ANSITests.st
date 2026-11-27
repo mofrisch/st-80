@@ -13,6 +13,10 @@ ANSIDispatchProbe compile: 'handles: anException
 
 Error subclass: #ANSIProbeError instanceVariableNames: ''.
 Exception subclass: #ANSIProbeException instanceVariableNames: ''.
+Warning subclass: #ANSIProbeWarning instanceVariableNames: ''.
+
+ANSIProbeWarning compile: 'defaultAction
+    ^ #customWarning'.
 
 Object subclass: #ANSIClassStateProbe
     instanceVariableNames: 'slot'
@@ -1026,3 +1030,47 @@ ANSISmalltalkTest compile: 'testDateAndTimeClock
     self assert: (now second >= 0 and: [ now second < 60 ]).
     self assert: precision class equals: Duration.
     self assert: precision asSeconds > 0'.
+
+ANSISmalltalkTest compile: 'testNotificationDefaultsToNilAndContinues
+    | answer after |
+    answer := Notification signal: ''A notification''.
+    after := 42.
+    self assert: answer isNil.
+    self assert: after equals: 42.
+    self assert: Notification new isResumable.
+    self assert: Notification superclass == Exception'.
+
+ANSISmalltalkTest compile: 'testNotificationResumeReturnsToTheSignal
+    | result |
+    result := [ (Notification signal: ''Resume here'') + 2 ] on: Notification do: [ :exception |
+        self assert: exception messageText equals: ''Resume here''.
+        self assert: exception tag equals: ''Resume here''.
+        exception resume: 40 ].
+    self assert: result equals: 42'.
+
+ANSISmalltalkTest compile: 'testWarningUsesTheNearestHandlerAndCanResume
+    | result |
+    self assert: Warning superclass == Notification.
+    self assert: Warning new isResumable.
+    self deny: (Error handles: Warning new).
+    self assert: (Notification handles: Warning new).
+    result := [
+        [ (Warning signal: ''First handler'') + 2 ] on: Warning do: [ :exception |
+            self assert: exception isNested.
+            exception resume: 40 ]
+    ] on: Notification do: [ :exception | self fail: ''The outer handler ran.'' ].
+    self assert: result equals: 42'.
+
+ANSISmalltalkTest compile: 'testWarningCanPassToANotificationHandler
+    | result |
+    result := [
+        [ (Warning signal: ''Pass outward'') + 2 ] on: Warning do: [ :exception | exception pass ]
+    ] on: Notification do: [ :exception |
+        self assert: exception class == Warning.
+        exception resume: 40 ].
+    self assert: result equals: 42'.
+
+ANSISmalltalkTest compile: 'testWarningSubclassCanDefineItsDefaultAction
+    self assert: ANSIProbeWarning signal equals: #customWarning.
+    self assert: ([ ANSIProbeWarning signal ] on: Warning do: [ :exception | exception class ])
+        equals: ANSIProbeWarning'.

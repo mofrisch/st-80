@@ -49,9 +49,11 @@ final class SmalltalkRuntime {
     static let shippedStreamNames: Set<String> = ["CollectionStream", "ReadStream", "WriteStream", "ReadWriteStream"]
     static let shippedFileStreamNames: Set<String> = ["FileStream", "ReadFileStream", "WriteFileStream"]
     static let shippedDateTimeNames: Set<String> = ["DateAndTime", "Duration"]
+    static let shippedNotificationNames: Set<String> = ["Notification", "Warning"]
     static let floatAliases: Set<String> = ["FloatE", "FloatD", "FloatQ"]
     static let classLimit = 128 + additiveBuiltinNames.count + shippedCollectionNames.count
         + shippedDictionaryNames.count + shippedStreamNames.count + shippedFileStreamNames.count + shippedDateTimeNames.count
+        + shippedNotificationNames.count
     static let executionStepLimit = 100_000
     static let evaluationDepthLimit = 256
     private static let compilerDepthLimit = 1_400
@@ -87,6 +89,7 @@ final class SmalltalkRuntime {
     var exceptionHandler: SmalltalkExceptionHandler?
     var exceptionAction: SmalltalkExceptionAction?
     var exceptionDefaultSignal: SmalltalkSignal?
+    var confirmWarning: (@Sendable (WarningPrompt) -> Bool)?
     var useASTInterpreterForTesting = false
     let compilationMode: Bool
     var arrayLimit: Int { compilationMode ? 524_288 : 65_535 }

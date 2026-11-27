@@ -124,7 +124,7 @@ BrowserOrganization compileClass: 'shippedClassCategories
             ''Number'' ''BlockClosure'' ''FailedMessage''))
         (''Numbers'' (''Integer'' ''SmallInteger'' ''LargeInteger'' ''Fraction'' ''ScaledDecimal'' ''Float''))
         (''Date and Time'' (''DateAndTime'' ''Duration''))
-        (''Exceptions'' (''Exception'' ''Error'' ''ExceptionSet'' ''MessageNotUnderstood'' ''ZeroDivide''))
+        (''Exceptions'' (''Exception'' ''Error'' ''ExceptionSet'' ''MessageNotUnderstood'' ''Notification'' ''Warning'' ''ZeroDivide''))
         (''Collections & Text'' (''Collection'' ''SequenceableCollection'' ''Array'' ''ByteArray'' ''Interval''
             ''OrderedCollection'' ''SortedCollection'' ''UnorderedCollection'' ''Bag'' ''Set''
             ''Dictionary'' ''IdentityDictionary'' ''String'' ''Character'' ''Symbol''
@@ -148,7 +148,7 @@ BrowserOrganization compileClass: 'shippedClassCategories
         (''Examples'' (''Counter'' ''WorkspaceExamples''))
         (''Tests'' (''TestCase'' ''TestOutcome'' ''TestResult'' ''TestRunner''
             ''CounterTest'' ''CollectionsTest'' ''BindingTestModel'' ''UIBindingTest''
-            ''ANSIDispatchProbe'' ''ANSIProbeError'' ''ANSIProbeException''
+            ''ANSIDispatchProbe'' ''ANSIProbeError'' ''ANSIProbeException'' ''ANSIProbeWarning''
             ''ANSIClassStateProbe'' ''ANSIClassStateChild'' ''ANSISmalltalkTest'')))'.
 
 BrowserOrganization compile: 'classCategories

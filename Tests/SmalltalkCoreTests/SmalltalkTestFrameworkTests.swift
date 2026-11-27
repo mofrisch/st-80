@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import os
 @testable import SmalltalkCore
 
 private final class SmalltalkTestBundleToken {}
@@ -15,7 +16,54 @@ struct SmalltalkTestFrameworkTests {
         #expect(await session.evaluate("CounterTest run passedCount").value == "2")
         #expect(await session.evaluate("CollectionsTest run passedCount").value == "2")
         #expect(await session.evaluate("UIBindingTest run passedCount").value == "2")
-        #expect(await session.evaluate("ANSISmalltalkTest run passedCount").value == "71")
+        #expect(await session.evaluate("ANSISmalltalkTest run passedCount").value == "76")
+    }
+
+    @Test func headlessWarningsLogAndContinueWhileNotificationsAreSilent() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            notice := Notification signal: 'silent'.
+            warning := Warning signal: 'log this'.
+            Array with: notice with: warning with: 42
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(nil nil 42)")
+        #expect(result.transcript == "Warning: log this\n")
+    }
+
+    @Test(arguments: [false, true])
+    func warningHostDecisionResumesOrAbortsTheActiveEvaluation(proceed: Bool) async {
+        let prompts = OSAllocatedUnfairLock(initialState: [WarningPrompt]())
+        let session = SmalltalkSession(confirmWarning: { prompt in
+            prompts.withLock { $0.append(prompt) }
+            return proceed
+        })
+        // Image replacement must not discard the host capability.
+        _ = await session.reset()
+        let result = await session.evaluate("""
+            Notification signal: 'silent'.
+            [ Warning signal: 'handled' ] on: Warning do: [ :exception | exception resume ].
+            warningContinued := false.
+            warningCleanedUp := false.
+            [ Warning signal: #'Check input'. warningContinued := true. 42 ]
+                ensure: [ warningCleanedUp := true ]
+            """)
+        let captured = prompts.withLock { $0 }
+        #expect(captured.count == 1)
+        #expect(captured.first?.message == "Check input")
+        #expect(captured.first?.title == "Smalltalk Warning")
+        #expect(captured.first?.continueTitle == "Continue")
+        #expect(captured.first?.abortTitle == "Abort")
+        #expect(result.transcript.isEmpty)
+        if proceed {
+            #expect(result.error == nil)
+            #expect(result.value == "42")
+        } else {
+            #expect(result.executionError?.contains("Check input") == true)
+            #expect(result.value == nil)
+        }
+        #expect(await session.evaluate("warningContinued").value == (proceed ? "true" : "false"))
+        #expect(await session.evaluate("warningCleanedUp").value == "true")
     }
 
     @Test func ansiFileStreamSmalltalkTestsPass() async throws {

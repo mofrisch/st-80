@@ -191,6 +191,9 @@ extension SmalltalkRuntime {
             "return": "Exits the protected block with nil.",
             "return:": "Exits the protected block with the argument.",
         ],
+        "Warning": [
+            "_confirmWarning:title:continue:abort:": "Asks the host to continue or abort. Returns nil when no prompt is available.",
+        ],
         "Transcript": ["record:": "Records transcript output for the current evaluation."],
     ]
 

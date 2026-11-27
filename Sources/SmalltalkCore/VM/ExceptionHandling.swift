@@ -1,3 +1,11 @@
+/// Only the display text and the user's decision cross the host boundary.
+package struct WarningPrompt: Sendable {
+    package let message: String
+    package let title: String
+    package let continueTitle: String
+    package let abortTitle: String
+}
+
 /// The dynamic handler environment. The send of on:do: keeps both operands
 /// rooted for the lifetime of the handler, including while it is suspended.
 final class SmalltalkExceptionHandler {
@@ -126,7 +134,7 @@ extension SmalltalkRuntime {
             } catch let transfer as ExceptionTransfer where transfer.target == ObjectIdentifier(signal) {
                 switch transfer.kind {
                 case .resignaled: evaluationRoots[rootCount] = transfer.value ?? .nilValue
-                case .unhandled: throw SmalltalkError(try string(transfer.value ?? .nilValue))
+                case .unhandled: throw SmalltalkError(try readableString(transfer.value ?? .nilValue))
                 default: throw transfer
                 }
             }
@@ -170,7 +178,7 @@ extension SmalltalkRuntime {
         let result = try send(receiver, "defaultAction", [])
         return try withRoots([result]) { _ in
             if try boolean(send(receiver, "isResumable", [])) { return result }
-            throw SmalltalkError(try string(send(receiver, "description", [])))
+            throw SmalltalkError(try readableString(send(receiver, "description", [])))
         }
     }
 
@@ -206,12 +214,21 @@ extension SmalltalkRuntime {
 
     func exceptionPrimitive(_ receiver: Value, _ object: STObject, _ selector: String, _ arguments: [Value]) throws -> Value? {
         switch selector {
+        case "_confirmWarning:title:continue:abort:":
+            guard let warning = classes["Warning"], object.stClass.inherits(from: warning) else { return nil }
+            guard let confirmWarning else { return .nilValue }
+            let prompt = try WarningPrompt(message: string(arguments[0]), title: string(arguments[1]),
+                                           continueTitle: string(arguments[2]), abortTitle: string(arguments[3]))
+            try executionCancellation?.checkStop()
+            let proceed = confirmWarning(prompt)
+            try executionCancellation?.checkStop()
+            return .boolean(proceed)
         case "_signalException", "_failUnhandledException":
             guard let exceptionClass = classes["Exception"], object.stClass.inherits(from: exceptionClass) else { return nil }
             if selector == "_signalException" { return try signalException(receiver) }
             let message = try send(receiver, "description", [])
             if let signal = exceptionDefaultSignal { throw ExceptionTransfer(.unhandled, to: signal, value: message) }
-            throw SmalltalkError(try string(message))
+            throw SmalltalkError(try readableString(message))
         case "isNested", "outer", "pass", "resignalAs:", "resume", "resume:", "retry", "retryUsing:", "return", "return:":
             guard let exceptionClass = classes["Exception"], object.stClass.inherits(from: exceptionClass) else { return nil }
             return try exceptionTransfer(selector, arguments: arguments, exception: object)

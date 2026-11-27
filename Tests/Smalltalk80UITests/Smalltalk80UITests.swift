@@ -979,6 +979,33 @@ final class Smalltalk80UITests: XCTestCase {
         XCTAssertFalse(workspace.staticTexts["ERROR"].exists)
     }
 
+    func testUnhandledWarningOffersContinueAndAbort() {
+        let app = launchFreshApp()
+        defer { app.terminate() }
+        let workspace = app.windows["toolWindow-1"]
+        let editor = workspace.textViews["workspaceEditor"]
+        let run = workspace.buttons["executeButton"]
+        let warning = app.windows.containing(.button, identifier: "Abort").firstMatch
+
+        replaceText(in: editor, with: "Warning signal: 'Continue this run'. 42")
+        run.click()
+        XCTAssertTrue(warning.staticTexts["Continue this run"].waitForExistence(timeout: 5))
+        warning.buttons["Continue"].click()
+        XCTAssertTrue(workspace.staticTexts["42"].waitForExistence(timeout: 5))
+
+        replaceText(in: editor, with: "warningContinued := false. Warning signal: 'Abort this run'. warningContinued := true")
+        run.click()
+        XCTAssertTrue(warning.staticTexts["Abort this run"].waitForExistence(timeout: 5))
+        warning.buttons["Abort"].click()
+        let error = workspace.staticTexts["toolWindowError"]
+        let reported = NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Abort this run", "Abort this run")
+        wait(for: [expectation(for: reported, evaluatedWith: error)], timeout: 5)
+
+        replaceText(in: editor, with: "warningContinued ifFalse: [ #aborted ]")
+        run.click()
+        XCTAssertTrue(workspace.staticTexts["#aborted"].waitForExistence(timeout: 5))
+    }
+
     func testWorkspaceBudgetAndStopApplyToOneDoIt() {
         let app = launchFreshApp()
         let workspace = app.windows["toolWindow-1"]

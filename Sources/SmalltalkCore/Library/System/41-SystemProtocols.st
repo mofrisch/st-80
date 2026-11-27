@@ -220,6 +220,10 @@ BrowserOrganization compile: 'shippedProtocols
             (''Signaling'' (''signal'' ''signal:'' ''defaultAction'' ''_signalException'' ''_failUnhandledException''))
             (''Handler Control'' (''isNested'' ''outer'' ''pass'' ''resignalAs:'' ''resume'' ''resume:''
                 ''retry'' ''retryUsing:'' ''return'' ''return:''))))
+        (''Notification'' ((''Signaling'' (''defaultAction'' ''isResumable''))))
+        (''Warning'' (
+            (''Signaling'' (''defaultAction''))
+            (''Private'' (''_confirmWarning:title:continue:abort:''))))
         (''ExceptionSet'' ((''Handler Selection'' (''selectors:'' ''handles:'' '',''))))
         (''MessageNotUnderstood'' ((''Exception Description'' (''receiver:message:'' ''receiver'' ''message'' ''description'' ''isResumable''))))
         (''ZeroDivide'' ((''Exception Description'' (''dividend:'' ''dividend'' ''description'' ''isResumable''))))
@@ -425,6 +429,7 @@ BrowserOrganization compile: 'shippedProtocols
         (''ANSIDispatchProbe'' ((''Dispatch'' (''touch'' ''doesNotUnderstand:'')) (''Exception Selection'' (''handles:''))))
         (''ANSIClassStateProbe'' ((''Accessing'' (''slot''))))
         (''ANSIProbeException'' ((''Signaling'' (''defaultAction'' ''isResumable''))))
+        (''ANSIProbeWarning'' ((''Signaling'' (''defaultAction''))))
         (''ANSISmalltalkTest'' (
             (''Language Tests'' (''testMessagePrecedence'' ''testCascadeUsesTheSameReceiver''
                 ''testMethodReturnAndSuper'' ''testFailedSendCarriesSelectorAndArguments''
@@ -461,7 +466,10 @@ BrowserOrganization compile: 'shippedProtocols
                 ''testExceptionSelectsNearestMatchingHandler'' ''testExceptionFromAnActionUsesTheOuterEnvironment''
                 ''testExceptionHandlerRunsBeforeUnwindBlocks'' ''testExceptionActionCanReturnFromItsHomeMethod''
                 ''testExceptionSelectorUsesHandles'' ''testExceptionDefaultAction''
-                ''testExceptionRetryReturnAndResignal'' ''testExceptionResumeOuterPassAndSets'' ''testStandardErrorsCarryTheirArguments''))
+                ''testExceptionRetryReturnAndResignal'' ''testExceptionResumeOuterPassAndSets'' ''testStandardErrorsCarryTheirArguments''
+                ''testNotificationDefaultsToNilAndContinues'' ''testNotificationResumeReturnsToTheSignal''
+                ''testWarningUsesTheNearestHandlerAndCanResume'' ''testWarningCanPassToANotificationHandler''
+                ''testWarningSubclassCanDefineItsDefaultAction''))
             (''Test Support'' (''returnThroughCleanup:'' ''returnThroughException:''))))
     )'.
 

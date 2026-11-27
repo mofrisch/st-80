@@ -74,6 +74,27 @@ extension SmalltalkRuntime {
         case "sqrt": return try finiteFloat(number.squareRoot())
         case "exp": return try finiteFloat(exp(number))
         case "ln": return try finiteFloat(log(number))
+        case "_log:":
+            switch arguments[0] {
+            case .integer, .largeInteger, .fraction, .scaledDecimal:
+                break
+            default:
+                let receiverLog = try send(.float(number), "ln", [])
+                return try withRoots([receiverLog]) { _ in
+                    let base = try send(arguments[0], "asFloat", [])
+                    let baseLog = try send(base, "ln", [])
+                    return try send(receiverLog, "/", [baseLog])
+                }
+            }
+            let receiverLog = try finiteDouble(log(number))
+            let (top, bottom) = try logarithmBaseRatio(arguments[0])
+            guard top > .zero else { throw SmalltalkError("Logarithm requires a positive base.") }
+            if top == bottom { return try signalZeroDivide(dividend: .float(receiverLog)) }
+            let inverted = top < bottom
+            if number == 1 { return .float(inverted ? -0.0 : 0.0) }
+            let baseLog = try scaledLogarithm(inverted ? bottom : top, by: inverted ? top : bottom)
+            let result = scalbn(receiverLog / baseLog.significand, -baseLog.exponent)
+            return try finiteFloat(inverted ? -result : result)
         case "_floorLog:":
             return try integerValue(floorLogarithm(number, base: arguments[0]))
         case "arcCos": return try finiteFloat(acos(number))
@@ -99,15 +120,9 @@ extension SmalltalkRuntime {
             throw SmalltalkError("Floor logarithm requires a positive receiver and a base greater than one.")
         }
         if number == 1 { return .zero }
-        let difference = numerator - denominator
-        let baseLog: Double
-        if difference < denominator {
-            // Subtract exactly so a rational base rounding to binary64 one still has a nonzero logarithm.
-            baseLog = try log1p(difference.doubleValue(dividedBy: denominator, charge: chargeNumericWork))
-        } else {
-            baseLog = try log(numerator.doubleValue(dividedBy: denominator, charge: chargeNumericWork))
-        }
-        let estimate = BigInteger(exactly: (log(number) / baseLog).rounded(.down)) ?? .zero
+        let baseLog = try scaledLogarithm(numerator, by: denominator)
+        let quotient = scalbn(log(number) / baseLog.significand, -baseLog.exponent)
+        let estimate = BigInteger(exactly: quotient.rounded(.down)) ?? .zero
         let receiver = BinaryPowerBound(number)
         // Work with the reciprocal for negative exponents. A power can then be
         // compared directly with a binary64 receiver, including exact equality.
@@ -164,6 +179,22 @@ extension SmalltalkRuntime {
             if try powerIsAtMostReceiver(middle) { lower = middle } else { upper = middle }
         }
         return lower
+    }
+
+    private func scaledLogarithm(_ top: BigInteger, by bottom: BigInteger) throws -> (significand: Double, exponent: Int32) {
+        let difference = top - bottom
+        if difference < bottom {
+            let shift = difference.bitWidth - bottom.bitWidth
+            if shift < -54 {
+                // log1p(x) agrees with x to binary64 precision at this scale.
+                let normalized = try difference.shiftedLeft(-shift).doubleValue(dividedBy: bottom, charge: chargeNumericWork)
+                return (normalized, Int32(clamping: shift))
+            }
+            return (try log1p(difference.doubleValue(dividedBy: bottom, charge: chargeNumericWork)), 0)
+        }
+        let shift = top.bitWidth - bottom.bitWidth
+        let normalized = try top.doubleValue(dividedBy: bottom.shiftedLeft(shift), charge: chargeNumericWork)
+        return (log(normalized) + Double(shift) * log(2), 0)
     }
 
     private func logarithmBaseRatio(_ base: Value) throws -> (BigInteger, BigInteger) {

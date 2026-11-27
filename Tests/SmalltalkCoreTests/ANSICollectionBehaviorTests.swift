@@ -2,6 +2,59 @@ import Testing
 import SmalltalkCore
 
 struct ANSICollectionBehaviorTests {
+    @Test func intervalElementsKeepTheCommonNumericProtocolDuringAccessAndEnumeration() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | interval integralStart indexed enumerated values |
+            interval := 0 to: 1 by: (1 / 2).
+            integralStart := (Fraction numerator: 4 denominator: 2) to: 4.
+            indexed := Array with: (interval at: 1) class with: (interval at: 3) class.
+            enumerated := OrderedCollection new.
+            0 to: 1 by: (1 / 2) do: [ :each | enumerated add: each class ].
+            values := interval asArray.
+            Array with: indexed with: enumerated asArray
+                with: (integralStart collect: [ :each | each class ])
+                with: (values = (Array with: 0 with: (1 / 2) with: 1))
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(#(Fraction Fraction) #(Fraction Fraction Fraction) #(Fraction Fraction Fraction) true)")
+    }
+
+    @Test func bulkIndexedWritesSendAtPutToTheReceiver() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | list bytes text |
+            OrderedCollection subclass: #ANSIBulkWriteList instanceVariableNames: 'writes'.
+            ANSIBulkWriteList compile: 'initialize super initialize. writes := OrderedCollection new'.
+            ANSIBulkWriteList compile: 'at: index put: element
+                writes add: index. ^ super at: index put: element'.
+            ANSIBulkWriteList compile: 'writes ^ writes asArray'.
+            ByteArray subclass: #ANSIBulkWriteBytes instanceVariableNames: 'writes'.
+            ANSIBulkWriteBytes compile: 'initialize super initialize. writes := OrderedCollection new'.
+            ANSIBulkWriteBytes compile: 'at: index put: element
+                writes add: index. ^ super at: index put: element'.
+            ANSIBulkWriteBytes compile: 'writes ^ writes asArray'.
+            ansiStringWrites := OrderedCollection new.
+            String compile: 'at: index put: element
+                | characters |
+                ansiStringWrites add: index.
+                characters := self asArray.
+                characters at: index put: element.
+                self _replaceCharacters: characters.
+                ^ element'.
+            list := ANSIBulkWriteList withAll: #(1 2 3).
+            bytes := ANSIBulkWriteBytes withAll: #(1 2 3).
+            text := String withAll: 'abc'.
+            list atAll: #(2 3 2) put: 7; atAllPut: 5.
+            bytes atAll: #(2 3 2) put: 7; atAllPut: 5.
+            text atAll: #(2 3 2) put: $x; atAllPut: $z.
+            Array with: list writes with: bytes writes with: ansiStringWrites asArray
+                with: (Array with: list asArray with: bytes asArray with: text)
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(#(2 3 2 1 2 3) #(2 3 2 1 2 3) #(2 3 2 1 2 3) #(#(5 5 5) #(5 5 5) 'zzz'))")
+    }
+
     @Test func extensibleCollectionBulkOperationsUseSourceIterationAndIndividualMessages() async {
         let session = SmalltalkSession()
         let result = await session.evaluate("""

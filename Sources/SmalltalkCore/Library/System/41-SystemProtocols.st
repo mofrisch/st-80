@@ -64,6 +64,7 @@ BrowserOrganization compile: 'shippedProtocols
             (''Comparing'' (''<'' ''>'' ''<='' ''>=''))
             (''Converting'' (''asFloat'' ''asFloatE'' ''asFloatD'' ''asFloatQ'' ''asScaledDecimal:'' ''floor'' ''ceiling'' ''rounded'' ''truncated''))
             (''Mathematical Functions'' (''sqrt''))
+            (''Private'' (''_exactSqrt''))
             (''Iteration'' (''to:do:'' ''to:by:do:''))))
         (''ScaledDecimal'' (
             (''Accessing'' (''scale'' ''integerPart'' ''fractionPart''))
@@ -71,6 +72,7 @@ BrowserOrganization compile: 'shippedProtocols
             (''Comparing'' (''<'' ''>'' ''<='' ''>='' ''negative'' ''positive'' ''strictlyPositive'' ''sign''))
             (''Converting'' (''asFraction'' ''asScaledDecimal:'' ''asFloat'' ''asFloatE'' ''asFloatD'' ''asFloatQ''
                 ''asInteger'' ''rounded'' ''floor'' ''ceiling'' ''truncated''))
+            (''Private'' (''_exactSqrt''))
             (''Iteration'' (''to:do:'' ''to:by:do:''))))
         (''Float'' (
             (''Arithmetic'' (''+'' ''-'' ''*'' ''/'' ''//'' ''\\'' ''negated'' ''abs'' ''squared''))
@@ -79,7 +81,7 @@ BrowserOrganization compile: 'shippedProtocols
             (''Mathematical Functions'' (''sqrt'' ''exp'' ''ln'' ''log:'' ''floorLog:''))
             (''Trigonometry'' (''sin'' ''cos'' ''tan'' ''arcSin'' ''arcCos'' ''arcTan'' ''degreesToRadians'' ''radiansToDegrees''))
             (''Iteration'' (''to:do:'' ''to:by:do:''))
-            (''Private'' (''_floorLog:'' ''_floatRem:''))))
+            (''Private'' (''_floorLog:'' ''_floatRem:'' ''_log:''))))
         (''Collection'' (
             (''Testing'' (''notEmpty'' ''allSatisfy:'' ''anySatisfy:'' ''occurrencesOf:''))
             (''Searching'' (''detect:'' ''detect:ifNone:''))
@@ -185,7 +187,7 @@ BrowserOrganization compile: 'shippedProtocols
             (''Enumerating'' (''do:'' ''collect:'' ''select:''))
             (''Case Conversion'' (''asLowercase'' ''asUppercase''))
             (''Comparing'' (''sameAs:'' ''<'' ''<='' ''>'' ''>='' ''min:'' ''max:'' ''between:and:''))
-            (''Private'' (''_sequenceFrom:'' ''_replaceCharacters:''))
+            (''Private'' (''_sequenceFrom:'' ''_replaceCharacters:'' ''_hasPrimitiveAtPut''))
             (''Combining'' ('',''))
             (''Searching'' (''includes:'' ''subStrings:''))
             (''Character Testing'' (''isLetter'' ''isNumber'' ''isASCIIDigit'' ''isLowercase'' ''isWhitespace'' ''isLineBreak''))
@@ -212,6 +214,7 @@ BrowserOrganization compile: 'shippedProtocols
             (''Initialization'' (''initializeFrom:to:by:''))
             (''Accessing'' (''size'' ''at:'' ''isEmpty'' ''includes:''))
             (''Enumerating'' (''do:'' ''collect:'' ''select:''))
+            (''Private'' (''_elementAt:'' ''_coerceElement:''))
             (''Copying'' (''copyFrom:to:'' '',''))))
         (''BlockClosure'' (
             (''Evaluation'' (''value'' ''value:'' ''value:value:'' ''argumentCount'' ''valueWithArguments:''))

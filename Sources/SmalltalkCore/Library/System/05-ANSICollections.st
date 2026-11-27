@@ -188,19 +188,13 @@ OrderedCollection compile: 'removeAll: removals
     ^ removals'.
 
 OrderedCollection compile: 'atAll: indices put: element
-    | positions replacement |
-    positions := indices asArray.
+    | positions |
+    positions := Array withAll: indices.
     positions do: [ :index | self _checkIndex: index ].
-    replacement := storage copy.
-    replacement atAll: positions put: element.
-    storage := replacement'.
+    positions do: [ :index | self at: index put: element ]'.
 
 OrderedCollection compile: 'atAllPut: element
-    | replacement |
-    tally = 0 ifTrue: [ ^ self ].
-    replacement := storage copy.
-    replacement replaceFrom: 1 to: tally withObject: element.
-    storage := replacement'.
+    1 to: self size do: [ :index | self at: index put: element ]'.
 
 OrderedCollection compile: 'replaceFrom: start to: stop with: replacement
     replacement size = (stop - start + 1) ifFalse: [ self error: ''The replacement has the wrong size.'' ].
@@ -366,16 +360,16 @@ ByteArray compile: '_sequenceFrom: elements
 ByteArray compile: ', other
     ^ self copyReplaceFrom: self size + 1 to: self size with: other'.
 
-ByteArray compile: 'atAll: positions put: element
-    | copy |
+ByteArray compile: 'atAll: indices put: element
+    | positions |
     self _checkByte: element.
-    copy := storage copy.
-    copy atAll: positions put: element.
-    storage := copy'.
+    positions := Array withAll: indices.
+    positions do: [ :index | storage at: index ].
+    positions do: [ :index | self at: index put: element ]'.
 
 ByteArray compile: 'atAllPut: element
     self _checkByte: element.
-    storage := (Array new: self size) atAllPut: element; yourself'.
+    1 to: self size do: [ :index | self at: index put: element ]'.
 
 ByteArray compile: 'replaceFrom: start to: stop with: replacement
     replacement size = (stop - start + 1) ifFalse: [ self error: ''The replacement has the wrong size.'' ].

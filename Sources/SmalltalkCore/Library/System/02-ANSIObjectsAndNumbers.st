@@ -121,8 +121,8 @@ Number compile: 'raisedToInteger: exponent
     ^ result'.
 
 Integer compile: 'sqrt ^ self _integerSqrt'.
-Fraction compile: 'sqrt ^ self asFloat sqrt'.
-ScaledDecimal compile: 'sqrt ^ self asFloat sqrt'.
+Fraction compile: 'sqrt ^ self _exactSqrt'.
+ScaledDecimal compile: 'sqrt ^ self _exactSqrt'.
 
 Integer compile: 'ceiling ^ self'.
 Integer compile: 'floor ^ self'.
@@ -184,13 +184,13 @@ Float compile: 'integerPart
     ^ self floor asFloat'.
 
 Float compile: 'degreesToRadians
-    ^ self * Float pi / 180'.
+    ^ self * (Float pi / 180)'.
 
 Float compile: 'radiansToDegrees
-    ^ self * 180 / Float pi'.
+    ^ self * (180 / Float pi)'.
 
 Float compile: 'log: base
-    ^ self ln / base asFloat ln'.
+    ^ self _log: base'.
 
 Float compile: 'floorLog: base
     ^ self _floorLog: base'.

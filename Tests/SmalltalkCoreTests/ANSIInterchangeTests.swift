@@ -3,6 +3,27 @@ import Testing
 @testable import SmalltalkCore
 
 struct ANSIInterchangeTests {
+    @Test func interchangeMethodsAndClassInitializersFollowTheirClassDeclaration() async {
+        let session = SmalltalkSession()
+        let header = "Smalltalk interchangeVersion: '1.0'!\n"
+        let declaration = """
+            Class named: 'SIFOrderedDeclaration' superclass: 'Object' indexedInstanceVariables: #'none'
+                instanceVariableNames: '' classVariableNames: '' sharedPools: '' classInstanceVariableNames: ''!\n
+            """
+        let method = "SIFOrderedDeclaration method! answer ^ 77!"
+        let classMethod = "SIFOrderedDeclaration classMethod! answer ^ 88!"
+        let initializer = "SIFOrderedDeclaration initializer! self answer!"
+        for entry in [method, classMethod, initializer] {
+            let rejected = await session.evaluate(header + entry + "\n" + declaration)
+            #expect(rejected.error?.contains("must precede") == true)
+            #expect(await session.evaluate("SIFOrderedDeclaration").error?.contains("Unknown variable") == true)
+        }
+        let valid = await session.evaluate(header + declaration + [method, classMethod, initializer].joined(separator: "\n"))
+        #expect(valid.error == nil)
+        #expect(await session.evaluate("SIFOrderedDeclaration new answer").value == "77")
+        #expect(await session.evaluate("SIFOrderedDeclaration answer").value == "88")
+    }
+
     @Test func inheritedMethodsResolveGlobalsInTheirDefiningClass() async throws {
         let session = SmalltalkSession()
         let setup = await session.evaluate("""

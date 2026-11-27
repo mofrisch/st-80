@@ -260,14 +260,22 @@ String compile: 'subStrings: separators
     ^ words'.
 
 String compile: 'atAll: indices put: element
-    | copy |
+    | copy positions |
     (element isKindOf: Character) ifFalse: [ self error: ''A string element must be a character.'' ].
+    self _hasPrimitiveAtPut ifFalse: [
+        positions := Array withAll: indices.
+        positions do: [ :index | self at: index ].
+        positions do: [ :index | self at: index put: element ].
+        ^ self ].
     copy := self asArray.
     copy atAll: indices put: element.
     self _replaceCharacters: copy'.
 
 String compile: 'atAllPut: element
     (element isKindOf: Character) ifFalse: [ self error: ''A string element must be a character.'' ].
+    self _hasPrimitiveAtPut ifFalse: [
+        1 to: self size do: [ :index | self at: index put: element ].
+        ^ self ].
     self _replaceCharacters: ((Array new: self size) atAllPut: element; yourself)'.
 
 String compile: 'replaceFrom: start to: stop with: replacement
@@ -334,10 +342,13 @@ Interval compile: 'isEmpty
 Interval compile: 'at: index
     ((index isKindOf: Integer) and: [ index between: 1 and: count ])
         ifFalse: [ self error: ''Index outside interval.'' ].
-    ^ (index - 1) * step + start'.
+    ^ self _elementAt: index'.
+
+Interval compile: '_elementAt: index
+    ^ self _coerceElement: (index - 1) * step + start'.
 
 Interval compile: 'do: operation
-    1 to: count do: [ :index | operation value: ((index - 1) * step + start) ]'.
+    1 to: count do: [ :index | operation value: (self _elementAt: index) ]'.
 
 Interval compile: 'includes: element
     ^ self anySatisfy: [ :each | each = element ]'.

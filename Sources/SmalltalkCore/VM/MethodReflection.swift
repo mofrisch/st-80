@@ -66,6 +66,7 @@ extension SmalltalkRuntime {
             "eqv:": "Boolean equivalence.", "xor:": "Boolean exclusive OR.",
         ],
         "Fraction": [
+            "_exactSqrt": "Rounds the square root of the exact fraction to binary64.",
             "numerator": "Returns the reduced numerator.", "denominator": "Returns the positive reduced denominator.",
             "+": "Exact addition.", "-": "Exact subtraction.", "*": "Exact multiplication.", "/": "Exact division.",
             "//": "Division rounded down to an integer.", "\\\\": "Remainder from division rounded down.",
@@ -78,6 +79,7 @@ extension SmalltalkRuntime {
             "rounded": "Rounds to the nearest integer.", "truncated": "Rounds toward zero to an integer.",
         ],
         "ScaledDecimal": [
+            "_exactSqrt": "Rounds the square root of the exact decimal to binary64.",
             "scale": "Returns the number of fractional digits, including trailing zeros.",
             "+": "Addition.", "-": "Subtraction.", "*": "Multiplication.", "/": "Division.",
             "//": "Division rounded down to an integer.", "\\\\": "Remainder from division rounded down.",
@@ -95,6 +97,7 @@ extension SmalltalkRuntime {
             "fractionPart": "Returns the remainder after floor division by one.",
         ],
         "Float": [
+            "_log:": "Computes a logarithm without first rounding its base to binary64.",
             "+": "Addition.", "-": "Subtraction.", "*": "Multiplication.", "/": "Floating-point division.",
             "//": "Division rounded down to an integer.", "\\\\": "Remainder from division rounded down.",
             "_floatRem:": "Returns the remainder from division truncated toward zero.",
@@ -123,6 +126,7 @@ extension SmalltalkRuntime {
             "at:put:": "Stores a character at a one-based position.", "do:": "Visits the characters in order.",
             "asLowercase": "Returns a lowercase string.", "asUppercase": "Returns an uppercase string.",
             "sameAs:": "Compares text ignoring case.", "_replaceCharacters:": "Replaces the characters of a writable string.",
+            "_hasPrimitiveAtPut": "Checks whether the string still uses the primitive indexed write.",
             "<": "Collates before the argument.", "<=": "Collates before or the same as the argument.",
             ">": "Collates after the argument.", ">=": "Collates after or the same as the argument.",
             "min:": "Returns the earlier text.", "max:": "Returns the later text.", "between:and:": "Tests the inclusive collation range."],
@@ -153,6 +157,7 @@ extension SmalltalkRuntime {
             "_spliceAt:remove:with:": "Splices the active storage range and updates the collection size.",
             "_tryAddAll:": "Appends a collection as a batch when it uses the bundled iteration and insertion methods.",
         ],
+        "Interval": ["_coerceElement:": "Preserves the arithmetic progression's numeric protocol."],
         "CollectionStream": [
             "_commitWrite:": "Updates the stream storage and advances its position together.",
             "_hasStockSliceMethods:": "Checks whether the backing collection uses the bundled slice and selection methods.",

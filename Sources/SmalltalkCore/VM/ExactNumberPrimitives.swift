@@ -154,6 +154,7 @@ extension SmalltalkRuntime {
         case "negated": return .fraction(number.negated)
         case "abs": return .fraction(number.magnitude)
         case "squared": return .fraction(try number.squared(charge: chargeNumericWork))
+        case "_exactSqrt": return try finiteFloat(number.numerator.squareRoot(dividedBy: number.denominator, charge: chargeNumericWork))
         case "asFloat", "asFloatE", "asFloatD", "asFloatQ":
             return try finiteFloat(number.doubleValue(charge: chargeNumericWork))
         case "asScaledDecimal:": return try convertToScaledDecimal(.fraction(number), scale: arguments[0])

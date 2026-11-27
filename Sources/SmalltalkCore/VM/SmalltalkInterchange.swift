@@ -274,10 +274,16 @@ extension SmalltalkRuntime {
             var methods: [(STClass, MethodSide, Method)] = []
             var selectors: [String: Set<String>] = [:]
             var initializers: Set<String> = []
+            var declaredClasses = Set(previousClasses.keys)
             for entry in entries {
                 switch entry {
+                case .classDefinition(let declaration):
+                    declaredClasses.insert(declaration.name)
                 case .method(let owner, let side, let method):
                     guard let stClass = classes[owner] else { throw SmalltalkInterchange.invalid("Unknown method class \(owner).") }
+                    guard declaredClasses.contains(owner) else {
+                        throw SmalltalkInterchange.invalid("The definition of \(owner) must precede its methods.")
+                    }
                     let key = side.displayName(for: owner)
                     guard selectors[key, default: []].insert(method.selector).inserted else {
                         throw SmalltalkInterchange.invalid("Repeated method \(key) » \(method.selector).")
@@ -285,6 +291,9 @@ extension SmalltalkRuntime {
                     methods.append((stClass, side, method))
                     changes.append(interchangeChange(.method, owner: stClass, source: method.source, side: side, selector: method.selector))
                 case .initializer(let owner, let variable, let syntax, _):
+                    if variable == nil, classes[owner] != nil, !declaredClasses.contains(owner) {
+                        throw SmalltalkInterchange.invalid("The definition of \(owner) must precede its initializer.")
+                    }
                     if let variable {
                         guard let binding = sharedPools[owner]?[variable] else {
                             throw SmalltalkInterchange.invalid("Unknown pool variable \(owner) » \(variable).")

@@ -3,6 +3,13 @@ import Testing
 @testable import SmalltalkCore
 
 struct CompilerTests {
+    @Test func quotedCarriageReturnCanBeFollowedByLineFeed() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("$\r\n codePoint")
+        #expect(result.error == nil)
+        #expect(result.value == "13")
+    }
+
     @Test func ansiLiteralAndStatementRules() async {
         let session = SmalltalkSession()
         #expect(await session.evaluate("#(nil true false #nil #true)").value == "#(nil true false #nil #true)")

@@ -2,6 +2,67 @@ import SmalltalkCore
 import Testing
 
 struct ANSINumericTests {
+    @Test func exactSquareRootsRoundTheResultWithinBinary64Range() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | wide tiny halfUnit tie justAbove |
+            wide := 10 raisedToInteger: 400.
+            tiny := (1 / wide) asScaledDecimal: 400.
+            halfUnit := 1 / (2 raisedToInteger: 53).
+            tie := (1 + halfUnit) squared.
+            justAbove := tie + (1 / (2 raisedToInteger: 200)).
+            Array with: ((Fraction numerator: wide denominator: 4) sqrt = 5.0e199)
+                with: ((wide asScaledDecimal: 0) sqrt = 1.0e200)
+                with: (tiny sqrt = 1.0e-200)
+                with: (Array with: tie sqrt with: justAbove sqrt)
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(true true true #(1.0 1.0000000000000002))")
+    }
+
+    @Test func angleConversionsFormTheFactorBeforeMultiplication() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | degrees radians |
+            degrees := Float fmax.
+            radians := 1.0e306.
+            Array with: (degrees degreesToRadians = (degrees * (Float pi / 180)))
+                with: (radians radiansToDegrees = (radians * (180 / Float pi)))
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(true true)")
+    }
+
+    @Test func floatingLogarithmsAcceptExactBasesOutsideBinary64Resolution() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | resolution nearOne huge nearbyLog largeBaseLog |
+            Object subclass: #ANSILogarithmBase instanceVariableNames: ''.
+            ANSILogarithmBase compile: 'asFloat ^ 2.0'.
+            resolution := 10 raisedToInteger: 20.
+            nearOne := (resolution + 1) / resolution.
+            nearbyLog := 2.0 log: nearOne.
+            huge := 10 raisedToInteger: 400.
+            largeBaseLog := 10.0 log: huge.
+            Array with: ((nearbyLog / (2.0 ln * 1.0e20) - 1.0) abs < 1.0e-14)
+                with: ((largeBaseLog - 0.0025) abs < 1.0e-16)
+                with: (Array with: (1.0 log: nearOne) with: (1.0 log: (1 / 2)))
+                with: (2.0 log: ANSILogarithmBase new)
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(true true #(0.0 -0.0) 1.0)")
+    }
+
+    @Test func scaledDecimalLiteralsCanDropInsignificantTrailingZeroes() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            Array with: 123.00s1 with: 12.000s0 with: 12.3400s2 with: -0.00100s3
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(123.0s1 12s0 12.34s2 -0.001s3)")
+        #expect(await session.evaluate("12.3401s2").error != nil)
+    }
+
     @Test func numericMinAndMaxReturnTheOperandOnATie() async {
         let session = SmalltalkSession()
         let result = await session.evaluate("""
@@ -193,7 +254,7 @@ struct ANSINumericTests {
             values asArray
             """)
         #expect(result.error == nil)
-        #expect(result.value == "#(1.0 1.5 2.0 4 5 1 1/2 0 0.00s2 0.25s2 0.50s2)")
+        #expect(result.value == "#(1.0 1.5 2.0 4 5 1/1 1/2 0/1 0.00s2 0.25s2 0.50s2)")
     }
 
     @Test func floatEqualityMatchesMixedNumericOrdering() async {

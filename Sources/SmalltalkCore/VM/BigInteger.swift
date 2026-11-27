@@ -164,6 +164,34 @@ final class BigInteger: Codable, Sendable, Comparable, CustomStringConvertible {
         return BigInteger(value: BigInt(rounded))
     }
 
+    func squareRoot(dividedBy denominator: BigInteger, charge: (Int) throws -> Void) throws -> Double {
+        guard !isNegative else { throw SmalltalkError("Square root requires a nonnegative number.") }
+        if isZero { return 0 }
+        let top = value.magnitude
+        let bottom = denominator.value.magnitude
+        var exponent = top.bitWidth - bottom.bitWidth
+        if exponent > 2_048 { return .infinity }
+        if exponent < -2_150 { return 0 }
+        try charge(Self.workProduct(max(wordCount, denominator.wordCount), 4))
+        if exponent >= 0 ? top < (bottom << exponent) : (top << -exponent) < bottom { exponent -= 1 }
+        if exponent > 2_047 { return .infinity }
+        if exponent < -2_150 { return 0 }
+
+        let unit = max((exponent >> 1) - Double.significandBitCount, -1_074)
+        let dividend = top << max(0, -2 * unit)
+        let divisor = bottom << max(0, 2 * unit)
+        try charge(Self.workProduct(dividend.words.count, divisor.words.count))
+        var significand = (dividend / divisor).squareRoot()
+        // Square the rounding midpoint to compare it with the original radicand.
+        let midpoint = (significand << 1) + 1
+        let threshold = midpoint * midpoint * divisor
+        let fourTimesDividend = dividend << 2
+        if fourTimesDividend > threshold || fourTimesDividend == threshold && significand[bitAt: 0] {
+            significand += 1
+        }
+        return Double(sign: .plus, exponent: unit, significand: Double(UInt64(significand)))
+    }
+
     /// Allows the diagnostic printer to stop without formatting the tail.
     func describe(decimalPlaces: Int = 0, _ append: (String) -> Bool) {
         if isZero {

@@ -234,9 +234,24 @@ struct SystemLibrary: Sendable {
             ("DateAndTime", .instance, "_secondsOf:", "9678ec71d545274a4298e5b28c19650c51203888fba8697f07b7fd0d4d43d79a"),
             ("DateAndTime", .instance, "-", "a8919fbbd832a612bb9193a8681fa6236f7d5b74b23395900bea800628003fa0"),
             ("DateAndTime", .instance, "=", "1ea3d6c5e555b7a5a68d8b2d301adb33c818152db90c48f3cae1316732e39fd6"),
+            ("Fraction", .instance, "sqrt", "fc3b3aead2ade1001067870caae4c1dc452003ebe5ea5f9ce72575297133067a"),
+            ("ScaledDecimal", .instance, "sqrt", "fc3b3aead2ade1001067870caae4c1dc452003ebe5ea5f9ce72575297133067a"),
+            ("Float", .instance, "log:", "58b4458e6a3de5b1406ce2d0972afb0cdc0e052881ffb1550fb534f9d8a1a241"),
+            ("Float", .instance, "degreesToRadians", "14d1c26bd3a6cfdbac233c1c959e8b20fe3c9fec7e087b306668cd78720db96e"),
+            ("Float", .instance, "radiansToDegrees", "d741857951fc023c9c6470282c6e286c856c2dffa1d0414bba334476397cafaf"),
+            ("STScanner", .instance, "readToken", "70caa551966f06d3e39d3f05393516dda8cf92d4facc6dc9efda7d899e370959"),
+            ("Interval", .instance, "at:", "2daeb92537fbe936d9eba788514f05306df5d3219bd93ef83a18ea309672565b"),
+            ("Interval", .instance, "do:", "8c6e61ac5b7ddc7a2d0fb5ab80f2d22e3d2ccb64995b24f66156b63cbf16c35d"),
+            ("String", .instance, "atAll:put:", "dd53f6f22da39ec119cd2ca2aaa6768a277ffc7da8548f962a784a9abe3449fa"),
+            ("String", .instance, "atAllPut:", "f920caa69425f10f9514140fd8577a677032a85f899c9f1b2f2386e6e2993a7f"),
+            ("ByteArray", .instance, "atAll:put:", "a732a713cd71548c376135c4b6d8b97c88e1f4bde8fa1b25489659ef778a690a"),
+            ("ByteArray", .instance, "atAllPut:", "1b12b6a11180b2a54e2758536e6ddc9982982ad9df9416de4031c445cf357e5d"),
+            ("OrderedCollection", .instance, "atAll:put:", "864a238804d6c1d4b07767b085d267ea9abba319497129619c4aa03a219801a0"),
+            ("OrderedCollection", .instance, "atAllPut:", "7fe75273c77903048b5bec9705027b6455d3791e60436031ce86450b5ef67e1f"),
         ]
         let instanceHelpers = [
             "DateAndTime": ["_secondsOf:ifAbsent:"],
+            "Interval": ["_elementAt:"],
             "SortedCollection": ["_insertionIndexOf:", "_sortElementsFrom:"],
         ]
         for (name, side, selector, hash) in previous {
@@ -315,6 +330,7 @@ struct SystemLibrary: Sendable {
                 "2dc4596961268fbbda4353352e1c00d5981c79405df3cf56e7928b9a7ede4ead",
                 "75ed1f3d16104189da608725c97fef2ebe14043c0e0b82330456cc5182adcba2",
                 "a267649a8048e76bc31c92de3d30c3bc43ee598b46c9057c7147d908649a58c1",
+                "d8f36c420419a594dd037decee2beaf425730909ddb40c3bd1c72f26452ced42",
             ]),
             (.instance, "shippedClassSideProtocols", [
                 "7b2f2950f5dc051c01fdcd0afcdde26c8505606a3c1f370ad2c6910c5eff398c",

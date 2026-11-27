@@ -178,6 +178,7 @@ STScanner compile: 'readToken
     character = ''$'' ifTrue: [
         character := self peek.
         character isNil ifTrue: [ ^ self fail: ''Expected a character after $.'' ].
+        (character size > 1 and: [ character isLineBreak ]) ifTrue: [ character := (13 asCharacter) asString ].
         self advance.
         ^ self token: #character value: character ].
     character = '':'' ifTrue: [

@@ -146,6 +146,15 @@ extension SmalltalkRuntime {
             default: return nil
             }
         case .object(let object):
+            if selector == "_coerceElement:", let interval = classes["Interval"], object.stClass.inherits(from: interval) {
+                let element = args[0]
+                guard element.isInteger else { return element }
+                switch (object.fields["start"], object.fields["step"]) {
+                case (.fraction?, _), (_, .fraction?):
+                    return .fraction(try ExactFraction(unboundedInteger(element), .one, charge: chargeNumericWork))
+                default: return element
+                }
+            }
             if selector == "_tryAddAll:", let ordered = classes["OrderedCollection"], object.stClass.inherits(from: ordered) {
                 return .boolean(try appendOrderedCollectionBatch(object, source: args[0]))
             }
@@ -347,6 +356,7 @@ extension SmalltalkRuntime {
             contents.replaceSubrange(start..<contents.index(after: start), with: CollectionOfOne(character))
             try setString(object, contents: String(contents))
             return args[1]
+        case "_hasPrimitiveAtPut": return .boolean(lookupMethod("at:put:", on: receiver) == nil)
         case "_replaceCharacters:":
             guard case .object(let object) = receiver else { throw SmalltalkError("This string is read-only. Send copy to make it writable.") }
             try setString(object, contents: stringFromCharacters(args[0]))

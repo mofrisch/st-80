@@ -60,10 +60,14 @@ extension SmalltalkRuntime {
         guard (1...2).contains(mantissa.count), mantissa.allSatisfy({ !$0.isEmpty }) else { return nil }
         let fractionalDigits = mantissa.count == 2 ? mantissa[1].utf8.count : 0
         guard let scale = parts[1].isEmpty ? fractionalDigits : Int(parts[1]),
-              scale >= fractionalDigits, scale <= ScaledDecimal.maximumScale,
+              (0...ScaledDecimal.maximumScale).contains(scale),
               parts[1].utf8.allSatisfy({ (48...57).contains($0) }),
               let coefficient = try BigInteger.parseMagnitude(mantissa.joined(), radix: 10, charge: chargeNumericWork) else { return nil }
-        return try ScaledDecimal(shiftDecimal(coefficient, by: scale - fractionalDigits), scale: scale)
+        let places = scale - fractionalDigits
+        if places >= 0 { return try ScaledDecimal(shiftDecimal(coefficient, by: places), scale: scale) }
+        let (reduced, remainder) = try coefficient.divided(by: decimalFactor(-places), charge: chargeNumericWork)
+        guard remainder.isZero else { return nil }
+        return try ScaledDecimal(reduced, scale: scale)
     }
 
     func convertToScaledDecimal(_ number: Value, scale argument: Value) throws -> Value {
@@ -114,6 +118,7 @@ extension SmalltalkRuntime {
         case "negated": return .scaledDecimal(try ScaledDecimal(-coefficient, scale: decimal.scale))
         case "abs": return .scaledDecimal(try ScaledDecimal(coefficient.magnitude, scale: decimal.scale))
         case "squared": return try scaledDecimalBinary(decimal, "*", decimal)
+        case "_exactSqrt": return try finiteFloat(coefficient.squareRoot(dividedBy: decimalFactor(decimal.scale), charge: chargeNumericWork))
         case "reciprocal": return try scaledDecimalBinary(ScaledDecimal(.one, scale: 0), "/", decimal)
         case "negative": return .boolean(coefficient.isNegative)
         case "positive": return .boolean(!coefficient.isNegative)

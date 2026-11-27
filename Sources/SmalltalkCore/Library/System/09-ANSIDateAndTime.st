@@ -1,8 +1,10 @@
-"ANSI date and time protocols (J20 5.8). The default local time is UTC.
-Dates count exact seconds since Gregorian 0001-01-01T00:00:00+00:00."
+"ANSI date and time protocols (J20 5.8). The default local time is UTC
+(TimeLocal offset is Duration zero). Dates count exact seconds since
+Gregorian 0001-01-01T00:00:00+00:00."
 
 Object subclass: #Duration instanceVariableNames: 'totalSeconds'.
 Object subclass: #DateAndTime instanceVariableNames: 'utcSeconds utcOffset'.
+Object subclass: #TimeLocal instanceVariableNames: ''.
 
 Duration compileClass: 'seconds: amount
     ^ self new _seconds: (self _exactSeconds: amount)'.
@@ -157,16 +159,34 @@ Duration compileClass: '_decimalDigitsOf: fraction
     digits := (fraction * (10 raisedToInteger: places)) truncated.
     ^ self _pad: digits to: places'.
 
+TimeLocal compileClass: 'offset
+    "This implementation uses UTC as local time."
+    ^ Duration zero'.
+
+TimeLocal compileClass: 'clockPrecision
+    ^ DateAndTime clockPrecision'.
+
+TimeLocal compileClass: 'now
+    ^ DateAndTime now'.
+
+TimeLocal compileClass: 'year: year month: month day: day hour: hour minute: minute second: second
+    ^ DateAndTime year: year month: month day: day hour: hour minute: minute second: second
+        offset: self offset'.
+
+TimeLocal compileClass: 'year: year day: ordinal hour: hour minute: minute second: second
+    ^ DateAndTime year: year day: ordinal hour: hour minute: minute second: second
+        offset: self offset'.
+
 DateAndTime compileClass: 'now
     ^ self _atUTCSeconds: self _unixTime + ((self _daysBeforeYear: 1970) * 86400)
-        offset: Duration zero'.
+        offset: TimeLocal offset'.
 
 DateAndTime compileClass: 'clockPrecision
     ^ Duration seconds: self _clockResolution'.
 
 DateAndTime compileClass: 'year: year month: month day: day hour: hour minute: minute second: second
     ^ self year: year month: month day: day hour: hour minute: minute second: second
-        offset: Duration zero'.
+        offset: TimeLocal offset'.
 
 DateAndTime compileClass: 'year: year month: month day: day hour: hour minute: minute second: second offset: offset
     | starts ordinal |
@@ -181,7 +201,7 @@ DateAndTime compileClass: 'year: year month: month day: day hour: hour minute: m
     ^ self _year: year ordinal: ordinal hour: hour minute: minute second: second offset: offset'.
 
 DateAndTime compileClass: 'year: year day: ordinal hour: hour minute: minute second: second
-    ^ self year: year day: ordinal hour: hour minute: minute second: second offset: Duration zero'.
+    ^ self year: year day: ordinal hour: hour minute: minute second: second offset: TimeLocal offset'.
 
 DateAndTime compileClass: 'year: year day: ordinal hour: hour minute: minute second: second offset: offset
     | starts |
@@ -288,7 +308,7 @@ DateAndTime compile: 'asUTC
     ^ self offset: Duration zero'.
 
 DateAndTime compile: 'asLocal
-    ^ self asUTC'.
+    ^ self offset: TimeLocal offset'.
 
 DateAndTime compile: 'offset
     ^ utcOffset'.

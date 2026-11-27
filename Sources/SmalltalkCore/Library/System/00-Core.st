@@ -2,10 +2,12 @@
 Object compile: 'initialize
     ^ self'.
 
-Object subclass: #FailedMessage instanceVariableNames: 'selector arguments'.
-FailedMessage compile: 'selector
+"ANSI <failedMessage> protocol (§5.3.6). The global Message is the
+standard name; FailedMessage remains a synonym for Smalltalk-80 callers."
+Object subclass: #Message instanceVariableNames: 'selector arguments'.
+Message compile: 'selector
     ^ selector'.
-FailedMessage compile: 'arguments
+Message compile: 'arguments
     ^ arguments'.
 
 Character compileClass: 'codePoint: point
@@ -19,7 +21,8 @@ Character compileClass: 'space
 Character compileClass: 'tab
     ^ self codePoint: 9'.
 
-"The three ANSI exponent markers share the IEEE 754 binary64 representation."
+"ANSI allows a single float format. FloatE/FloatD/FloatQ are aliases of
+Float and share this IEEE 754 binary64 characterization."
 Float compileClass: 'radix ^ 2'.
 Float compileClass: 'precision ^ 53'.
 Float compileClass: 'emin ^ -1021'.

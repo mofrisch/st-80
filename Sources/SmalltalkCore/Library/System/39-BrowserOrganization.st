@@ -121,9 +121,9 @@ BrowserOrganization compile: 'initialize
 BrowserOrganization compileClass: 'shippedClassCategories
     ^ #(
         (''Kernel'' (''Object'' ''Class'' ''Metaclass'' ''UndefinedObject'' ''Boolean'' ''True'' ''False''
-            ''Number'' ''BlockClosure'' ''FailedMessage''))
+            ''Number'' ''BlockClosure'' ''Message''))
         (''Numbers'' (''Integer'' ''SmallInteger'' ''LargeInteger'' ''Fraction'' ''ScaledDecimal'' ''Float''))
-        (''Date and Time'' (''DateAndTime'' ''Duration''))
+        (''Date and Time'' (''DateAndTime'' ''Duration'' ''TimeLocal''))
         (''Exceptions'' (''Exception'' ''Error'' ''ExceptionSet'' ''MessageNotUnderstood'' ''Notification'' ''Warning'' ''ZeroDivide''))
         (''Collections & Text'' (''Collection'' ''SequenceableCollection'' ''Array'' ''ByteArray'' ''Interval''
             ''OrderedCollection'' ''SortedCollection'' ''UnorderedCollection'' ''Bag'' ''Set''

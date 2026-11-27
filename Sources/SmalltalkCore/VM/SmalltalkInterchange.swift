@@ -168,6 +168,51 @@ enum SmalltalkInterchange {
     static func invalid(_ message: String) -> SmalltalkError {
         SmalltalkError("ANSI Smalltalk interchange. " + message)
     }
+
+    /// Emit a Smalltalk Interchange Format 1.0 chunk stream for the named classes.
+    /// Exports class shape plus methods defined on each class (not inherited methods).
+    /// Does not emit pool/global declarations or initializer values.
+    static func export(classes names: [String], from runtime: SmalltalkRuntime) throws -> String {
+        var chunks: [String] = ["Smalltalk interchangeVersion: '1.0'"]
+        var exported = Set<String>()
+        for name in names {
+            guard let stClass = runtime.classes[name] else {
+                throw invalid("Cannot export unknown class \(name).")
+            }
+            guard exported.insert(stClass.name).inserted else { continue }
+            let parent = stClass.superclass?.name ?? "nil"
+            let storage = stClass.ownIndexedStorage?.rawValue ?? "none"
+            let fields = stClass.ownFields.joined(separator: " ")
+            let classVariables = stClass.classVariables.keys.sorted().joined(separator: " ")
+            let pools = stClass.sharedPools.joined(separator: " ")
+            let classFields = stClass.metaclass.ownFields.joined(separator: " ")
+            chunks.append("""
+                Class named: '\(escapeString(stClass.name))' superclass: '\(escapeString(parent))'\
+                 indexedInstanceVariables: #'\(storage)' instanceVariableNames: '\(escapeString(fields))'\
+                 classVariableNames: '\(escapeString(classVariables))' sharedPools: '\(escapeString(pools))'\
+                 classInstanceVariableNames: '\(escapeString(classFields))'
+                """)
+            for selector in stClass.methods.keys.sorted() {
+                guard let method = stClass.methods[selector] else { continue }
+                chunks.append("\(stClass.name) method")
+                chunks.append(escapeChunk(method.source))
+            }
+            for selector in stClass.classMethods.keys.sorted() {
+                guard let method = stClass.classMethods[selector] else { continue }
+                chunks.append("\(stClass.name) classMethod")
+                chunks.append(escapeChunk(method.source))
+            }
+        }
+        return chunks.map { $0 + "!" }.joined(separator: "\n") + "\n"
+    }
+
+    private static func escapeString(_ text: String) -> String {
+        text.replacingOccurrences(of: "'", with: "''")
+    }
+
+    private static func escapeChunk(_ text: String) -> String {
+        text.replacingOccurrences(of: "!", with: "!!")
+    }
 }
 
 extension SmalltalkRuntime {

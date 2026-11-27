@@ -279,6 +279,12 @@ enum ImageCodec {
             if image.version < 8 { try library.installANSIProtocols(in: runtime) }
             addedClasses = try library.installANSIClasses(missingClasses, in: runtime)
         }
+        // TimeLocal was added after DateAndTime/Duration; install it alone when missing.
+        if runtime.classes["TimeLocal"] == nil {
+            let library = try SystemLibrary.shared.get()
+            addedClasses.formUnion(try library.installANSIClasses(["TimeLocal"], in: runtime))
+        }
+        runtime.installMessageAliases()
         if image.version < 10 { try SystemLibrary.shared.get().upgradeANSIBehavior(in: runtime) }
         let library = try? SystemLibrary.shared.get()
         try library?.upgradeCurrentANSIBehavior(in: runtime)

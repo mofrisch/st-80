@@ -50,7 +50,7 @@ extension SmalltalkRuntime {
     private func sendUnrecognized(_ receiver: Value, _ selector: String, _ arguments: [Value],
                                   startingAt lookup: MessageLookup) throws -> Value {
         guard case .normal = lookup, selector != "doesNotUnderstand:",
-              let messageClass = classes["FailedMessage"],
+              let messageClass = classes["Message"] ?? classes["FailedMessage"],
               let (handler, owner, side) = lookupMethod("doesNotUnderstand:", on: receiver) else {
             throw SmalltalkError("\(classOf(receiver).name) does not understand \(selector).")
         }

@@ -16,7 +16,7 @@ struct SmalltalkTestFrameworkTests {
         #expect(await session.evaluate("CounterTest run passedCount").value == "2")
         #expect(await session.evaluate("CollectionsTest run passedCount").value == "2")
         #expect(await session.evaluate("UIBindingTest run passedCount").value == "2")
-        #expect(await session.evaluate("ANSISmalltalkTest run passedCount").value == "81")
+        #expect(await session.evaluate("ANSISmalltalkTest run passedCount").value == "82")
     }
 
     @Test func headlessWarningsLogAndContinueWhileNotificationsAreSilent() async {

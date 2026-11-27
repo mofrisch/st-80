@@ -220,6 +220,9 @@ extension SmalltalkRuntime {
         case "isNested":
             return .boolean(try matchingHandler(for: receiver, from: action.handler.enclosing) != nil)
         case "outer":
+            guard try boolean(send(receiver, "isResumable", [])) else {
+                throw ExceptionTransfer(.passed, to: action)
+            }
             return try runExceptionAction(for: receiver, from: action.handler.enclosing, signal: action.signal)
         case "pass":
             throw ExceptionTransfer(.passed, to: action)

@@ -97,6 +97,7 @@ extension SmalltalkRuntime {
         "Float": [
             "+": "Addition.", "-": "Subtraction.", "*": "Multiplication.", "/": "Floating-point division.",
             "//": "Division rounded down to an integer.", "\\\\": "Remainder from division rounded down.",
+            "_floatRem:": "Returns the remainder from division truncated toward zero.",
             "<": "Less than.", ">": "Greater than.", "<=": "Less than or equal to.", ">=": "Greater than or equal to.",
             "negated": "Returns the negated number.", "abs": "Returns the absolute value.", "squared": "Returns the square.",
             "asFloat": "Returns the binary64 value.", "asFloatE": "Returns the binary64 value.",
@@ -150,9 +151,11 @@ extension SmalltalkRuntime {
         ],
         "OrderedCollection": [
             "_spliceAt:remove:with:": "Splices the active storage range and updates the collection size.",
+            "_tryAddAll:": "Appends a collection as a batch when it uses the bundled iteration and insertion methods.",
         ],
         "CollectionStream": [
             "_commitWrite:": "Updates the stream storage and advances its position together.",
+            "_hasStockSliceMethods:": "Checks whether the backing collection uses the bundled slice and selection methods.",
         ],
         "FileStream": [
             "_openFile:mode:check:type:": "Opens the external backing file.",

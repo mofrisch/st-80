@@ -37,13 +37,22 @@ CollectionStream compile: '_size
     ^ self _sequence size'.
 
 CollectionStream compile: '_sliceFrom: start to: stop
-    | sequence slice |
+    | sequence indexedSlice slice index |
     sequence := self _sequence.
-    (start > stop and: [ sequence isKindOf: Interval ])
-        ifTrue: [ ^ sequence _sequenceFrom: (Array new: 0) ].
+    "For these stock collections copyFrom: and select: produce the same kind of result.
+    Keep indexed slices cheap, especially for small reads from large intervals."
+    indexedSlice := self _hasStockSliceMethods: backing.
+    buffer isNil ifTrue: [
+        indexedSlice ifTrue: [
+            (start > stop and: [ backing class == Interval ]) ifTrue: [ ^ Array new ].
+            ^ sequence copyFrom: start to: stop ].
+        index := 0.
+        ^ backing select: [ :each |
+            index := index + 1.
+            index between: start and: stop ] ].
     slice := sequence copyFrom: start to: stop.
-    buffer isNil ifTrue: [ ^ slice ].
-    ^ backing copyReplaceFrom: 1 to: backing size with: slice'.
+    indexedSlice ifTrue: [ ^ backing copyReplaceFrom: 1 to: backing size with: slice ].
+    ^ (backing select: [ :each | false ]) copyReplaceFrom: 1 to: 0 with: slice'.
 
 CollectionStream compile: 'contents
     ^ self _sliceFrom: 1 to: self _size'.

@@ -2,6 +2,69 @@ import SmalltalkCore
 import Testing
 
 struct ANSINumericTests {
+    @Test func floatingIntegerQuotientsUseTheExactBinary64Operands() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | unit |
+            unit := Float fminDenormalized.
+            Array with: (1.0 // 0.1) with: (-1 quo: 0.1)
+                with: (unit negated // 2.0)
+                with: ((1.0 // unit) = (1 bitShift: 1074))
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(9 -9 -1 true)")
+    }
+
+    @Test func floatingRemainderUsesTheSignOfTheDividend() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            Array with: (1.0 rem: 0.1) with: (-1 rem: 0.1) with: (1.0 rem: -0.1)
+                with: ([ 1 rem: 0.0 ] on: ZeroDivide do: [ :exception | exception dividend class ])
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(0.09999999999999995 -0.09999999999999995 0.09999999999999995 SmallInteger)")
+    }
+
+    @Test func roundingToFloatingMultiplesDoesNotRoundTheQuotientFirst() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            Array with: (0.25 roundTo: 0.1) with: (1.0 truncateTo: 0.1) with: (1 truncateTo: 0.1)
+                with: ((Float fmax roundTo: Float fminDenormalized) = Float fmax)
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(0.2 0.9 0.9 true)")
+    }
+
+    @Test func negativeFloatPowersAvoidOverflowInTheIntermediatePower() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            Array with: ((2.0 raisedToInteger: -1074) = Float fminDenormalized)
+                with: ((-2.0 raisedToInteger: -1073) = (Float fminDenormalized * -2))
+                with: (2 raisedToInteger: -3)
+                with: (0 raisedTo: 3)
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(true true 1/8 0)")
+        #expect(await session.evaluate("0 raisedTo: 0").error?.contains("Zero requires a positive exponent") == true)
+    }
+
+    @Test func fractionUnaryOperationsPreserveTheProtocolForIntegralResults() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | number magnitude negation square |
+            number := Fraction numerator: -4 denominator: 2.
+            magnitude := number abs.
+            negation := magnitude negated.
+            square := number squared.
+            Array with: (magnitude class == Fraction and: [ magnitude = 2 ])
+                with: (negation class == Fraction and: [ negation = -2 ])
+                with: (square class == Fraction and: [ square = 4 ])
+                with: ((number * number) isKindOf: Integer)
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(true true true true)")
+    }
+
     @Test func integerSquareRootRoundsWithoutConvertingToFloat() async {
         let session = SmalltalkSession()
         let result = await session.evaluate("""

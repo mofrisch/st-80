@@ -132,7 +132,9 @@ OrderedCollection compile: 'add: element before: target
     ^ self add: element beforeIndex: (self _positionOf: target)'.
 
 OrderedCollection compile: 'addAll: additions
-    ^ self addAllLast: additions'.
+    (self _tryAddAll: additions) ifFalse: [
+        additions do: [ :each | self add: each ] ].
+    ^ additions'.
 
 OrderedCollection compile: 'addAllFirst: additions
     ^ self addAll: additions beforeIndex: 1'.
@@ -182,7 +184,7 @@ OrderedCollection compile: 'remove: element ifAbsent: alternative
     ^ self removeAtIndex: index'.
 
 OrderedCollection compile: 'removeAll: removals
-    removals asArray do: [ :each | self remove: each ].
+    removals do: [ :each | self remove: each ].
     ^ removals'.
 
 OrderedCollection compile: 'atAll: indices put: element
@@ -346,6 +348,16 @@ ByteArray compile: 'select: predicate
 
 ByteArray compile: 'copy
     ^ self class withAll: self'.
+
+ByteArray compile: 'copyReplaceAll: target with: replacements
+    | bytes |
+    bytes := Array withAll: replacements.
+    bytes do: [ :each | self _checkByte: each ].
+    ^ super copyReplaceAll: target with: bytes'.
+
+ByteArray compile: 'copyReplacing: target withObject: replacement
+    self _checkByte: replacement.
+    ^ super copyReplacing: target withObject: replacement'.
 
 ByteArray compile: '_sequenceFrom: elements
     ^ self class withAll: elements'.
@@ -511,6 +523,12 @@ SortedCollection compile: 'reverse
 
 SortedCollection compile: 'copy
     ^ self _sequenceFrom: self'.
+
+SortedCollection compile: 'copyReplaceAll: target with: replacements
+    | incoming |
+    incoming := Array withAll: replacements.
+    incoming size > 1 ifTrue: [ self _sorted: incoming copy by: self sortBlock ].
+    ^ super copyReplaceAll: target with: incoming'.
 
 SortedCollection compile: 'asSortedCollection
     ^ self copy'.

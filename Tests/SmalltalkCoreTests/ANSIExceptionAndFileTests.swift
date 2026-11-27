@@ -73,6 +73,23 @@ struct ANSIExceptionAndFileTests {
         #expect(result.value == "#(31 nil)")
     }
 
+    @Test(arguments: ["outer", "pass"])
+    func nonresumableExceptionUsesTheOriginalSignalingEnvironment(selector: String) async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            Notification subclass: #AuditOuterNotice instanceVariableNames: ''.
+            Error subclass: #AuditNonresumableError instanceVariableNames: ''.
+            AuditNonresumableError compile: 'defaultAction
+                ^ self error: (AuditOuterNotice signal isNil
+                    ifTrue: [ ''notification not handled'' ]
+                    ifFalse: [ ''notification handled in signaling environment'' ])'.
+            [
+                [ AuditNonresumableError signal ] on: AuditOuterNotice do: [ :notice | notice resume: 31 ]
+            ] on: AuditNonresumableError do: [ :exception | exception \(selector) ]
+            """)
+        #expect(result.executionError?.contains("notification handled in signaling environment") == true)
+    }
+
     @Test func structuralExceptionControlsTakePrecedenceWhileHandlingAReplacement() async {
         let session = SmalltalkSession()
         let result = await session.evaluate("""
@@ -97,6 +114,74 @@ struct ANSIExceptionAndFileTests {
             """)
         #expect(result.error == nil)
         #expect(result.value == "#(43 #ordinaryMethod)")
+    }
+
+    @Test func durationsCompareAndCalculateWithForwardedDurationOperands() async throws {
+        let session = try await sessionWithForwardedDuration()
+        let result = await session.evaluate("""
+            | duration half proxy zero comparisons arithmetic |
+            duration := Duration seconds: (3 / 2).
+            half := Duration seconds: (1 / 2).
+            proxy := AuditForwardedDuration new seconds: (1 / 2); yourself.
+            zero := AuditForwardedDuration new seconds: 0; yourself.
+            comparisons := Array with: (half = proxy) with: (proxy = half)
+                with: (duration > proxy) with: (half <= proxy).
+            arithmetic := Array with: (duration + proxy) asSeconds with: (duration - proxy) asSeconds
+                with: (duration / proxy) with: (duration / 2) asSeconds.
+            Array with: comparisons with: arithmetic
+                with: (proxy hash = half hash)
+                with: ([ duration / zero ] on: ZeroDivide do: [ :exception | exception dividend ])
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(#(true true true true) #(2 1 3 3/4) true 3/2)")
+    }
+
+    @Test func dateArithmeticAndOffsetsAcceptForwardedDurations() async throws {
+        let session = try await sessionWithForwardedDuration()
+        let result = await session.evaluate("""
+            | instant half offset adjusted constructed |
+            instant := DateAndTime year: 2024 day: 2 hour: 0 minute: 1 second: (1 / 4).
+            half := AuditForwardedDuration new seconds: (1 / 2); yourself.
+            offset := AuditForwardedDuration new seconds: 2; yourself.
+            adjusted := instant offset: offset.
+            constructed := DateAndTime year: 2024 month: 1 day: 2 hour: 0 minute: 1 second: (9 / 4) offset: offset.
+            Array with: (instant + half) second with: (instant - half) second
+                with: (adjusted offset = offset) with: (constructed asUTC = instant)
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(3/4 239/4 true true)")
+    }
+
+    @Test func durationEqualityHandlesAbsentSecondsAndPassesUnrelatedExceptions() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | amount broken |
+            Object subclass: #AuditInvalidDuration instanceVariableNames: ''.
+            AuditInvalidDuration compile: 'asSeconds ^ ''wrong type'' '.
+            Object subclass: #AuditBrokenDuration instanceVariableNames: ''.
+            AuditBrokenDuration compile: 'asSeconds ^ self auditMissingConversion'.
+            amount := Duration zero.
+            broken := AuditBrokenDuration new.
+            Array with: (amount = Object new) with: (amount = AuditInvalidDuration new)
+                with: ([ amount = broken ] on: MessageNotUnderstood do: [ :exception | exception message selector ])
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(false false #auditMissingConversion)")
+    }
+
+    private func sessionWithForwardedDuration() async throws -> SmalltalkSession {
+        let session = SmalltalkSession()
+        let setup = await session.evaluate("""
+            Object subclass: #AuditForwardedDuration instanceVariableNames: 'length'.
+            AuditForwardedDuration compile: 'seconds: amount length := amount'.
+            AuditForwardedDuration compile: 'doesNotUnderstand: message
+                ^ (Duration seconds: length) perform: message selector withArguments: message arguments'.
+            AuditForwardedDuration compile: '= other ^ (Duration seconds: length) = other'.
+            AuditForwardedDuration compile: 'hash ^ (Duration seconds: length) hash'.
+            AuditForwardedDuration compile: 'printString ^ (Duration seconds: length) printString'.
+            """)
+        try #require(setup.error == nil)
+        return session
     }
 
     @Test func writeOnlyBinaryFileSupportsAppendAndPositioning() async throws {

@@ -60,6 +60,7 @@ enum SmalltalkInterchange {
         }
         guard try literalText(arguments[0]) == "1.0" else { throw invalid("Unsupported interchange version. Expected 1.0.") }
         var entries: [Entry] = []
+        var hasElement = false
         var next = 1
         func bodyChunk() throws -> String {
             guard next < chunks.count else { throw invalid("Expected a method or initializer after its header.") }
@@ -69,11 +70,17 @@ enum SmalltalkInterchange {
         while next < chunks.count {
             var chunk = next + 1
             do {
-                let syntax = try runtime.compileWorkspace(chunks[next])
+                let source = chunks[next]
+                let syntax = try runtime.compileWorkspace(source)
                 next += 1
-                if syntax.temporaries.isEmpty, syntax.expressions.isEmpty { continue }
+                if syntax.temporaries.isEmpty, syntax.expressions.isEmpty {
+                    // A standalone comment is an interchange element. A blank chunk is not.
+                    if source.first(where: { !$0.isWhitespace }) == "\"" { hasElement = true }
+                    continue
+                }
                 if let declaration = try classDeclaration(in: syntax) {
                     entries.append(.classDefinition(declaration))
+                    hasElement = true
                     continue
                 }
                 guard let (owner, selector, arguments) = send(in: syntax) else {
@@ -85,6 +92,7 @@ enum SmalltalkInterchange {
                 case ("Pool", "named:"):
                     entries.append(.pool(try literalName(arguments[0])))
                 case ("Annotation", "key:value:"):
+                    guard hasElement else { throw invalid("An annotation must follow an interchange element.") }
                     for argument in arguments { _ = try literalText(argument) }
                 case (_, "variable:"), (_, "constant:"):
                     entries.append(.poolVariable(pool: owner, name: try literalName(arguments[0]), constant: selector == "constant:"))
@@ -100,10 +108,12 @@ enum SmalltalkInterchange {
                     entries.append(.initializer(owner: owner, poolVariable: variable, syntax: try runtime.compileWorkspace(source), source: source))
                 default: throw invalid("Unsupported interchange header \(owner) \(selector).")
                 }
+                hasElement = true
             } catch {
                 throw invalid("Chunk \(chunk). \(error.localizedDescription)")
             }
         }
+        guard hasElement else { throw invalid("Expected at least one interchange element after the version header.") }
         return entries
     }
 

@@ -261,11 +261,13 @@ String compile: 'subStrings: separators
 
 String compile: 'atAll: indices put: element
     | copy |
+    (element isKindOf: Character) ifFalse: [ self error: ''A string element must be a character.'' ].
     copy := self asArray.
     copy atAll: indices put: element.
     self _replaceCharacters: copy'.
 
 String compile: 'atAllPut: element
+    (element isKindOf: Character) ifFalse: [ self error: ''A string element must be a character.'' ].
     self _replaceCharacters: ((Array new: self size) atAllPut: element; yourself)'.
 
 String compile: 'replaceFrom: start to: stop with: replacement

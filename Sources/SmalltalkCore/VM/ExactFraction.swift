@@ -6,6 +6,11 @@ final class ExactFraction: Codable, Sendable, Equatable {
     let numerator: BigInteger
     let denominator: BigInteger
 
+    private init(reducedNumerator: BigInteger, positiveDenominator: BigInteger) {
+        numerator = reducedNumerator
+        denominator = positiveDenominator
+    }
+
     init(_ numerator: BigInteger, _ denominator: BigInteger, charge: (Int) throws -> Void) throws {
         guard !denominator.isZero else { throw SmalltalkError("Division by zero.") }
         if denominator.magnitude == .one || numerator.isZero {
@@ -52,6 +57,15 @@ final class ExactFraction: Codable, Sendable, Equatable {
 
     static func == (lhs: ExactFraction, rhs: ExactFraction) -> Bool {
         lhs.numerator == rhs.numerator && lhs.denominator == rhs.denominator
+    }
+
+    var negated: ExactFraction { ExactFraction(reducedNumerator: -numerator, positiveDenominator: denominator) }
+    var magnitude: ExactFraction { numerator.isNegative ? negated : self }
+
+    func squared(charge: (Int) throws -> Void) throws -> ExactFraction {
+        // Squaring relatively prime terms preserves the reduced representation.
+        try ExactFraction(reducedNumerator: numerator.multiplied(by: numerator, charge: charge),
+                          positiveDenominator: denominator.multiplied(by: denominator, charge: charge))
     }
 
     func doubleValue(charge: (Int) throws -> Void) throws -> Double {

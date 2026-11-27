@@ -106,6 +106,24 @@ struct ANSICollectionBehaviorTests {
         #expect(result.value == "#(#() #() #(2 3) #(#() #() '' #()))")
     }
 
+    @Test func collectionStreamsHonorAnOverriddenSelectionMethodOnArray() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | stream prefix |
+            Array compile: 'select: predicate
+                | selected |
+                selected := OrderedCollection new.
+                self do: [ :each | (predicate value: each) ifTrue: [ selected add: each ] ].
+                ^ selected'.
+            stream := ReadStream on: #(8 9 10).
+            stream skip: 1.
+            prefix := stream next: 1.
+            Array with: stream contents class with: prefix class with: prefix asArray
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(OrderedCollection OrderedCollection #(9))")
+    }
+
     @Test func characterAsStringReturnsAnIndependentWritableStringAndDigitsAreDecimalLiterals() async {
         let session = SmalltalkSession()
         let result = await session.evaluate("""
@@ -234,6 +252,135 @@ struct ANSICollectionBehaviorTests {
             """)
         #expect(result.error == nil)
         #expect(result.value == "#('a' 'ab')")
+    }
+
+    @Test func stringWithAllAcceptsCollectionsThatDoNotHaveIntegerIndices() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | dictionary |
+            dictionary := Dictionary new.
+            dictionary at: #letter put: $é.
+            Array with: (String withAll: (Bag with: $x with: $x))
+                with: (String withAll: dictionary)
+                with: (String withAll: (Set with: $z))
+                with: (String withAll: Bag new)
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#('xx' 'é' 'z' '')")
+    }
+
+    @Test func stringWithAllUsesSourceDo() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            Array compile: 'do: operation operation value: $z. operation value: $y'.
+            String withAll: #($a $b)
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "'zy'")
+    }
+
+    @Test func orderedCollectionBulkChangesInterleaveSourceIterationAndReceiverOperations() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | source target added removed addResult removeResult |
+            OrderedCollection subclass: #ANSIObservedSource instanceVariableNames: 'observe'.
+            ANSIObservedSource compile: 'observe: callback observe := callback'.
+            ANSIObservedSource compile: 'do: operation super do: [ :each | operation value: each. observe value ]'.
+            OrderedCollection subclass: #ANSIObservedTarget instanceVariableNames: 'events'.
+            ANSIObservedTarget compile: 'events: log events := log'.
+            ANSIObservedTarget compile: 'add: element events add: #added. ^ super add: element'.
+            ANSIObservedTarget compile: 'remove: element events add: #removed. ^ super remove: element'.
+            source := ANSIObservedSource with: 1 with: 2.
+            target := ANSIObservedTarget new.
+            added := OrderedCollection new.
+            target events: added.
+            source observe: [ added add: target size ].
+            addResult := target addAll: source.
+            target addLast: 3.
+            removed := OrderedCollection new.
+            target events: removed.
+            source observe: [ removed add: target size ].
+            removeResult := target removeAll: source.
+            Array with: added asArray with: removed asArray with: target asArray
+                with: (addResult == source and: [removeResult == source])
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(#(#added 1 #added 2) #(#removed 2 #removed 1) #(3) true)")
+    }
+
+    @Test func orderedCollectionBulkAddUsesAnOverriddenArrayDo() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | target |
+            target := OrderedCollection new.
+            Array compile: 'do: operation operation value: 3. operation value: 2'.
+            target addAll: #(1 2).
+            Array with: (target at: 1) with: (target at: 2)
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(3 2)")
+    }
+
+    @Test func orderedCollectionBulkAddUsesAnOverriddenAddOnTheStockClass() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | target |
+            target := OrderedCollection new.
+            OrderedCollection compile: 'add: element ^ self addLast: element + 10'.
+            target addAll: #(1 2).
+            target asArray
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(11 12)")
+    }
+
+    @Test func orderedCollectionBulkAddSupportsLargeArrays() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | target source |
+            target := OrderedCollection with: 1.
+            source := (Array new: 15000) at: 15000 put: 2; yourself.
+            target addAll: source.
+            Array with: target size with: target first with: target last
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(15001 1 2)")
+    }
+
+    @Test func orderedCollectionBulkCopyAndSelfAddSupportLargeCollections() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | target copied |
+            target := OrderedCollection new: 30000.
+            target addLast: 1; addAll: (Array new: 14998); addLast: 2.
+            copied := target copy.
+            target addAll: target.
+            Array with: copied size with: target size with: (target at: 15001) with: target last
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(15000 30000 1 2)")
+    }
+
+    @Test(arguments: [
+        "String new atAllPut: 33",
+        "(String withAll: 'abc') atAll: #() put: 33",
+        "(ByteArray with: 1) copyReplaceAll: #(2) with: #(256)",
+        "(ByteArray with: 1) copyReplacing: 2 withObject: -1",
+    ])
+    func restrictedCollectionsValidateValuesEvenWhenNoElementsChange(_ source: String) async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("[ \(source) ] on: Error do: [ :error | #invalidElement ]")
+        #expect(result.error == nil)
+        #expect(result.value == "#invalidElement")
+    }
+
+    @Test func sortedCollectionCopyReplaceAllChecksReplacementOrderingWithoutMatches() async {
+        let session = SmalltalkSession()
+        let invalid = await session.evaluate("(SortedCollection with: 1) copyReplaceAll: #(2) with: #(1 #bad)")
+        #expect(invalid.error != nil)
+        let valid = await session.evaluate("((SortedCollection with: 1) copyReplaceAll: #(1) with: #(3 2)) asArray")
+        #expect(valid.error == nil)
+        #expect(valid.value == "#(2 3)")
     }
 
     private func sessionWithCallback() async throws -> SmalltalkSession {

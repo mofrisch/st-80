@@ -146,12 +146,18 @@ extension SmalltalkRuntime {
             default: return nil
             }
         case .object(let object):
+            if selector == "_tryAddAll:", let ordered = classes["OrderedCollection"], object.stClass.inherits(from: ordered) {
+                return .boolean(try appendOrderedCollectionBatch(object, source: args[0]))
+            }
             if selector == "_spliceAt:remove:with:", let ordered = classes["OrderedCollection"], object.stClass.inherits(from: ordered) {
                 guard case .array(let incoming) = args[2] else { throw SmalltalkError("Invalid collection storage.") }
-                return try spliceCollectionStorage(object, first: integer(args[0]), removed: integer(args[1]), incoming: incoming)
+                return try spliceCollectionStorage(object, first: integer(args[0]), removed: integer(args[1]), values: incoming.elements[...])
             }
             if selector == "_commitWrite:", let stream = classes["CollectionStream"], object.stClass.inherits(from: stream) {
                 return try commitStreamWrite(object, incoming: args[0])
+            }
+            if selector == "_hasStockSliceMethods:", let stream = classes["CollectionStream"], object.stClass.inherits(from: stream) {
+                return .boolean(hasStockSliceMethods(args[0]))
             }
             if selector == "_nextPutAllBatch:" {
                 return try nextPutAllBatch(receiver, source: args[0])
@@ -173,7 +179,79 @@ extension SmalltalkRuntime {
         }
     }
 
-    private func spliceCollectionStorage(_ object: STObject, first: Int64, removed: Int64, incoming: STArray) throws -> Value {
+    private func hasStockSliceMethods(_ backing: Value) -> Bool {
+        let className = classOf(backing).name
+        guard ["Array", "ByteArray", "Interval", "OrderedCollection", "SortedCollection", "String", "Symbol"].contains(className),
+              let library = try? SystemLibrary.shared.get() else { return false }
+        return ["select:", "copyFrom:to:", "copyReplaceFrom:to:with:"].allSatisfy { selector in
+            if let (method, owner, side) = lookupMethod(selector, on: backing) {
+                return library.sources[side][owner.name]?[selector] == method.source
+            }
+            return className == "Array" && selector == "select:"
+        }
+    }
+
+    private func appendOrderedCollectionBatch(_ collection: STObject, source: Value) throws -> Bool {
+        guard collection.stClass === classes["OrderedCollection"],
+              let arrayClass = classes["Array"],
+              arrayClass.lookup("do:") == nil,
+              let library = try? SystemLibrary.shared.get(),
+              case .integer(let tally)? = collection.fields["tally"],
+              (0...Int64(arrayLimit)).contains(tally) else { return false }
+
+        let receiver = Value.object(collection)
+        let methods = library.sources[.instance]["OrderedCollection"] ?? [:]
+        let appendMethods = ["add:", "addLast:", "add:beforeIndex:", "_checkInsertionIndex:", "_makeRoomFor:", "_reserve:"]
+        let arrayFactory = Value.classObject(arrayClass)
+        // A snapshot may replace the individual sends only with the stock traversal and append methods.
+        guard appendMethods.allSatisfy({ selector in
+            guard let shipped = methods[selector] else { return false }
+            return lookupMethod(selector, on: receiver)?.0.source == shipped
+        }), lookupMethod("_spliceAt:remove:with:", on: receiver) == nil,
+            arrayClass.lookup("at:put:") == nil, arrayClass.lookup("yourself") == nil,
+            lookupMethod("new:", on: arrayFactory) == nil,
+            let shippedArrayWith = library.sources[.classSide]["Array"]?["with:"],
+            lookupMethod("with:", on: arrayFactory)?.0.source == shippedArrayWith else { return false }
+
+        let values: ArraySlice<Value>
+        switch source {
+        case .array(let incoming):
+            values = incoming.elements[...]
+        case .object(let incoming) where incoming.stClass === collection.stClass:
+            guard let shippedDo = methods["do:"], let shippedAsArray = methods["asArray"],
+                  lookupMethod("do:", on: source)?.0.source == shippedDo,
+                  lookupMethod("asArray", on: source)?.0.source == shippedAsArray,
+                  let shippedCopy = library.sources[.instance]["Array"]?["copyFrom:to:"],
+                  arrayClass.lookup("copyFrom:to:")?.0.source == shippedCopy,
+                  arrayClass.lookup("at:") == nil,
+                  case .array(let storage)? = incoming.fields["storage"],
+                  case .integer(let count)? = incoming.fields["tally"],
+                  (0...Int64(storage.elements.count)).contains(count) else { return false }
+            values = storage.elements.prefix(Int(count))
+        case .object(let bytes) where bytes.stClass === classes["ByteArray"]:
+            guard let shippedDo = library.sources[.instance]["ByteArray"]?["do:"],
+                  lookupMethod("do:", on: source)?.0.source == shippedDo,
+                  lookupMethod("ifNil:", on: .nilValue) == nil,
+                  lookupMethod("ifNil:", on: .integer(0)) == nil,
+                  case .array(let storage)? = bytes.fields["storage"] else { return false }
+            try chargeNumericWork(storage.elements.count)
+            values = storage.elements.map { isNil($0) ? .integer(0) : $0 }[...]
+        default:
+            let text: String?
+            if case .symbol(let name) = source { text = name }
+            else { text = source.textContents }
+            guard let text, lookupMethod("do:", on: source) == nil else { return false }
+            try chargeNumericWork(text.utf8.count)
+            values = text.unicodeScalars.map { .character($0.value) }[...]
+        }
+        if values.isEmpty { return true }
+        guard values.count <= arrayLimit - Int(tally) else { return false }
+        _ = try send(receiver, "_makeRoomFor:", [.integer(Int64(values.count))])
+        _ = try spliceCollectionStorage(collection, first: tally + 1, removed: 0, values: values)
+        return true
+    }
+
+    private func spliceCollectionStorage(_ object: STObject, first: Int64, removed: Int64, values: ArraySlice<Value>) throws -> Value {
         guard case .array(let storage)? = object.fields["storage"],
               case .integer(let used)? = object.fields["tally"], (0...storage.elements.count).contains(Int(used)) else {
             throw SmalltalkError("Invalid collection storage.")
@@ -183,7 +261,6 @@ extension SmalltalkRuntime {
         }
         let start = Int(first - 1)
         let tail = start + Int(removed)
-        let values = incoming.elements
         let shift = values.count - Int(removed)
         let previousCount = Int(used)
         let count = previousCount + shift
@@ -223,7 +300,7 @@ extension SmalltalkRuntime {
         }
         // Publish the new position only after the storage update. No evaluation
         // or budget check can interrupt these changes.
-        _ = try spliceCollectionStorage(buffer, first: cursor + 1, removed: overwritten, incoming: incoming)
+        _ = try spliceCollectionStorage(buffer, first: cursor + 1, removed: overwritten, values: incoming.elements[...])
         object.fields["cursor"] = .integer(cursor + count)
         if let newByteCount { object.fields["byteCount"] = .integer(newByteCount) }
         return .object(object)
@@ -451,7 +528,14 @@ extension SmalltalkRuntime {
             return try fractionValue(numerator, denominator, factory: true)
         case "_stringWithAll:":
             guard stClass.name == "String" else { return nil }
-            return try newString(stringFromCharacters(args[0]))
+            let elements = args[0]
+            if lookupMethod("do:", on: elements) == nil {
+                if case .array = elements { return try newString(stringFromCharacters(elements)) }
+                if case .symbol(let name) = elements { return try newString(name) }
+                if let text = elements.textContents { return try newString(text) }
+            }
+            let sequence = try send(.classObject(classes["Array"]!), "withAll:", [elements])
+            return try newString(stringFromCharacters(sequence))
         case "name": return .symbol(stClass.name)
         case "superclass": return stClass.superclass.map(Value.classObject) ?? .nilValue
         case "subclasses", "allSubclasses":

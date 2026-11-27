@@ -33,17 +33,20 @@ extension SmalltalkRuntime {
         case "+": return try finiteFloat(number + floatingNumber(arguments[0]))
         case "-": return try finiteFloat(number - floatingNumber(arguments[0]))
         case "*": return try finiteFloat(number * floatingNumber(arguments[0]))
-        case "/", "//", "\\\\":
+        case "/", "//", "\\\\", "_floatRem:":
             let divisor = try floatingNumber(arguments[0])
             guard divisor != 0 else { throw SmalltalkError("Division by zero.") }
             if selector == "/" { return try finiteFloat(number / divisor) }
             if selector == "//" {
-                guard let quotient = BigInteger(exactly: (number / divisor).rounded(.down)) else {
-                    throw SmalltalkError("Floating-point quotient is outside the supported range.")
-                }
-                return integerValue(quotient)
+                let dividend = Self.dyadicComponents(number)
+                let denominator = Self.dyadicComponents(divisor)
+                let shift = dividend.exponent - denominator.exponent
+                let top = dividend.coefficient.shiftedLeft(max(0, shift))
+                let bottom = denominator.coefficient.shiftedLeft(max(0, -shift))
+                return integerValue(try floorDivision(top, by: bottom).quotient)
             }
             let remainder = number.truncatingRemainder(dividingBy: divisor)
+            if selector == "_floatRem:" { return .float(remainder) }
             return .float(remainder != 0 && remainder.sign != divisor.sign ? remainder + divisor : remainder)
         case "<": return .boolean(try number < floatingNumber(arguments[0]))
         case ">": return .boolean(try number > floatingNumber(arguments[0]))
@@ -54,13 +57,9 @@ extension SmalltalkRuntime {
         case "squared": return try finiteFloat(number * number)
         case "asFloat", "asFloatE", "asFloatD", "asFloatQ": return .float(number)
         case "asFraction":
-            let exponent = Int((number.bitPattern >> 52) & 0x7ff)
-            let mantissa = Int64(number.bitPattern & 0x000f_ffff_ffff_ffff)
-            let significand = mantissa + (exponent == 0 ? 0 : 1 << 52)
-            let coefficient = BigInteger(number.sign == .minus ? -significand : significand)
-            let shift = max(exponent, 1) - 1_075
-            if shift >= 0 { return integerValue(coefficient.shiftedLeft(shift)) }
-            return try fractionValue(coefficient, .one.shiftedLeft(-shift))
+            let (coefficient, exponent) = Self.dyadicComponents(number)
+            if exponent >= 0 { return integerValue(coefficient.shiftedLeft(exponent)) }
+            return try fractionValue(coefficient, .one.shiftedLeft(-exponent))
         case "asScaledDecimal:": return try convertToScaledDecimal(.float(number), scale: arguments[0])
         case "ceiling", "floor", "truncated", "rounded":
             let rule: FloatingPointRoundingRule
@@ -85,6 +84,13 @@ extension SmalltalkRuntime {
         case "tan": return try finiteFloat(tan(number))
         default: return nil
         }
+    }
+
+    private static func dyadicComponents(_ number: Double) -> (coefficient: BigInteger, exponent: Int) {
+        let implicitBit: UInt64 = number.isNormal ? 1 << Double.significandBitCount : 0
+        let significand = Int64(number.significandBitPattern + implicitBit)
+        return (BigInteger(number.sign == .minus ? -significand : significand),
+                max(Int(number.exponentBitPattern), 1) - 1_075)
     }
 
     private func floorLogarithm(_ number: Double, base: Value) throws -> BigInteger {

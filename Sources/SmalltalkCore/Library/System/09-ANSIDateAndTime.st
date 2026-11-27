@@ -20,13 +20,22 @@ Duration compileClass: '_exactSeconds: amount
     (amount isKindOf: Number) ifFalse: [ self error: ''Expected a number of seconds.'' ].
     ^ amount asFraction'.
 
+Duration compileClass: '_secondsOf: other ifAbsent: absent
+    | seconds |
+    (other isKindOf: Duration) ifTrue: [ ^ other asSeconds ].
+    seconds := [ other asSeconds ] on: MessageNotUnderstood do: [ :exception |
+        (exception receiver == other and: [ exception message selector == #asSeconds ])
+            ifTrue: [ ^ absent value ].
+        exception pass ].
+    (seconds isKindOf: Number) ifFalse: [ ^ absent value ].
+    ^ seconds asFraction'.
+
 Duration compile: '_seconds: amount
     totalSeconds := amount.
     ^ self'.
 
 Duration compile: '_secondsOf: other
-    (other isKindOf: Duration) ifFalse: [ self error: ''Expected a Duration.'' ].
-    ^ other asSeconds'.
+    ^ self class _secondsOf: other ifAbsent: [ self error: ''Expected a Duration.'' ]'.
 
 Duration compile: 'asSeconds
     ^ totalSeconds'.
@@ -54,10 +63,10 @@ Duration compile: '* factor
 
 Duration compile: '/ operand
     | isDuration divisor quotient |
-    isDuration := operand isKindOf: Duration.
-    divisor := isDuration
-        ifTrue: [ operand asSeconds ]
-        ifFalse: [ self class _exactSeconds: operand ].
+    divisor := (operand isKindOf: Number)
+        ifFalse: [ self class _secondsOf: operand ifAbsent: [ nil ] ].
+    isDuration := divisor notNil.
+    isDuration ifFalse: [ divisor := self class _exactSeconds: operand ].
     divisor = 0 ifTrue: [ ^ ZeroDivide dividend: totalSeconds ].
     quotient := totalSeconds / divisor.
     ^ isDuration ifTrue: [ quotient ] ifFalse: [ self class seconds: quotient ]'.
@@ -75,7 +84,9 @@ Duration compile: 'positive
     ^ totalSeconds >= 0'.
 
 Duration compile: '= other
-    ^ (other isKindOf: Duration) and: [ totalSeconds = other asSeconds ]'.
+    | seconds |
+    seconds := self class _secondsOf: other ifAbsent: [ ^ false ].
+    ^ totalSeconds = seconds'.
 
 Duration compile: '~= other
     ^ (self = other) not'.
@@ -181,7 +192,7 @@ DateAndTime compileClass: 'year: year day: ordinal hour: hour minute: minute sec
     ^ self _year: year ordinal: ordinal hour: hour minute: minute second: second offset: offset'.
 
 DateAndTime compileClass: '_year: year ordinal: ordinal hour: hour minute: minute second: second offset: offset
-    | seconds dayIndex |
+    | seconds dayIndex checkedOffset |
     ((hour isKindOf: Integer) and: [ hour between: 0 and: 23 ])
         ifFalse: [ self error: ''Hour must be between 0 and 23.'' ].
     ((minute isKindOf: Integer) and: [ minute between: 0 and: 59 ])
@@ -189,10 +200,10 @@ DateAndTime compileClass: '_year: year ordinal: ordinal hour: hour minute: minut
     seconds := Duration _exactSeconds: second.
     (seconds >= 0 and: [ seconds < 60 ])
         ifFalse: [ self error: ''Second must be at least 0 and less than 60.'' ].
-    self _checkOffset: offset.
+    checkedOffset := self _checkOffset: offset.
     dayIndex := (self _daysBeforeYear: year) + ordinal - 1.
-    ^ self _atUTCSeconds: (dayIndex * 86400) + (hour * 3600) + (minute * 60) + seconds - offset asSeconds
-        offset: offset'.
+    ^ self _atUTCSeconds: (dayIndex * 86400) + (hour * 3600) + (minute * 60) + seconds - checkedOffset asSeconds
+        offset: checkedOffset'.
 
 DateAndTime compileClass: '_atUTCSeconds: instant offset: offset
     ^ self new _utcSeconds: instant offset: offset'.
@@ -201,8 +212,11 @@ DateAndTime compileClass: '_checkYear: year
     (year isKindOf: Integer) ifFalse: [ self error: ''Year must be an integer.'' ]'.
 
 DateAndTime compileClass: '_checkOffset: offset
-    ((offset isKindOf: Duration) and: [ offset asSeconds between: -86400 and: 86400 ])
-        ifFalse: [ self error: ''Expected a UTC offset from -24 to +24 hours.'' ]'.
+    | seconds |
+    seconds := Duration _secondsOf: offset ifAbsent: [ nil ].
+    (seconds notNil and: [ seconds between: -86400 and: 86400 ])
+        ifFalse: [ self error: ''Expected a UTC offset from -24 to +24 hours.'' ].
+    ^ (offset isKindOf: Duration) ifTrue: [ offset ] ifFalse: [ Duration seconds: seconds ]'.
 
 DateAndTime compileClass: '_isLeapYear: year
     ^ (year \\ 4) = 0 and: [ (year \\ 100) ~= 0 or: [ (year \\ 400) = 0 ] ]'.
@@ -267,16 +281,19 @@ DateAndTime compile: 'offset
     ^ utcOffset'.
 
 DateAndTime compile: 'offset: offset
-    self class _checkOffset: offset.
-    ^ self class _atUTCSeconds: utcSeconds offset: offset'.
+    ^ self class _atUTCSeconds: utcSeconds offset: (self class _checkOffset: offset)'.
 
 DateAndTime compile: '+ duration
-    (duration isKindOf: Duration) ifFalse: [ self error: ''Expected a Duration.'' ].
-    ^ self class _atUTCSeconds: utcSeconds + duration asSeconds offset: utcOffset'.
+    | seconds |
+    seconds := Duration _secondsOf: duration ifAbsent: [ self error: ''Expected a Duration.'' ].
+    ^ self class _atUTCSeconds: utcSeconds + seconds offset: utcOffset'.
 
 DateAndTime compile: '- other
+    | seconds |
     (other isKindOf: Duration) ifTrue: [ ^ self + other negated ].
-    ^ Duration seconds: utcSeconds - (self _secondsOf: other)'.
+    (other isKindOf: DateAndTime) ifTrue: [ ^ Duration seconds: utcSeconds - (self _secondsOf: other) ].
+    seconds := Duration _secondsOf: other ifAbsent: [ self error: ''Expected a DateAndTime or Duration.'' ].
+    ^ self + (Duration seconds: seconds negated)'.
 
 DateAndTime compile: '= other
     ^ (other isKindOf: DateAndTime) and: [ utcSeconds = other _utcSeconds ]'.

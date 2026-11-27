@@ -145,6 +145,29 @@ struct ANSIInterchangeTests {
         #expect(await session.evaluate("SIFNonInterchange").error?.contains("Unknown variable") == true)
     }
 
+    @Test func versionHeaderRequiresAnInterchangeElement() async throws {
+        let session = SmalltalkSession()
+        let header = "Smalltalk interchangeVersion: '1.0'!"
+        let empty = await session.evaluate(header)
+        #expect(empty.error?.contains("at least one interchange element") == true)
+
+        let whitespace = await session.evaluate(header + "\n  !\n")
+        #expect(whitespace.error?.contains("at least one interchange element") == true)
+
+        let annotation = await session.evaluate(header + "\nAnnotation key: 'note' value: 'example'!")
+        #expect(annotation.error?.contains("annotation must follow an interchange element") == true)
+
+        let comment = await session.evaluate(header + "\n\"A standalone interchange comment\"!")
+        #expect(comment.error == nil)
+        #expect(comment.value == "nil")
+
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".st")
+        defer { try? FileManager.default.removeItem(at: file) }
+        try header.write(to: file, atomically: true, encoding: .utf8)
+        let imported = try await session.importInterchange(from: file)
+        #expect(imported.error?.contains("at least one interchange element") == true)
+    }
+
     @Test func indexableClassesSupportNamedFieldsByteBoundsAndZeroBasedAllocationSize() async throws {
         let session = SmalltalkSession()
         let imported = await session.evaluate("""

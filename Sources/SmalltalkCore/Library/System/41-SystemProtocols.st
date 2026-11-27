@@ -79,7 +79,7 @@ BrowserOrganization compile: 'shippedProtocols
             (''Mathematical Functions'' (''sqrt'' ''exp'' ''ln'' ''log:'' ''floorLog:''))
             (''Trigonometry'' (''sin'' ''cos'' ''tan'' ''arcSin'' ''arcCos'' ''arcTan'' ''degreesToRadians'' ''radiansToDegrees''))
             (''Iteration'' (''to:do:'' ''to:by:do:''))
-            (''Private'' (''_floorLog:''))))
+            (''Private'' (''_floorLog:'' ''_floatRem:''))))
         (''Collection'' (
             (''Testing'' (''notEmpty'' ''allSatisfy:'' ''anySatisfy:'' ''occurrencesOf:''))
             (''Searching'' (''detect:'' ''detect:ifNone:''))
@@ -107,7 +107,7 @@ BrowserOrganization compile: 'shippedProtocols
             (''Enumerating'' (''do:'' ''collect:'' ''select:''))
             (''Copying and Conversion'' (''copy'' '','' ''asArray''))
             (''Private'' (''_reserve:'' ''_makeRoomFor:'' ''_checkIndex:'' ''_checkInsertionIndex:'' ''_positionOf:''
-                ''_spliceAt:remove:with:'' ''_sequenceFrom:''))))
+                ''_spliceAt:remove:with:'' ''_sequenceFrom:'' ''_tryAddAll:''))))
         (''UnorderedCollection'' (
             (''Initialization'' (''initialize'' ''_reserve:''))
             (''Accessing'' (''size'' ''isEmpty'' ''includes:''))
@@ -132,7 +132,7 @@ BrowserOrganization compile: 'shippedProtocols
             (''Positioning'' (''position'' ''position:'' ''reset'' ''setToEnd''))
             (''Lifecycle'' (''close''))
             (''Private'' (''_openOn:writing:'' ''_sequence'' ''_size'' ''_sliceFrom:to:''
-                ''_checkWrite:'' ''_write:'' ''_commitWrite:''))))
+                ''_hasStockSliceMethods:'' ''_checkWrite:'' ''_write:'' ''_commitWrite:''))))
         (''ReadStream'' (
             (''Reading'' (''next'' ''next:'' ''nextLine'' ''nextMatchFor:'' ''peek'' ''peekFor:'' ''upTo:''))
             (''Positioning'' (''atEnd'' ''skip:'' ''skipTo:''))
@@ -167,7 +167,7 @@ BrowserOrganization compile: 'shippedProtocols
             (''Updating'' (''at:put:'' ''atAll:put:'' ''atAllPut:'' ''replaceFrom:to:with:''
                 ''replaceFrom:to:with:startingAt:'' ''replaceFrom:to:withObject:''))
             (''Enumerating'' (''do:'' ''collect:'' ''select:''))
-            (''Copying and Conversion'' (''copy'' '','' ''asArray''))
+            (''Copying and Conversion'' (''copy'' '','' ''asArray'' ''copyReplaceAll:with:'' ''copyReplacing:withObject:''))
             (''Private'' (''_size:'' ''_initializeFrom:'' ''_checkByte:'' ''_sequenceFrom:''))))
         (''SortedCollection'' (
             (''Initialization'' (''initialize''))
@@ -176,7 +176,7 @@ BrowserOrganization compile: 'shippedProtocols
             (''Adding'' (''add:'' ''addAll:''))
             (''Removing'' (''remove:'' ''remove:ifAbsent:'' ''removeAll:'' ''removeAtIndex:'' ''removeFirst'' ''removeLast''))
             (''Enumerating'' (''do:'' ''collect:'' ''select:'' ''reverse''))
-            (''Copying and Conversion'' (''copy'' '','' ''asArray'' ''asSortedCollection''))
+            (''Copying and Conversion'' (''copy'' '','' ''asArray'' ''asSortedCollection'' ''copyReplaceAll:with:''))
             (''Private'' (''_elements'' ''_reserve:'' ''_sorted:by:'' ''_sequenceFrom:''))))
         (''String'' (
             (''Accessing'' (''size'' ''at:'' ''characters'' ''isEmpty''))
@@ -435,6 +435,7 @@ BrowserOrganization compile: 'shippedProtocols
         (''ANSIClassStateProbe'' ((''Accessing'' (''slot''))))
         (''ANSIProbeException'' ((''Signaling'' (''defaultAction'' ''isResumable''))))
         (''ANSIProbeWarning'' ((''Signaling'' (''defaultAction''))))
+        (''ANSIStreamBackingProbe'' ((''Test Support'' (''copyFrom:to:'' ''select:''))))
         (''ANSISmalltalkTest'' (
             (''Language Tests'' (''testMessagePrecedence'' ''testCascadeUsesTheSameReceiver''
                 ''testMethodReturnAndSuper'' ''testFailedSendCarriesSelectorAndArguments''
@@ -446,6 +447,7 @@ BrowserOrganization compile: 'shippedProtocols
             (''Object Tests'' (''testObjectCopyClassTestsAndHash''))
             (''Text Tests'' (''testStringFactoriesAndReadableStringProtocols''))
             (''Stream Tests'' (''testReadStreamPeekAndPosition'' ''testReadStreamSlicesAndDelimiters''
+                ''testCollectionStreamResultsFollowBackingSelect''
                 ''testReadStreamNextLineSupportsCommonLineEndings'' ''testWriteStreamOverwritesAndAppendsWithoutWriteBack''
                 ''testWriteStreamValidatesAByteBatchBeforeWriting'' ''testReadWriteStreamMovesBetweenReadingAndWriting''
                 ''testWriteStreamAcceptsObjectAndRadixPrinting''))
@@ -491,7 +493,7 @@ BrowserOrganization compile: 'shippedClassSideProtocols
                 ''_isLeapYear:'' ''_daysBeforeYear:'' ''_monthStartsFor:'' ''_datePartsForDay:''))))
         (''Duration'' (
             (''Instance Creation'' (''seconds:'' ''days:hours:minutes:seconds:'' ''zero''))
-            (''Private'' (''_exactSeconds:'' ''_pad:to:'' ''_printSeconds:'' ''_decimalDigitsOf:''))))
+            (''Private'' (''_exactSeconds:'' ''_secondsOf:ifAbsent:'' ''_pad:to:'' ''_printSeconds:'' ''_decimalDigitsOf:''))))
         (''Collection'' ((''Instance Creation'' (''with:'' ''with:with:'' ''with:with:with:'' ''with:with:with:with:'' ''withAll:''))))
         (''UnorderedCollection'' ((''Instance Creation'' (''new:''))))
         (''Dictionary'' ((''Instance Creation'' (''new:'' ''withAll:''))))

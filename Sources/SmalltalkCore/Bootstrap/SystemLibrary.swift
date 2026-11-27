@@ -189,15 +189,9 @@ struct SystemLibrary: Sendable {
 
     /// Update stock library and compiler methods in already-saved images.
     func upgradeCurrentANSIBehavior(in runtime: SmalltalkRuntime) throws {
-        let selector = "copyFrom:to:"
-        if let interval = runtime.classes["Interval"], interval.methods[selector] == nil,
-           interval.methods.count < SmalltalkRuntime.methodsPerSideLimit,
-           let inherited = interval.superclass?.lookup(selector)?.0,
-           Self.digest(Data(inherited.source.utf8)) == "baddcf954fc8c10aad26b65fafc4d3141e77688e3c8b0e00e157d864716dc1f7" {
-            try installBundledMethod(selector, on: interval)
-        }
         let previous: [(String, MethodSide, String, String)] = [
             ("CollectionStream", .instance, "_sliceFrom:to:", "33a5793e7590a90a2f8ec120cfa8fc770f97c37b124be13af8e8f26188f0c7b7"),
+            ("CollectionStream", .instance, "_sliceFrom:to:", "c09dbe48941617162c969c9452383bfee82a27871d74c761827db874247405a5"),
             ("ReadStream", .instance, "nextLine", "3e8c7e8bdfd2d1692d1c2a1f79971d78c662dd78387403c0fa7ebd48c15bbd2e"),
             ("STCompiler", .instance, "validateNames:", "952c549838c500573b424f1fc3ac1725f263502cd9a4f0a4ca33481e5dc8681f"),
             ("STScanner", .instance, "isBinary:", "8f9b611482286a44c54c29eed24f711b6115fc10b9ed36b63c837ec9bd4a5017"),
@@ -209,11 +203,50 @@ struct SystemLibrary: Sendable {
             ("ByteArray", .instance, "replaceFrom:to:with:", "defc5b01df6b6da8c341cc8ec587b625284afe50df265bbb856b55b41f8ca5eb"),
             ("Transcript", .instance, "nextPutAll:", "0eaed9f2c0e56e6f86b9aaabd2bbb0dc325e7a33ba0d9b7751acfc9d4d04fd29"),
             ("TestRunner", .classSide, "testSelectorsFor:", "2093debff5e3ffedfe588bc9688be5b118f3119a3f9eb8baab44ed8ee572fd28"),
+            ("Number", .instance, "rem:", "7a356c2f5573e14e1557e2e1e6fd5ec253fbdaccf10e79386d5bbc3ed1942a97"),
+            ("Number", .instance, "roundTo:", "f245fe0e103a14c660d6e21c6f4b3222befca1092edb73f830a3e3aa68296711"),
+            ("Number", .instance, "truncateTo:", "abc6135990bbd35aa81141d701a53a5e305248eb16649127c522f66cca214026"),
+            ("Number", .instance, "raisedTo:", "67114c7c826e053b19d5ce1ccb6aba5b26f57c6f3e8f01bd044ae7b21b237cac"),
+            ("Number", .instance, "raisedToInteger:", "81d1db4ef753cbaa4525e987ec62ad18e09db8acb91a811c88823eb080ee14b6"),
+            ("OrderedCollection", .instance, "addAll:", "57f1bf2ed434e62e1dc22662b23045698771ee96425e9aad98bf965bf6de4e28"),
+            ("OrderedCollection", .instance, "removeAll:", "d66b1840b7900aac9facc7e4b99b13f84790ed3476343232734b48ee60298caf"),
+            ("String", .instance, "atAll:put:", "6ed74358cb7c72d434eb6cc3df262c2a449de276d12521b905f1686c9de00954"),
+            ("String", .instance, "atAllPut:", "4d4f484b05b3b071d0eee1a925db67d8d640e1ed7e59072b466d2da8181ec598"),
+            ("Duration", .instance, "_secondsOf:", "9f7d920d97330a07d9ff63df65185a990eafd8ceb2d63f10636fb25b52e58c96"),
+            ("Duration", .instance, "/", "f1c4bf951f38eccca9d465ae114d3879e8d92ec58df3cfea7b1e57df415d014a"),
+            ("Duration", .instance, "=", "a690af101e6d3a6d45defab3931f2ade64d66af182f3f655ecd5372c56be5c6a"),
+            ("DateAndTime", .instance, "offset:", "804db7eb2ad7ea7aebefac3af6e4e8b34fae3f789095dc82abc164b31602ed8f"),
+            ("DateAndTime", .instance, "+", "62fc6c7629d86fd78c436d4bba23ac255fcebd799fd0ad217ab0c79a51936236"),
+            ("DateAndTime", .instance, "-", "627a46ca33508edfea4f8393bbbe18b421d0a8cd6d9bcc9cb6abb74f97701a22"),
+            ("DateAndTime", .classSide, "_year:ordinal:hour:minute:second:offset:", "617ffbb0646bbf82ca7c4276a3bb8c88a3ca375703e445bcfad9383e12ab1887"),
+            ("DateAndTime", .classSide, "_checkOffset:", "2bce3d4c335cf3836f93bf627c8afa5bb469289138db61885846813df057ab7f"),
         ]
         for (name, side, selector, hash) in previous {
             guard let owner = runtime.classes[name], let old = owner[side][selector],
                   Self.digest(Data(old.source.utf8)) == hash else { continue }
+            if name == "Duration" || name == "DateAndTime" {
+                let helper = "_secondsOf:ifAbsent:"
+                guard let duration = runtime.classes["Duration"] else { continue }
+                if duration.classMethods[helper] == nil {
+                    guard duration.classMethods.count < SmalltalkRuntime.methodsPerSideLimit else { continue }
+                    try installBundledMethod(helper, on: duration, side: .classSide)
+                }
+            }
             try installBundledMethod(selector, on: owner, side: side)
+        }
+
+        let inheritedMethods: [(String, String, Set<String>)] = [
+            ("Interval", "copyFrom:to:", ["baddcf954fc8c10aad26b65fafc4d3141e77688e3c8b0e00e157d864716dc1f7"]),
+            ("ByteArray", "copyReplaceAll:with:", ["704bc9c20c595beb78f7cbb0e6411458f0f7188d08a3cb9d981d775b9a53b778"]),
+            ("ByteArray", "copyReplacing:withObject:", ["c62917f14fa8a77bb5d20b5cd42898f7afb83698508a1aca50271f7c6b483b40"]),
+            ("SortedCollection", "copyReplaceAll:with:", ["704bc9c20c595beb78f7cbb0e6411458f0f7188d08a3cb9d981d775b9a53b778"]),
+        ]
+        for (name, selector, hashes) in inheritedMethods {
+            guard let owner = runtime.classes[name], owner.methods[selector] == nil,
+                  owner.methods.count < SmalltalkRuntime.methodsPerSideLimit,
+                  let inherited = owner.superclass?.lookup(selector)?.0,
+                  hashes.contains(Self.digest(Data(inherited.source.utf8))) else { continue }
+            try installBundledMethod(selector, on: owner)
         }
     }
 
@@ -253,6 +286,7 @@ struct SystemLibrary: Sendable {
                 "fd4eca47479b562f9bd4515d5cc5f52ee9b365181cf1e6da3d27427ce67a1f56",
                 "0b2f94eddeb68f29c68c1123fe637f81a71cd6f7971874f9fdc64e8049944eeb",
                 "2dc4596961268fbbda4353352e1c00d5981c79405df3cf56e7928b9a7ede4ead",
+                "75ed1f3d16104189da608725c97fef2ebe14043c0e0b82330456cc5182adcba2",
             ]),
             (.instance, "shippedClassSideProtocols", [
                 "7b2f2950f5dc051c01fdcd0afcdde26c8505606a3c1f370ad2c6910c5eff398c",
@@ -260,6 +294,7 @@ struct SystemLibrary: Sendable {
                 "b47e4912fcc451571d5cef706f0cc72fdf9e8d9a4642a4e2e6813c2c680df201",
                 "b7974c43ae3dd01bbbbcbc727dab84713023b8ee1a57e63894caa2243cf53765",
                 "1fa6f5c515c4deea0d6f1347dbd94a2b6067ab009919c6256dde5695e2f50b5b",
+                "b72abb7b5d7c66fedb31fdf1aaebe7cc851cb8ca3921ccd4da53a48f76c7a898",
             ]),
             (.classSide, "shippedClassCategories", [
                 "94b28fa4e197128a9942bda803c88b225ff4b73c86eb419a706c4b06c8dc4b1e",
@@ -274,6 +309,7 @@ struct SystemLibrary: Sendable {
                 "b2d934eaaf2b7476f68f04841e4b81db411ed9f5bbc5e24de5fa6f69f91fab7a",
                 "3075b28152eee65ef6d3c9ded49fa3e892aa0dce8c08cb00ea79086c85bef9fe",
                 "3203391bd3d543d8c6634184658cf5c3157a0c578436a9e6ed97ba76b6219a9b",
+                "fc67946a0c407b98e6bca7b54a5b7de684c6658cef3d8c99c5fe972e727bb03c",
             ]),
         ]
         var refresh = classesAdded

@@ -63,6 +63,14 @@ ANSIProbeException compile: 'defaultAction
 ANSIProbeException compile: 'isResumable
     ^ true'.
 
+OrderedCollection subclass: #ANSIStreamBackingProbe instanceVariableNames: ''.
+
+ANSIStreamBackingProbe compile: 'copyFrom: start to: stop
+    ^ (super copyFrom: start to: stop) asArray'.
+
+ANSIStreamBackingProbe compile: 'select: predicate
+    ^ OrderedCollection withAll: (super select: predicate)'.
+
 TestCase subclass: #ANSISmalltalkTest instanceVariableNames: ''.
 
 ANSISmalltalkTest compile: 'testClassObjectsHaveDistinctMetaclasses
@@ -811,6 +819,41 @@ ANSISmalltalkTest compile: 'testReadStreamSlicesAndDelimiters
     self assert: prefix asArray equals: #(1 2).
     self assert: (bytes next: 8) asArray equals: #(255).
     self assert: bytes atEnd'.
+
+ANSISmalltalkTest compile: 'testCollectionStreamResultsFollowBackingSelect
+    | backing stream result writer readWriter |
+    backing := ANSIStreamBackingProbe withAll: #(1 2 1 3).
+    self assert: (backing copyFrom: 1 to: 3) class equals: Array.
+    stream := ReadStream on: backing.
+    result := stream contents.
+    self assert: result class equals: OrderedCollection.
+    self assert: result asArray equals: #(1 2 1 3).
+
+    stream skip: 2.
+    result := stream next: 0.
+    self assert: result class equals: OrderedCollection.
+    self assert: result isEmpty.
+    self assert: stream position equals: 2.
+    result := stream next: 1.
+    self assert: result class equals: OrderedCollection.
+    self assert: result asArray equals: #(1).
+    stream reset.
+    result := stream upTo: 3.
+    self assert: result class equals: OrderedCollection.
+    self assert: result asArray equals: #(1 2 1).
+    self assert: stream atEnd.
+    self assert: (stream upTo: 4) class equals: OrderedCollection.
+
+    writer := WriteStream with: backing.
+    writer nextPut: 4.
+    self assert: writer contents class equals: OrderedCollection.
+    self assert: writer contents asArray equals: #(1 2 1 3 4).
+    readWriter := ReadWriteStream on: backing.
+    readWriter nextPut: 5; reset.
+    result := readWriter next: 2.
+    self assert: result class equals: OrderedCollection.
+    self assert: result asArray equals: #(5 2).
+    self assert: backing asArray equals: #(1 2 1 3)'.
 
 ANSISmalltalkTest compile: 'testReadStreamNextLineSupportsCommonLineEndings
     | text stream line |

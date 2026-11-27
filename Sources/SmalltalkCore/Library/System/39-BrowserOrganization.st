@@ -149,7 +149,7 @@ BrowserOrganization compileClass: 'shippedClassCategories
         (''Tests'' (''TestCase'' ''TestOutcome'' ''TestResult'' ''TestRunner''
             ''CounterTest'' ''CollectionsTest'' ''BindingTestModel'' ''UIBindingTest''
             ''ANSIDispatchProbe'' ''ANSIEqualityProbe'' ''ANSIProbeError'' ''ANSIProbeException'' ''ANSIProbeWarning''
-            ''ANSIClassStateProbe'' ''ANSIClassStateChild'' ''ANSISmalltalkTest'')))'.
+            ''ANSIClassStateProbe'' ''ANSIClassStateChild'' ''ANSIStreamBackingProbe'' ''ANSISmalltalkTest'')))'.
 
 BrowserOrganization compile: 'classCategories
     systemProtocols isNil ifTrue: [ self refreshShippedProtocols ].

@@ -151,9 +151,9 @@ extension SmalltalkRuntime {
         switch selector {
         case "numerator": return integerValue(number.numerator)
         case "denominator": return integerValue(number.denominator)
-        case "negated": return try fractionValue(-number.numerator, number.denominator)
-        case "abs": return try fractionValue(number.numerator.magnitude, number.denominator)
-        case "squared": return try fractionBinary(number, "*", number)
+        case "negated": return .fraction(number.negated)
+        case "abs": return .fraction(number.magnitude)
+        case "squared": return .fraction(try number.squared(charge: chargeNumericWork))
         case "asFloat", "asFloatE", "asFloatD", "asFloatQ":
             return try finiteFloat(number.doubleValue(charge: chargeNumericWork))
         case "asScaledDecimal:": return try convertToScaledDecimal(.fraction(number), scale: arguments[0])

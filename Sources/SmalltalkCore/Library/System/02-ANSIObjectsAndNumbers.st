@@ -55,20 +55,32 @@ Number compile: 'quo: divisor
     ^ quotient'.
 
 Number compile: 'rem: divisor
+    (((self isKindOf: Float) or: [ divisor isKindOf: Float ]) and: [ divisor ~= 0 ]) ifTrue: [
+        ^ self asFloat _floatRem: divisor ].
     ^ self - ((self quo: divisor) * divisor)'.
 
 Number compile: 'reciprocal
     ^ 1 / self'.
 
 Number compile: 'roundTo: factor
-    | quotient |
-    quotient := ((self isKindOf: Float) or: [ factor isKindOf: Float ])
-        ifTrue: [ self / factor ]
-        ifFalse: [ self asFraction / factor asFraction ].
-    ^ quotient rounded * (self _coerceRoundingFactor: factor)'.
+    | quotient convertedFactor exactFactor |
+    ((self isKindOf: Float) or: [ factor isKindOf: Float ]) ifTrue: [
+        convertedFactor := factor asFloat.
+        convertedFactor = 0 ifTrue: [ ^ (self / factor) rounded * convertedFactor ].
+        exactFactor := convertedFactor asFraction.
+        quotient := (self asFloat asFraction / exactFactor) rounded.
+        quotient = 0 ifTrue: [ ^ 0.0 * convertedFactor ].
+        ^ (quotient * exactFactor) asFloat ].
+    ^ (self asFraction / factor asFraction) rounded * (self _coerceRoundingFactor: factor)'.
 
 Number compile: 'truncateTo: factor
-    ^ (self quo: factor) * (self _coerceRoundingFactor: factor)'.
+    | quotient convertedFactor |
+    quotient := self quo: factor.
+    ((self isKindOf: Float) or: [ factor isKindOf: Float ]) ifTrue: [
+        convertedFactor := factor asFloat.
+        quotient = 0 ifTrue: [ ^ 0.0 * convertedFactor ].
+        ^ (quotient * convertedFactor asFraction) asFloat ].
+    ^ quotient * (self _coerceRoundingFactor: factor)'.
 
 Number compile: '_coerceRoundingFactor: factor
     (self isKindOf: Float) ifTrue: [ ^ factor asFloat ].
@@ -77,6 +89,7 @@ Number compile: '_coerceRoundingFactor: factor
     ^ factor'.
 
 Number compile: 'raisedTo: exponent
+    (self = 0 and: [ exponent = 0 ]) ifTrue: [ self error: ''Zero requires a positive exponent.'' ].
     (exponent isKindOf: Integer) ifTrue: [ ^ self raisedToInteger: exponent ].
     self < 0 ifTrue: [ self error: ''A negative base requires an integer exponent.'' ].
     self = 0 ifTrue: [
@@ -85,16 +98,20 @@ Number compile: 'raisedTo: exponent
     ^ (self asFloat ln * exponent) exp'.
 
 Number compile: 'raisedToInteger: exponent
-    | power factor result |
+    | power factor result invertResult |
     (exponent isKindOf: Integer) ifFalse: [ self error: ''Expected an integer exponent.'' ].
     power := exponent abs.
     factor := self.
+    invertResult := exponent < 0.
+    (invertResult and: [ self isKindOf: Float ]) ifTrue: [
+        factor := self reciprocal.
+        invertResult := false ].
     result := self * 0 + 1.
     [ power > 0 ] whileTrue: [
         power odd ifTrue: [ result := result * factor ].
         power := power // 2.
         power > 0 ifTrue: [ factor := factor squared ] ].
-    exponent < 0 ifTrue: [ ^ result reciprocal ].
+    invertResult ifTrue: [ ^ result reciprocal ].
     ^ result'.
 
 Integer compile: 'sqrt ^ self _integerSqrt'.

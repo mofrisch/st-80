@@ -182,7 +182,7 @@ extension SmalltalkRuntime {
         try subclass(of: superclass(named: definition.superclass), name: definition.name,
                      fields: definition.fields.joined(separator: " "), classFields: definition.classFields,
                      classVariables: definition.classVariables, pools: definition.pools,
-                     indexedStorage: definition.indexedStorage, ansi: true)
+                     indexedStorage: definition.indexedStorage, ansi: true, usesANSIAllocation: true)
     }
 
     func runInterchange(_ sources: [String]) -> EvaluationResult {
@@ -303,9 +303,9 @@ extension SmalltalkRuntime {
                             throw SmalltalkInterchange.invalid("Repeated initializer for \(key).")
                         }
                     }
-                    try validateInterchangeAssignments(BytecodeBody.lower(syntax), in: classes[owner],
-                                                       side: .classSide, pool: variable == nil ? nil : owner,
-                                                       initializer: true)
+                    try validateInterchangeBindings(BytecodeBody.lower(syntax), in: classes[owner],
+                                                    side: .classSide, pool: variable == nil ? nil : owner,
+                                                    initializer: true)
                 default: break
                 }
             }
@@ -314,7 +314,7 @@ extension SmalltalkRuntime {
                 guard installed.union(selectors[side.displayName(for: stClass.name)]!).count <= Self.methodsPerSideLimit else {
                     throw SmalltalkInterchange.invalid("Too many methods in \(side.displayName(for: stClass.name)).")
                 }
-                try validateInterchangeAssignments(method.body, in: stClass, side: side, locals: Set(method.parameters))
+                try validateInterchangeBindings(method.body, in: stClass, side: side, locals: Set(method.parameters))
             }
             if shouldRecord { try journal.appendImportedRecords(changes) }
             for (stClass, side, method) in methods { stClass[side][method.selector] = method }
@@ -338,21 +338,25 @@ extension SmalltalkRuntime {
                    classFields: kind == .classDefinition ? owner.metaclass.ownFields : nil)
     }
 
-    private func validateInterchangeAssignments(_ body: BytecodeBody, in owner: STClass?, side: MethodSide,
-                                                pool: String? = nil, locals: Set<String> = [], initializer: Bool = false) throws {
+    private func validateInterchangeBindings(_ body: BytecodeBody, in owner: STClass?, side: MethodSide,
+                                             pool: String? = nil, locals: Set<String> = [], initializer: Bool = false) throws {
         let locals = locals.union(body.temporaries)
         for instruction in body.instructions {
             switch instruction.operation {
             case .makeBlock(let arguments, let block):
-                try validateInterchangeAssignments(block, in: owner, side: side, pool: pool,
-                                                   locals: locals.union(arguments), initializer: initializer)
+                try validateInterchangeBindings(block, in: owner, side: side, pool: pool,
+                                                locals: locals.union(arguments), initializer: initializer)
             case .prepareSend(isSuper: true) where initializer:
                 throw SmalltalkError("super is unavailable in an initializer.", at: instruction.position)
             case .load("self") where initializer && owner == nil:
                 throw SmalltalkError("self is only available in a class initializer.", at: instruction.position)
-            case .store(let name) where !locals.contains(name):
+            case .load(let name), .store(let name):
+                if locals.contains(name) { continue }
+                let writing: Bool
+                if case .store = instruction.operation { writing = true } else { writing = false }
                 if CodeValidator.reservedIdentifiers.contains(name) {
-                    throw SmalltalkError("Cannot assign to \(name) in this scope.", at: instruction.position)
+                    if writing { throw SmalltalkError("Cannot assign to \(name) in this scope.", at: instruction.position) }
+                    continue
                 }
                 if owner.map({ (side == .instance ? $0.fields : $0.metaclass.fields).contains(name) }) == true { continue }
                 var found = owner
@@ -360,10 +364,16 @@ extension SmalltalkRuntime {
                 if found != nil { continue }
                 let pools = pool.map { [$0] } ?? owner?.sharedPools ?? []
                 let bindings = pools.compactMap { sharedPools[$0]?[name] }
+                if bindings.count > 1 {
+                    throw SmalltalkError("Pool variable \(name) is ambiguous.", at: instruction.position)
+                }
+                guard !bindings.isEmpty || globals[name] != nil else {
+                    throw SmalltalkError("Unknown variable: \(name)", at: instruction.position)
+                }
                 let constant = bindings.first?.kind.isConstant
                     ?? (declaredGlobals[name]?.isConstant == true || classes[name] != nil || sharedPools[name] != nil
                         || name == "Transcript" || Self.floatAliases.contains(name))
-                if bindings.count > 1 || constant {
+                if writing && constant {
                     throw SmalltalkError("Cannot assign to \(name) in this scope.", at: instruction.position)
                 }
             default: break

@@ -254,6 +254,7 @@ struct GarbageCollectionTests {
         #expect(value("""
         Object subclass: #GCPair instanceVariableNames: 'payload'.
         GCPair compile: 'initialize payload := #(10 (20 30))'.
+        GCPair compileClass: 'new ^ super new initialize; yourself'.
         GCPair compile: 'payload ^ payload'.
         GCPair compile: 'first: a with: b ^ a'.
         Counter compile: 'reader ^ [ count ]'.

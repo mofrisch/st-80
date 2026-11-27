@@ -220,10 +220,31 @@ struct SystemLibrary: Sendable {
             ("DateAndTime", .instance, "-", "627a46ca33508edfea4f8393bbbe18b421d0a8cd6d9bcc9cb6abb74f97701a22"),
             ("DateAndTime", .classSide, "_year:ordinal:hour:minute:second:offset:", "617ffbb0646bbf82ca7c4276a3bb8c88a3ca375703e445bcfad9383e12ab1887"),
             ("DateAndTime", .classSide, "_checkOffset:", "2bce3d4c335cf3836f93bf627c8afa5bb469289138db61885846813df057ab7f"),
+            ("Number", .instance, "min:", "5bbe8d98f31963257f1ef0334c9202753cd847ac4bb32eea5e5b7db8bd470c5f"),
+            ("Number", .instance, "max:", "22e0f00a6ac2355abe6b247bfd3e9cb9fd1b75ceaaa00b17adb307169708330f"),
+            ("Number", .instance, "fractionPart", "95d25d2ef97c7d0b85f414731cfd92efba0e2f38fc0f5274325e4557e61fb37e"),
+            ("UnorderedCollection", .instance, "addAll:", "d66068b8901ab028e6768d90a5d92f17b47fdcdacb6d45801d698549e81e083b"),
+            ("UnorderedCollection", .instance, "removeAll:", "1abff631dbbb7706dfbbdded0ecca7ab10baf1deda66bece1cb72da0e26e73a0"),
+            ("SortedCollection", .instance, "add:", "e1a49c8075be4b6829dd47194053a48284a73fa9b6fa4c66356072240ef28f32"),
+            ("SortedCollection", .instance, "addAll:", "dcffdbb8291a1e6d0d66955486460d796f134310655e72245868048595e7b0a4"),
+            ("SortedCollection", .instance, "removeAll:", "3281f1b018b515339052ebd68f3ba5e2378b23090e62a7610c5995e26b40477a"),
+            ("SortedCollection", .instance, "_sequenceFrom:", "2c5625838d99ad8e5ccdd88fc4a125c81427a2a9d851042cf0221a5e04172d4e"),
+            ("SortedCollection", .classSide, "withAll:", "a3a34b8b5a7162352af9182ae0508c1fe51420c3424bb8f77ba8527aa045069f"),
+            ("CollectionStream", .instance, "_openOn:writing:", "47fdaf4c7e050a542807b95d8e268cdad2ff535a5b55f4f1c652d68965eed271"),
+            ("DateAndTime", .instance, "_secondsOf:", "9678ec71d545274a4298e5b28c19650c51203888fba8697f07b7fd0d4d43d79a"),
+            ("DateAndTime", .instance, "-", "a8919fbbd832a612bb9193a8681fa6236f7d5b74b23395900bea800628003fa0"),
+            ("DateAndTime", .instance, "=", "1ea3d6c5e555b7a5a68d8b2d301adb33c818152db90c48f3cae1316732e39fd6"),
+        ]
+        let instanceHelpers = [
+            "DateAndTime": ["_secondsOf:ifAbsent:"],
+            "SortedCollection": ["_insertionIndexOf:", "_sortElementsFrom:"],
         ]
         for (name, side, selector, hash) in previous {
             guard let owner = runtime.classes[name], let old = owner[side][selector],
                   Self.digest(Data(old.source.utf8)) == hash else { continue }
+            let missing = (instanceHelpers[name] ?? []).filter { owner.methods[$0] == nil }
+            guard owner.methods.count + missing.count <= SmalltalkRuntime.methodsPerSideLimit else { continue }
+            for helper in missing { try installBundledMethod(helper, on: owner) }
             if name == "Duration" || name == "DateAndTime" {
                 let helper = "_secondsOf:ifAbsent:"
                 guard let duration = runtime.classes["Duration"] else { continue }
@@ -240,12 +261,18 @@ struct SystemLibrary: Sendable {
             ("ByteArray", "copyReplaceAll:with:", ["704bc9c20c595beb78f7cbb0e6411458f0f7188d08a3cb9d981d775b9a53b778"]),
             ("ByteArray", "copyReplacing:withObject:", ["c62917f14fa8a77bb5d20b5cd42898f7afb83698508a1aca50271f7c6b483b40"]),
             ("SortedCollection", "copyReplaceAll:with:", ["704bc9c20c595beb78f7cbb0e6411458f0f7188d08a3cb9d981d775b9a53b778"]),
+            ("SortedCollection", "copyReplacing:withObject:", ["c62917f14fa8a77bb5d20b5cd42898f7afb83698508a1aca50271f7c6b483b40"]),
         ]
         for (name, selector, hashes) in inheritedMethods {
             guard let owner = runtime.classes[name], owner.methods[selector] == nil,
                   owner.methods.count < SmalltalkRuntime.methodsPerSideLimit,
                   let inherited = owner.superclass?.lookup(selector)?.0,
                   hashes.contains(Self.digest(Data(inherited.source.utf8))) else { continue }
+            if name == "SortedCollection", selector == "copyReplacing:withObject:",
+               owner.methods["_insertionIndexOf:"] == nil {
+                guard owner.methods.count + 2 <= SmalltalkRuntime.methodsPerSideLimit else { continue }
+                try installBundledMethod("_insertionIndexOf:", on: owner)
+            }
             try installBundledMethod(selector, on: owner)
         }
     }
@@ -287,6 +314,7 @@ struct SystemLibrary: Sendable {
                 "0b2f94eddeb68f29c68c1123fe637f81a71cd6f7971874f9fdc64e8049944eeb",
                 "2dc4596961268fbbda4353352e1c00d5981c79405df3cf56e7928b9a7ede4ead",
                 "75ed1f3d16104189da608725c97fef2ebe14043c0e0b82330456cc5182adcba2",
+                "a267649a8048e76bc31c92de3d30c3bc43ee598b46c9057c7147d908649a58c1",
             ]),
             (.instance, "shippedClassSideProtocols", [
                 "7b2f2950f5dc051c01fdcd0afcdde26c8505606a3c1f370ad2c6910c5eff398c",

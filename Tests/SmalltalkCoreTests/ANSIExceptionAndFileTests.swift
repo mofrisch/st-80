@@ -3,6 +3,32 @@ import Testing
 @testable import SmalltalkCore
 
 struct ANSIExceptionAndFileTests {
+    @Test func dateComparisonAndSubtractionAcceptAForwardingDate() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | date earlier same later results |
+            Object subclass: #ANSIForwardingDate instanceVariableNames: 'subject'.
+            ANSIForwardingDate compile: 'subject: aDate subject := aDate'.
+            ANSIForwardingDate compile: 'doesNotUnderstand: failure
+                ^ subject perform: failure selector withArguments: failure arguments'.
+            ANSIForwardingDate compile: '= other ^ subject = other'.
+            ANSIForwardingDate compile: 'hash ^ subject hash'.
+            date := DateAndTime year: 2024 day: 61 hour: 6 minute: 30 second: (1 / 2)
+                offset: (Duration seconds: 7200).
+            earlier := date - (Duration seconds: 75).
+            same := ANSIForwardingDate new subject: date; yourself.
+            later := ANSIForwardingDate new subject: date + (Duration seconds: 5); yourself.
+            results := Array with: (date = same) with: (same = date)
+                with: (date < later) with: (date - later) asSeconds.
+            ANSIForwardingDate compile: 'asUTC ^ self'.
+            same subject: earlier asUTC.
+            Array with: results with: (date - same) asSeconds with: (date > same)
+                with: (date = 17)
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(#(true true true -5) 75 true false)")
+    }
+
     @Test func replacementExceptionCanImplementTheDescriptionProtocolDirectly() async {
         let session = SmalltalkSession()
         let setup = await session.evaluate("""

@@ -2,6 +2,72 @@ import Testing
 import SmalltalkCore
 
 struct ANSICollectionBehaviorTests {
+    @Test func extensibleCollectionBulkOperationsUseSourceIterationAndIndividualMessages() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | source set sorted |
+            OrderedCollection subclass: #ANSIBulkSource instanceVariableNames: 'destination visits'.
+            ANSIBulkSource compile: 'observe: anObject destination := anObject. visits := OrderedCollection new'.
+            ANSIBulkSource compile: 'do: action
+                super do: [ :each | action value: each. visits add: destination size ]'.
+            ANSIBulkSource compile: 'visits ^ visits asArray'.
+            Set subclass: #ANSIBulkSet instanceVariableNames: 'removed'.
+            ANSIBulkSet compile: 'initialize super initialize. removed := OrderedCollection new'.
+            ANSIBulkSet compile: 'remove: each removed add: each. ^ super remove: each'.
+            ANSIBulkSet compile: 'removed ^ removed asArray'.
+            SortedCollection subclass: #ANSIBulkSorted instanceVariableNames: 'added removed'.
+            ANSIBulkSorted compile: 'initialize
+                super initialize. added := OrderedCollection new. removed := OrderedCollection new'.
+            ANSIBulkSorted compile: 'add: each added add: each. ^ super add: each'.
+            ANSIBulkSorted compile: 'remove: each removed add: each. ^ super remove: each'.
+            ANSIBulkSorted compile: 'operations ^ Array with: added asArray with: removed asArray'.
+            set := ANSIBulkSet new.
+            source := ANSIBulkSource withAll: #(1 2).
+            source observe: set.
+            set addAll: source; removeAll: #(2 1).
+            sorted := ANSIBulkSorted new.
+            sorted addAll: #(3 1 2); removeAll: #(2 3).
+            Array with: source visits with: set removed with: sorted operations with: sorted asArray
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(#(1 2) #(2 1) #(#(3 1 2) #(2 3)) #(1))")
+    }
+
+    @Test func sortedReplacementValidatesAnUnusedElementWithTheSortBlock() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | sorted rejected allowed allReplaced |
+            sorted := SortedCollection with: 1 with: 2.
+            rejected := [ sorted copyReplacing: 99 withObject: #bad. false ]
+                on: Error do: [ :error | true ].
+            allowed := sorted copyReplacing: 99 withObject: 3.
+            allReplaced := (SortedCollection with: 1 with: 1) copyReplacing: 1 withObject: #valid.
+            Array with: rejected with: allowed asArray with: allReplaced asArray with: sorted asArray
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(true #(1 2) #(#valid #valid) #(1 2))")
+    }
+
+    @Test func streamsAndStringComparisonsAcceptForwardedCollectionProtocols() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | sequence text stream writer |
+            Object subclass: #ANSIForwardingCollection instanceVariableNames: 'subject'.
+            ANSIForwardingCollection compile: 'subject: anObject subject := anObject'.
+            ANSIForwardingCollection compile: 'doesNotUnderstand: failure
+                ^ subject perform: failure selector withArguments: failure arguments'.
+            sequence := ANSIForwardingCollection new subject: #(7 8 9); yourself.
+            text := ANSIForwardingCollection new subject: 'ABC'; yourself.
+            stream := ReadStream on: sequence.
+            writer := ReadWriteStream on: sequence.
+            writer nextPut: 11; reset.
+            Array with: (stream next: 2) with: writer next
+                with: ('abc' sameAs: text) with: ('x' , text)
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(#(7 8) 11 true 'xABC')")
+    }
+
     @Test func collectionCallbacksAcceptValuableObjects() async throws {
         let session = try await sessionWithCallback()
         let result = await session.evaluate("""
@@ -243,6 +309,7 @@ struct ANSICollectionBehaviorTests {
             | observer |
             Object subclass: #TranscriptObserver instanceVariableNames: 'updates'.
             TranscriptObserver compile: 'initialize updates := OrderedCollection new'.
+            TranscriptObserver compileClass: 'new ^ super new initialize; yourself'.
             TranscriptObserver compile: 'update: aspect updates add: TranscriptBuffer text'.
             TranscriptObserver compile: 'updates ^ updates asArray'.
             observer := TranscriptObserver new.

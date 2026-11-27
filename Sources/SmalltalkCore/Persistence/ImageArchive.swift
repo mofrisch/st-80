@@ -27,6 +27,7 @@ struct ImageClass: Codable {
     var classVariables: [String: ImageValue]? = nil
     var sharedPools: [String]? = nil
     var indexedStorage: IndexedStorage? = nil
+    var usesANSIAllocation: Bool? = nil
 
     subscript(side: MethodSide) -> [String: String] {
         get { side == .instance ? methods : classMethods ?? [:] }

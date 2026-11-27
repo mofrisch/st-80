@@ -3,6 +3,81 @@ import Testing
 @testable import SmalltalkCore
 
 struct ANSIInterchangeTests {
+    @Test func inheritedMethodsResolveGlobalsInTheirDefiningClass() async throws {
+        let session = SmalltalkSession()
+        let setup = await session.evaluate("""
+            Smalltalk interchangeVersion: '1.0'!
+            Global variable: 'SIFLexicalValue'!
+            SIFLexicalValue initializer! 41!
+            Class named: 'SIFLexicalBase' superclass: 'Object' indexedInstanceVariables: #'none'
+                instanceVariableNames: '' classVariableNames: '' sharedPools: '' classInstanceVariableNames: ''!
+            SIFLexicalBase method! readGlobal ^ [ SIFLexicalValue ] value!
+            SIFLexicalBase method! writeGlobal: value [ SIFLexicalValue := value ] value!
+            Class named: 'SIFLexicalChild' superclass: 'SIFLexicalBase' indexedInstanceVariables: #'none'
+                instanceVariableNames: 'SIFLexicalValue' classVariableNames: '' sharedPools: '' classInstanceVariableNames: ''!
+            SIFLexicalChild method! readField ^ SIFLexicalValue!
+            SIFLexicalChild method! writeField: value SIFLexicalValue := value!
+            """)
+        try #require(setup.error == nil)
+        let result = await session.evaluate("""
+            | child before |
+            child := SIFLexicalChild new.
+            child writeField: 7.
+            before := child readGlobal.
+            child writeGlobal: 99.
+            Array with: before with: SIFLexicalValue with: child readField
+            """)
+        #expect(result.value == "#(41 99 7)")
+    }
+
+    @Test func invalidBindingsAreRejectedBeforeInstallingOrInitializingAnything() async {
+        let session = SmalltalkSession()
+        let invalidMethod = await session.evaluate("""
+            Smalltalk interchangeVersion: '1.0'!
+            Class named: 'SIFUnbound' superclass: 'Object' indexedInstanceVariables: #'none'
+                instanceVariableNames: '' classVariableNames: '' sharedPools: '' classInstanceVariableNames: ''!
+            SIFUnbound method! missing ^ [ UnknownMethodBinding ] value!
+            """)
+        #expect(invalidMethod.error?.contains("Unknown variable: UnknownMethodBinding") == true)
+        #expect(await session.evaluate("SIFUnbound").error?.contains("Unknown variable") == true)
+
+        let declarations = """
+            Smalltalk interchangeVersion: '1.0'!
+            Global variable: 'SIFBindingRetry'!
+            SIFBindingRetry initializer! 17!
+            """
+        let invalidAssignment = await session.evaluate(declarations + "\nGlobal initializer! UndeclaredInitializerTarget := 42!")
+        #expect(invalidAssignment.error?.contains("Unknown variable: UndeclaredInitializerTarget") == true)
+        #expect(await session.evaluate("SIFBindingRetry").error?.contains("Unknown variable") == true)
+        #expect(await session.evaluate(declarations).error == nil)
+        #expect(await session.evaluate("SIFBindingRetry").value == "17")
+    }
+
+    @Test func interchangeConstructionRemainsIndependentOfInitializeAfterImageLoad() async throws {
+        let session = SmalltalkSession()
+        let imported = await session.evaluate("""
+            Smalltalk interchangeVersion: '1.0'!
+            Class named: 'SIFConstructorProbe' superclass: 'Object' indexedInstanceVariables: #'none'
+                instanceVariableNames: 'slot' classVariableNames: '' sharedPools: '' classInstanceVariableNames: ''!
+            SIFConstructorProbe method! initialize slot := 10!
+            SIFConstructorProbe method! slot ^ slot!
+            """)
+        try #require(imported.error == nil)
+        #expect(await session.evaluate("SIFConstructorProbe new slot").value == "nil")
+
+        let image = try await session.imageData()
+        let restored = SmalltalkSession()
+        _ = try await restored.loadImage(image)
+        #expect(await restored.evaluate("SIFConstructorProbe new slot").value == "nil")
+        #expect(await restored.evaluate("SIFConstructorProbe new initialize; slot").value == "10")
+
+        var archive = try JSONDecoder().decode(ImageArchive.self, from: image)
+        let index = try #require(archive.classes.firstIndex { $0.name == "SIFConstructorProbe" })
+        archive.classes[index].usesANSIAllocation = nil
+        _ = try await restored.loadImage(JSONEncoder().encode(archive))
+        #expect(await restored.evaluate("SIFConstructorProbe new slot").value == "10")
+    }
+
     @Test func rootClassesReportTheClassPrimitivesTheyCanPerform() async {
         let session = SmalltalkSession()
         let imported = await session.evaluate("""

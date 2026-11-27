@@ -103,6 +103,7 @@ struct BytecodeTests {
         let result = runtime.run("""
         Object subclass: #BytecodeRootProbe instanceVariableNames: 'total'.
         BytecodeRootProbe compile: 'initialize total := 0'.
+        BytecodeRootProbe compileClass: 'new ^ super new initialize; yourself'.
         BytecodeRootProbe compile: 'add: counter after: ignored total := total + counter value'.
         BytecodeRootProbe compile: 'value ^ total'.
         BytecodeRootProbe new

@@ -2,6 +2,27 @@ import SmalltalkCore
 import Testing
 
 struct ANSINumericTests {
+    @Test func numericMinAndMaxReturnTheOperandOnATie() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            Array with: (1.0 min: 1) class with: (1.0 max: 1) class
+                with: ((Fraction numerator: 4 denominator: 2) max: 2) class
+                with: ((1.0 min: 2) = 1.0 and: [ (2.0 max: 1) = 2.0 ])
+            """)
+        #expect(result.value == "#(SmallInteger SmallInteger SmallInteger true)")
+    }
+
+    @Test func fractionPartPreservesTheFractionProtocolForIntegralFractions() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | whole proper |
+            whole := (Fraction numerator: -4 denominator: 2) fractionPart.
+            proper := (Fraction numerator: -3 denominator: 2) fractionPart.
+            Array with: whole class with: whole numerator with: proper class with: (proper = (1 / 2))
+            """)
+        #expect(result.value == "#(Fraction 0 Fraction true)")
+    }
+
     @Test func floatingIntegerQuotientsUseTheExactBinary64Operands() async {
         let session = SmalltalkSession()
         let result = await session.evaluate("""

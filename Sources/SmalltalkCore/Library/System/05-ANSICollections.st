@@ -266,7 +266,7 @@ UnorderedCollection compile: 'copy
     ^ self class withAll: self'.
 
 UnorderedCollection compile: 'addAll: additions
-    additions asArray do: [ :each | self add: each ].
+    additions do: [ :each | self add: each ].
     ^ additions'.
 
 UnorderedCollection compile: 'remove: element
@@ -276,7 +276,8 @@ UnorderedCollection compile: 'remove: element ifAbsent: alternative
     ^ elements remove: element ifAbsent: alternative'.
 
 UnorderedCollection compile: 'removeAll: removals
-    ^ elements removeAll: removals'.
+    removals do: [ :each | self remove: each ].
+    ^ removals'.
 
 Bag compile: 'add: element
     element isNil ifTrue: [ self error: ''A bag element must be non-nil.'' ].
@@ -412,6 +413,7 @@ SortedCollection compileClass: 'sortBlock: comparator
     ^ self new sortBlock: comparator; yourself'.
 
 SortedCollection compileClass: 'withAll: elements
+    self == SortedCollection ifTrue: [ ^ self new _sortElementsFrom: elements ].
     ^ self new addAll: elements; yourself'.
 
 SortedCollection compile: 'initialize
@@ -477,7 +479,14 @@ SortedCollection compile: '_sorted: source by: comparator
         width := width * 2 ].
     ^ OrderedCollection withAll: current'.
 
+SortedCollection compile: '_sortElementsFrom: elements
+    state at: 2 put: (self _sorted: (Array withAll: elements) by: self sortBlock).
+    ^ self'.
+
 SortedCollection compile: 'add: element
+    ^ self _elements add: element beforeIndex: (self _insertionIndexOf: element)'.
+
+SortedCollection compile: '_insertionIndexOf: element
     | lower upper middle |
     lower := 1.
     upper := self size + 1.
@@ -485,13 +494,10 @@ SortedCollection compile: 'add: element
         middle := (lower + upper) // 2.
         (self sortBlock value: element value: (self at: middle))
             ifTrue: [ upper := middle ] ifFalse: [ lower := middle + 1 ] ].
-    ^ self _elements add: element beforeIndex: lower'.
+    ^ lower'.
 
 SortedCollection compile: 'addAll: additions
-    | combined |
-    additions isEmpty ifTrue: [ ^ additions ].
-    combined := self asArray , additions.
-    state at: 2 put: (self _sorted: combined by: self sortBlock).
+    additions do: [ :each | self add: each ].
     ^ additions'.
 
 SortedCollection compile: 'remove: element
@@ -501,7 +507,8 @@ SortedCollection compile: 'remove: element ifAbsent: alternative
     ^ self _elements remove: element ifAbsent: alternative'.
 
 SortedCollection compile: 'removeAll: removals
-    ^ self _elements removeAll: removals'.
+    removals do: [ :each | self remove: each ].
+    ^ removals'.
 
 SortedCollection compile: 'removeAtIndex: index
     ^ self _elements removeAtIndex: index'.
@@ -530,11 +537,22 @@ SortedCollection compile: 'copyReplaceAll: target with: replacements
     incoming size > 1 ifTrue: [ self _sorted: incoming copy by: self sortBlock ].
     ^ super copyReplaceAll: target with: incoming'.
 
+SortedCollection compile: 'copyReplacing: target withObject: replacement
+    | matched values |
+    matched := false.
+    values := self asArray collect: [ :each |
+        each = target ifTrue: [ matched := true. replacement ] ifFalse: [ each ] ].
+    matched ifFalse: [ self _insertionIndexOf: replacement ].
+    ^ self _sequenceFrom: values'.
+
 SortedCollection compile: 'asSortedCollection
     ^ self copy'.
 
 SortedCollection compile: '_sequenceFrom: collection
-    ^ (self class sortBlock: self sortBlock) addAll: collection; yourself'.
+    | result |
+    result := self class sortBlock: self sortBlock.
+    result class == SortedCollection ifTrue: [ ^ result _sortElementsFrom: collection ].
+    ^ result addAll: collection; yourself'.
 
 SortedCollection compile: ', other
     ^ self copy addAll: other; yourself'.

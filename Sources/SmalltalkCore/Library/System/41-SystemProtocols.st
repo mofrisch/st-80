@@ -33,7 +33,7 @@ BrowserOrganization compile: 'shippedProtocols
             (''Arithmetic'' (''+'' ''-''))
             (''Comparing'' (''='' ''~='' ''hash'' ''<'' ''<='' ''>'' ''>='' ''between:and:'' ''min:'' ''max:''))
             (''Printing'' (''printString''))
-            (''Private'' (''_utcSeconds:offset:'' ''_utcSeconds'' ''_secondsOf:'' ''_localDay'' ''_dateParts''
+            (''Private'' (''_utcSeconds:offset:'' ''_utcSeconds'' ''_secondsOf:'' ''_secondsOf:ifAbsent:'' ''_localDay'' ''_dateParts''
                 ''_timeOfDay'' ''_offsetString''))))
         (''Duration'' (
             (''Accessing'' (''asSeconds'' ''days'' ''hours'' ''minutes'' ''seconds''))
@@ -176,8 +176,8 @@ BrowserOrganization compile: 'shippedProtocols
             (''Adding'' (''add:'' ''addAll:''))
             (''Removing'' (''remove:'' ''remove:ifAbsent:'' ''removeAll:'' ''removeAtIndex:'' ''removeFirst'' ''removeLast''))
             (''Enumerating'' (''do:'' ''collect:'' ''select:'' ''reverse''))
-            (''Copying and Conversion'' (''copy'' '','' ''asArray'' ''asSortedCollection'' ''copyReplaceAll:with:''))
-            (''Private'' (''_elements'' ''_reserve:'' ''_sorted:by:'' ''_sequenceFrom:''))))
+            (''Copying and Conversion'' (''copy'' '','' ''asArray'' ''asSortedCollection'' ''copyReplaceAll:with:'' ''copyReplacing:withObject:''))
+            (''Private'' (''_elements'' ''_reserve:'' ''_sorted:by:'' ''_sortElementsFrom:'' ''_insertionIndexOf:'' ''_sequenceFrom:''))))
         (''String'' (
             (''Accessing'' (''size'' ''at:'' ''characters'' ''isEmpty''))
             (''Updating'' (''at:put:'' ''atAll:put:'' ''atAllPut:'' ''replaceFrom:to:with:''

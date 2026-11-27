@@ -259,8 +259,21 @@ DateAndTime compile: '_utcSeconds
     ^ utcSeconds'.
 
 DateAndTime compile: '_secondsOf: other
-    (other isKindOf: DateAndTime) ifFalse: [ self error: ''Expected a DateAndTime.'' ].
-    ^ other _utcSeconds'.
+    ^ self _secondsOf: other ifAbsent: [ self error: ''Expected a DateAndTime.'' ]'.
+
+DateAndTime compile: '_secondsOf: other ifAbsent: absent
+    | utc day |
+    (other isKindOf: DateAndTime) ifTrue: [ ^ other _utcSeconds ].
+    utc := [ other asUTC ] on: MessageNotUnderstood do: [ :exception |
+        exception message selector == #asUTC ifTrue: [ ^ absent value ].
+        exception pass ].
+    (utc isKindOf: DateAndTime) ifTrue: [ ^ utc _utcSeconds ].
+    ^ [ day := (self class _daysBeforeYear: utc year) + utc dayOfYear - 1.
+        (day * 86400) + (utc hour24 * 3600) + (utc minute * 60) + utc second asFraction ]
+        on: MessageNotUnderstood do: [ :exception |
+            (#(year dayOfYear hour24 minute second) includes: exception message selector)
+                ifTrue: [ ^ absent value ].
+            exception pass ]'.
 
 DateAndTime compile: '_localDay
     ^ (utcSeconds + utcOffset asSeconds) // 86400'.
@@ -291,12 +304,13 @@ DateAndTime compile: '+ duration
 DateAndTime compile: '- other
     | seconds |
     (other isKindOf: Duration) ifTrue: [ ^ self + other negated ].
-    (other isKindOf: DateAndTime) ifTrue: [ ^ Duration seconds: utcSeconds - (self _secondsOf: other) ].
+    seconds := self _secondsOf: other ifAbsent: [ nil ].
+    seconds notNil ifTrue: [ ^ Duration seconds: utcSeconds - seconds ].
     seconds := Duration _secondsOf: other ifAbsent: [ self error: ''Expected a DateAndTime or Duration.'' ].
     ^ self + (Duration seconds: seconds negated)'.
 
 DateAndTime compile: '= other
-    ^ (other isKindOf: DateAndTime) and: [ utcSeconds = other _utcSeconds ]'.
+    ^ utcSeconds = (self _secondsOf: other ifAbsent: [ ^ false ])'.
 
 DateAndTime compile: '~= other
     ^ (self = other) not'.

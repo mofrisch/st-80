@@ -14,6 +14,7 @@ struct MVCTests {
         let created = await session.evaluate("""
         Object subclass: #Observer instanceVariableNames: 'updates aspect'.
         Observer compile: 'initialize updates := 0'.
+        Observer compileClass: 'new ^ super new initialize; yourself'.
         Observer compile: 'update: anAspect updates := updates + 1. aspect := anAspect'.
         Observer compile: 'updates ^ updates'.
         Observer compile: 'aspect ^ aspect'.

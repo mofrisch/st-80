@@ -3,6 +3,21 @@ import Testing
 
 @MainActor
 struct SmalltalkCoreTests {
+    @Test func rootClassConstructionOnlyCallsAnExplicitInitializer() {
+        let runtime = SmalltalkRuntime()
+        let result = runtime.run("""
+        Object subclass: #ANSIAllocateProbe instanceVariableNames: 'slot'.
+        ANSIAllocateProbe compile: 'initialize slot := 42'.
+        ANSIAllocateProbe compile: 'slot ^ slot'.
+        ANSIAllocateProbe subclass: #ANSIAllocateChild instanceVariableNames: ''.
+        before := ANSIAllocateChild new slot.
+        ANSIAllocateProbe compileClass: 'new ^ super new initialize; yourself'.
+        Array with: before with: ANSIAllocateChild new slot
+        """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(nil 42)")
+    }
+
     private func value(_ source: String, in runtime: SmalltalkRuntime = SmalltalkRuntime()) -> String? {
         let result = runtime.run(source)
         #expect(result.error == nil, "\(result.error ?? "")")

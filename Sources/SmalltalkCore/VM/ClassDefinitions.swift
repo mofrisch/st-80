@@ -1,7 +1,7 @@
 extension SmalltalkRuntime {
     func subclass(of superclass: STClass?, name: String, fields source: String, classFields: [String] = [],
                   classVariables: [String] = [], pools: [String] = [], indexedStorage: IndexedStorage? = nil,
-                  ansi: Bool = false) throws -> STClass {
+                  ansi: Bool = false, usesANSIAllocation: Bool = false) throws -> STClass {
         if let superclass { try validateSuperclass(superclass) }
         if ansi {
             guard CodeValidator.validNames([name]) else { throw SmalltalkError("Invalid class name \(name).") }
@@ -27,7 +27,8 @@ extension SmalltalkRuntime {
             throw SmalltalkError("Byte-indexed classes cannot have named fields or inherit object-indexed storage.")
         }
         let stClass = STClass(name, superclass: superclass, fields: fields, classFields: classFields,
-                              classVariables: classVariables, sharedPools: pools, indexedStorage: indexedStorage)
+                              classVariables: classVariables, sharedPools: pools, indexedStorage: indexedStorage,
+                              usesANSIAllocation: usesANSIAllocation)
         if superclass == nil { stClass.rootMetaclassSuperclass = classes["Object"] }
         if recordingChanges {
             try journal.append(kind: .classDefinition, className: name, superclass: superclass?.name,

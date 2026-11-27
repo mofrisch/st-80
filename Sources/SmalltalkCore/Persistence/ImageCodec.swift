@@ -72,7 +72,8 @@ enum ImageCodec {
                               classFields: classFields.isEmpty ? nil : classFields, classState: state.isEmpty ? nil : state,
                               classVariables: classVariables.isEmpty ? nil : classVariables,
                               sharedPools: stClass.sharedPools.isEmpty ? nil : stClass.sharedPools,
-                              indexedStorage: stClass.ownIndexedStorage)
+                              indexedStorage: stClass.ownIndexedStorage,
+                              usesANSIAllocation: stClass.usesANSIAllocation ? true : nil)
         }
         var sharedPools: [String: [String: ImagePoolBinding]] = [:]
         for poolName in runtime.sharedPools.keys.sorted() {
@@ -198,7 +199,8 @@ enum ImageCodec {
         for builtin in runtime.classes.values {
             if records[builtin.name] == nil, SmalltalkRuntime.additiveBuiltinNames.contains(builtin.name) { continue }
             guard let record = records[builtin.name], record.classFields?.isEmpty != false,
-                  record.classVariables?.isEmpty != false, record.sharedPools?.isEmpty != false, record.indexedStorage == nil else {
+                  record.classVariables?.isEmpty != false, record.sharedPools?.isEmpty != false, record.indexedStorage == nil,
+                  record.usesANSIAllocation != true else {
                 throw invalid("Built-in class \(builtin.name) is missing or has an invalid layout.")
             }
             let newLayout = record.superclass == builtin.superclass?.name && record.fields == builtin.ownFields
@@ -225,7 +227,7 @@ enum ImageCodec {
                                                    classFields: record.classFields ?? [],
                                                    classVariables: record.classVariables?.keys.sorted() ?? [],
                                                    pools: record.sharedPools ?? [], indexedStorage: record.indexedStorage,
-                                                   ansi: supportsANSIStorage)
+                                                   ansi: supportsANSIStorage, usesANSIAllocation: record.usesANSIAllocation == true)
                 guard stClass.ownFields == record.fields else { throw invalid("Invalid instance variables.") }
             }
             remaining = unresolved

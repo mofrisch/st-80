@@ -197,6 +197,7 @@ struct WindowArchitectureTests {
         let result = await session.evaluate("""
         Object subclass: #WindowObserver instanceVariableNames: 'updates'.
         WindowObserver compile: 'initialize updates := 0'.
+        WindowObserver compileClass: 'new ^ super new initialize; yourself'.
         WindowObserver compile: 'update: aspect updates := updates + 1'.
         WindowObserver compile: 'updates ^ updates'.
         observer := WindowObserver new.

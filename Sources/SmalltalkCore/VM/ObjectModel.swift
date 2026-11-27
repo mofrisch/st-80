@@ -61,17 +61,20 @@ final class STClass {
     var classVariables: [String: Value]
     let sharedPools: [String]
     let ownIndexedStorage: IndexedStorage?
+    let usesANSIAllocation: Bool
     var indexedStorage: IndexedStorage? { ownIndexedStorage ?? superclass?.indexedStorage }
     var fields: [String] { (superclass?.fields ?? []) + ownFields }
 
     init(_ name: String, superclass: STClass?, fields: [String] = [], classFields: [String] = [],
-         classVariables: [String] = [], sharedPools: [String] = [], indexedStorage: IndexedStorage? = nil) {
+         classVariables: [String] = [], sharedPools: [String] = [], indexedStorage: IndexedStorage? = nil,
+         usesANSIAllocation: Bool = false) {
         self.name = name
         directSuperclass = superclass
         ownFields = fields
         self.classVariables = Dictionary(uniqueKeysWithValues: classVariables.map { ($0, .nilValue) })
         self.sharedPools = sharedPools
         ownIndexedStorage = indexedStorage
+        self.usesANSIAllocation = usesANSIAllocation
         if !classFields.isEmpty { metaclass.ownFields = classFields }
         if let superclass {
             for name in superclass.classState.keys { classState[name] = .nilValue }
@@ -86,6 +89,7 @@ final class STClass {
         classVariables = [:]
         sharedPools = []
         ownIndexedStorage = nil
+        usesANSIAllocation = false
     }
 
     subscript(side: MethodSide) -> [String: Method] {

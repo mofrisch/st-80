@@ -18,13 +18,10 @@ ReadWriteStream compileClass: 'on: collection
     ^ (self with: collection) reset; yourself'.
 
 CollectionStream compile: '_openOn: collection writing: writable
-    ((collection respondsTo: #at:) and: [
-        (collection respondsTo: #size) and: [ collection respondsTo: #copyFrom:to: ] ])
-        ifFalse: [ self error: ''Expected an indexed collection.'' ].
     writable ifTrue: [
-        (collection respondsTo: #at:put:) ifFalse: [ self error: ''Expected a collection with at:put:.'' ].
         buffer := OrderedCollection withAll: collection.
-        collection class == String ifTrue: [ byteCount := collection utf8Size ] ].
+        collection class == String ifTrue: [ byteCount := collection utf8Size ] ]
+        ifFalse: [ collection size ].
     backing := collection.
     cursor := writable ifTrue: [ buffer size ] ifFalse: [ 0 ].
     ^ self'.

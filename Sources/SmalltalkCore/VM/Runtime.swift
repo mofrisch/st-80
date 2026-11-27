@@ -319,7 +319,7 @@ final class SmalltalkRuntime {
         default: break
         }
         if let environment = context.environment.binding(name), let value = environment.values[name] { return value }
-        if case .object(let object) = context.receiver, let value = object.fields[name] { return value }
+        if let object = instanceFieldReceiver(name, context: context), let value = object.fields[name] { return value }
         if let receiver = classFieldReceiver(name, context: context) { return receiver.classState[name] ?? .nilValue }
         if let owner = classVariableOwner(name, context: context) { return owner.classVariables[name] ?? .nilValue }
         if let pool = try poolVariableOwner(name, context: context) { return sharedPools[pool]![name]!.value }
@@ -332,7 +332,7 @@ final class SmalltalkRuntime {
             throw SmalltalkError("\(name) cannot be reassigned.")
         }
         if let environment = context.environment.binding(name) { environment.values[name] = value; return }
-        if case .object(let object) = context.receiver, object.fields[name] != nil { object.fields[name] = value; return }
+        if let object = instanceFieldReceiver(name, context: context) { object.fields[name] = value; return }
         if let receiver = classFieldReceiver(name, context: context) { receiver.classState[name] = value; return }
         if let owner = classVariableOwner(name, context: context) { owner.classVariables[name] = value; return }
         if let pool = try poolVariableOwner(name, context: context) {
@@ -350,6 +350,12 @@ final class SmalltalkRuntime {
             return
         }
         throw SmalltalkError("Variable \(name) is undeclared.")
+    }
+
+    private func instanceFieldReceiver(_ name: String, context: Context) -> STObject? {
+        guard case .object(let object) = context.receiver, object.fields[name] != nil,
+              let home = context.homeClass, object.stClass === home || home.fields.contains(name) else { return nil }
+        return object
     }
 
     private func classFieldReceiver(_ name: String, context: Context) -> STClass? {

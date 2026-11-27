@@ -21,18 +21,24 @@ Number compile: 'between: lower and: upper
     ^ self >= lower and: [ self <= upper ]'.
 
 Number compile: 'min: other
-    self <= other ifTrue: [ ^ self ].
+    self < other ifTrue: [ ^ self ].
     ^ other'.
 
 Number compile: 'max: other
-    self >= other ifTrue: [ ^ self ].
+    self > other ifTrue: [ ^ self ].
     ^ other'.
 
 Number compile: 'asInteger
     ^ self rounded'.
 
 Number compile: 'fractionPart
-    ^ self \\ 1'.
+    | part |
+    part := self \\ 1.
+    ((self isKindOf: Fraction) and: [ part isKindOf: Integer ])
+        ifTrue: [
+            "The factory preserves 0/2 as a Fraction with reduced denominator 1."
+            ^ Fraction numerator: 0 denominator: 2 ].
+    ^ part'.
 
 Number compile: 'negative
     ^ self < 0'.

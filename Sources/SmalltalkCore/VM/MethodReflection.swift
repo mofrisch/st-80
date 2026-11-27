@@ -19,7 +19,7 @@ extension SmalltalkRuntime {
             "error:line:column:": "Reports an error at a source position.",
         ],
         "Class": [
-            "new": "Creates an object and sends initialize.", "new:": "Creates a fixed-size array or string.",
+            "new": "Creates a new instance of the receiver.", "new:": "Creates a fixed-size array or string.",
             "name": "Returns the class name.", "superclass": "Returns the superclass.", "subclasses": "Returns the immediate subclasses.",
             "allSuperclasses": "Returns all superclasses.", "allSubclasses": "Returns all subclasses.",
             "subclass:instanceVariableNames:": "Creates a subclass.",

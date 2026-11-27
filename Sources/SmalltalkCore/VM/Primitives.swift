@@ -444,7 +444,10 @@ extension SmalltalkRuntime {
 
     func readableString(_ value: Value) throws -> String {
         if case .symbol(let name) = value { return name }
-        return try string(value)
+        if let contents = value.textContents { return contents }
+        let converted = try send(value, "asString", [])
+        if case .symbol(let name) = converted { return name }
+        return try stringFromCharacters(converted)
     }
 
     private func collate(_ string: String, with value: Value) throws -> ComparisonResult {
@@ -576,8 +579,9 @@ extension SmalltalkRuntime {
             let classVariables = try args.count == 5 ? SmalltalkInterchange.names(in: string(args[2])) : []
             let pools = try args.count == 5 ? SmalltalkInterchange.names(in: string(args[3])) : []
             if args.count == 5 { _ = try string(args[4]) }
+            let usesANSIAllocation = stClass === classes["Object"] || stClass.usesANSIAllocation
             return .classObject(try subclass(of: stClass, name: symbol(args[0]), fields: string(args[1]), classFields: classFields,
-                                             classVariables: classVariables, pools: pools))
+                                             classVariables: classVariables, pools: pools, usesANSIAllocation: usesANSIAllocation))
         case "new:":
             if stClass.indexedStorage != nil { return try indexedPrimitive(.classObject(stClass), "basicNew:", args) }
             guard stClass.name == "Array" || stClass.name == "String" else { throw SmalltalkError("This class does not support new:.") }
@@ -592,8 +596,18 @@ extension SmalltalkRuntime {
             guard Self.heapBuiltinNames.contains(stClass.name) || !Self.builtinNames.contains(stClass.name) else {
                 throw SmalltalkError("\(stClass.name) cannot be instantiated with new.")
             }
-            let object = try object(stClass)
-            let instance = Value.object(object)
+            let instance = Value.object(try object(stClass))
+            if stClass === classes["Object"] { return instance }
+            // A declarative class must not acquire a constructor just by naming
+            // an instance method initialize. Legacy superclasses still set up their own state.
+            if stClass.usesANSIAllocation {
+                var ancestor = stClass.superclass
+                while ancestor?.usesANSIAllocation == true { ancestor = ancestor?.superclass }
+                if let ancestor, let (_, owner) = ancestor.lookup("initialize"), owner !== classes["Object"] {
+                    _ = try send(instance, "initialize", [], startingAt: .instanceSuper(ancestor))
+                }
+                return instance
+            }
             if lookupMethod("initialize", on: instance) != nil || stClass.inherits(from: classes["Object"]!) {
                 return try withRoots([instance]) { _ in
                     _ = try send(instance, "initialize", [])

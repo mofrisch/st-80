@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 extension SmalltalkRuntime {
@@ -400,6 +401,16 @@ extension SmalltalkRuntime {
 
     func classPrimitive(_ stClass: STClass, _ selector: String, _ args: [Value]) throws -> Value? {
         switch selector {
+        case "_unixTime", "_clockResolution":
+            guard let dateClass = classes["DateAndTime"], stClass.inherits(from: dateClass) else { return nil }
+            var reading = timespec()
+            let status = selector == "_unixTime" ? clock_gettime(CLOCK_REALTIME, &reading) : clock_getres(CLOCK_REALTIME, &reading)
+            guard status == 0 else {
+                return try send(.classObject(stClass), "error:", [.string("Could not read the system clock.")])
+            }
+            let nanosecondsPerSecond = BigInteger(1_000_000_000)
+            let whole = try BigInteger(Int64(reading.tv_sec)).multiplied(by: nanosecondsPerSecond, charge: chargeNumericWork)
+            return try fractionValue(whole + BigInteger(Int64(reading.tv_nsec)), nanosecondsPerSecond)
         case "_fractionNumerator:denominator:":
             guard stClass.name == "Fraction" else { return nil }
             let numerator = try unboundedInteger(args[0])

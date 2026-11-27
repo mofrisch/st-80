@@ -272,13 +272,15 @@ BrowserWindow compile: 'withAll: entries
     ^ result'.
 
 BrowserWindow compile: 'refreshClasses
-    | query names |
+    | query names visibleClasses |
     query := queryField text.
     names := SystemOrganization classCategories names.
     (category ~= ''All'' and: [ (names includes: category) not ]) ifTrue: [ category := ''All'' ].
     categoryList items: (self withAll: names); selection: category.
-    classList items: (ToolVM classNames select: [ :each |
-        (self matchesCategory: each) and: [ query size = 0 or: [ each includesIgnoringCase: query ] ] ]).
+    visibleClasses := SystemOrganization classNames: ToolVM classNames inCategory: category.
+    classList items: (query size = 0
+        ifTrue: [ visibleClasses ]
+        ifFalse: [ visibleClasses select: [ :each | each includesIgnoringCase: query ] ]).
     classList selection: className'.
 
 BrowserWindow compile: 'protocolOf: name in: target

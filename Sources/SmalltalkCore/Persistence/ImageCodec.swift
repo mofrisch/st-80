@@ -196,23 +196,23 @@ enum ImageCodec {
         try runtime.validateCompilerClasses()
         if records["ScaledDecimal"] == nil { try runtime.upgradeCompilerForScaledDecimals() }
         if records["Exception"] == nil { try runtime.installExceptionProtocol() }
-        var addedCollections: Set<String> = []
-        var missingCollections = image.version < 9 ? SmalltalkRuntime.shippedCollectionNames : []
+        var addedClasses: Set<String> = []
+        var missingClasses = image.version < 9 ? SmalltalkRuntime.shippedCollectionNames : []
         // Version 9 images can predate these classes. Preserve existing
         // bindings, including small libraries authored under the same names.
         for names in [SmalltalkRuntime.shippedDictionaryNames, SmalltalkRuntime.shippedStreamNames,
-                      SmalltalkRuntime.shippedFileStreamNames] {
+                      SmalltalkRuntime.shippedFileStreamNames, SmalltalkRuntime.shippedDateTimeNames] {
             if names.allSatisfy({ records[$0] == nil && image.globals[$0] == nil }) {
-                missingCollections.formUnion(names)
+                missingClasses.formUnion(names)
             }
         }
-        if !missingCollections.isEmpty {
+        if !missingClasses.isEmpty {
             let library = try SystemLibrary.shared.get()
             if image.version < 8 { try library.installANSIProtocols(in: runtime) }
-            addedCollections = try library.installANSICollections(missingCollections, in: runtime)
+            addedClasses = try library.installANSIClasses(missingClasses, in: runtime)
         }
         let library = try? SystemLibrary.shared.get()
-        let refreshBrowserOrganization = try library?.upgradeBrowserOrganization(in: runtime, collectionsAdded: !addedCollections.isEmpty) ?? false
+        let refreshBrowserOrganization = try library?.upgradeBrowserOrganization(in: runtime, classesAdded: !addedClasses.isEmpty) ?? false
         guard runtime.classes["UIBinding"]?.lookup("reconcileMount:") != nil else {
             throw invalid("The image is missing UIBinding>>reconcileMount:. Start a fresh session.")
         }
@@ -333,7 +333,7 @@ enum ImageCodec {
             stClass.classState = try state.mapValues(value)
         }
         var globals = try image.globals.mapValues(value)
-        for name in SmalltalkRuntime.additiveBuiltinNames.union(addedCollections) where records[name] == nil && globals[name] == nil {
+        for name in SmalltalkRuntime.additiveBuiltinNames.union(addedClasses) where records[name] == nil && globals[name] == nil {
             if let stClass = runtime.classes[name] { globals[name] = .classObject(stClass) }
         }
         for name in SmalltalkRuntime.floatAliases where globals[name] == nil { globals[name] = globals["Float"] }

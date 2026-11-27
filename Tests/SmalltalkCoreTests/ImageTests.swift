@@ -376,6 +376,72 @@ struct ImageTests {
         }
     }
 
+    @Test func dateAndTimeKeepsItsExactInstantAndOffsetAcrossImageLoad() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("st80-image-dates-\(UUID())")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("Dates.stimage")
+        let original = SmalltalkSession()
+        let setup = await original.evaluate("""
+            savedDuration := Duration seconds: (1 / 3).
+            savedDate := DateAndTime year: -10000000000000000000400 day: 60 hour: 23 minute: 59
+                second: (179 / 3) offset: (Duration seconds: (-18001 / 2))
+            """)
+        try #require(setup.error == nil, "\(setup.error ?? "")")
+        try await original.saveImage(to: url, workspace: "", transcript: "")
+        try await original.saveImage(to: url, workspace: "", transcript: "")
+        let restored = SmalltalkSession()
+        _ = try await restored.loadImage(from: url)
+        #expect(await value("savedDuration asSeconds = (1 / 3)", in: restored) == "true")
+        #expect(await value("savedDate offset asSeconds = (-18001 / 2)", in: restored) == "true")
+        #expect(await value("savedDate year", in: restored) == "-10000000000000000000400")
+        #expect(await value("(savedDate + savedDuration) dayOfYear", in: restored) == "61")
+        #expect(await value("(savedDate + savedDuration - savedDate) asSeconds = (1 / 3)", in: restored) == "true")
+    }
+
+    @Test(arguments: [false, true])
+    func versionNineImagesBackfillDateAndTimeWithoutReplacingBindings(customBinding: Bool) async throws {
+        let original = SmalltalkSession()
+        try await original.worker.submitThrowing { runtime in
+            guard case .object(let organization)? = runtime.globals["SystemOrganization"],
+                  case .object(let categories)? = organization.fields["classCategories"],
+                  case .array(let groups)? = categories.fields["groups"] else {
+                throw SmalltalkError("Missing class categories.")
+            }
+            groups.elements.removeAll { element in
+                guard case .object(let group) = element else { return false }
+                return group.fields["defaultName"]?.textContents == "Date and Time"
+            }
+        }
+        var archive = try JSONDecoder().decode(ImageArchive.self, from: await original.imageData())
+        let names = SmalltalkRuntime.shippedDateTimeNames
+        archive.classes.removeAll { names.contains($0.name) }
+        for name in names {
+            archive.globals.removeValue(forKey: name)
+            archive.executableMethods?.removeValue(forKey: name)
+            archive.executableClassMethods?.removeValue(forKey: name)
+        }
+        if customBinding { archive.globals["Duration"] = .symbol("custom") }
+
+        let restored = SmalltalkSession()
+        _ = try await restored.loadImage(JSONEncoder().encode(archive))
+        if customBinding {
+            #expect(await value("Duration", in: restored) == "#custom")
+            #expect(await restored.evaluate("DateAndTime").error != nil)
+        } else {
+            #expect(await value("Duration zero asSeconds", in: restored) == "0")
+            #expect(await value("SystemOrganization categoryOf: 'DateAndTime'", in: restored) == "'Date and Time'")
+            #expect(await value("""
+                (SystemOrganization protocolsOf: DateAndTime side: #class)
+                    groupOf: 'now' default: 'Unclassified'
+                """, in: restored) == "'System Clock'")
+            #expect(await value("""
+                (SystemOrganization protocolsOf: Duration side: #instance)
+                    groupOf: 'asSeconds' default: 'Unclassified'
+                """, in: restored) == "'Accessing'")
+        }
+    }
+
     @Test func textStreamSizeLimitLeavesPositionAndContentsIntact() async throws {
         let session = SmalltalkSession()
         let setup = try await session.worker.submitThrowing { runtime in

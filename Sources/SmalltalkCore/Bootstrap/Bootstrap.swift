@@ -137,6 +137,9 @@ public enum SmalltalkBootstrap {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let sources = try encoder.encode(build.sources)
+        guard sources.count <= LibrarySources.maxBytes else {
+            throw SmalltalkError("The bundled sources archive exceeds the \(LibrarySources.maxBytes)-byte limit.")
+        }
         let code = build.methods.mapValues { $0.mapValues { $0.mapValues(MethodCode.init) } }
         let seed = LibrarySeed(sourcesID: SystemLibrary.digest(sources), methods: code[.instance] ?? [:], classMethods: code[.classSide])
         return (sources, try encoder.encode(seed))

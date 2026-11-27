@@ -871,3 +871,158 @@ ANSISmalltalkTest compile: 'testWriteStreamAcceptsObjectAndRadixPrinting
     self assert: writer contents equals: (''hi'' printString , '' 16rFF'').
     writer close.
     self assert: ([ writer nextPut: $x. false ] on: Error do: [ :exception | true ])'.
+
+ANSISmalltalkTest compile: 'testDurationComponentsAndPrinting
+    | duration |
+    duration := Duration days: -3 hours: -5 minutes: -4 seconds: ( -5 / 2 ).
+    self assert: duration days equals: -3.
+    self assert: duration hours equals: -5.
+    self assert: duration minutes equals: -4.
+    self assert: duration seconds equals: (-5 / 2).
+    self assert: duration printString equals: ''-3:05:04:02.5''.
+    self assert: duration abs printString equals: ''3:05:04:02.5''.
+    self assert: Duration zero printString equals: ''0:00:00:00''.
+    self assert: Duration zero positive.
+    self deny: Duration zero negative.
+    self assert: (Duration seconds: (1 / 3)) seconds equals: (1 / 3).
+    self assert: (Duration seconds: (1 / 3)) printString
+        equals: ''0:00:00:00.333333333333333333333333333333'''.
+
+ANSISmalltalkTest compile: 'testDurationArithmeticAndOrdering
+    | a b |
+    a := Duration seconds: (1 / 3).
+    b := Duration seconds: 0.25s2.
+    self assert: (a + b) asSeconds equals: (7 / 12).
+    self assert: (a - b) asSeconds equals: (1 / 12).
+    self assert: (a * 3) asSeconds equals: 1.
+    self assert: (b * 2.0) asSeconds equals: (1 / 2).
+    self assert: (b / 2) asSeconds equals: (1 / 8).
+    self assert: a / b equals: (4 / 3).
+    self assert: b < a.
+    self assert: b <= b copy.
+    self assert: a > b.
+    self assert: a >= b.
+    self assert: (b between: Duration zero and: a).
+    self assert: (b min: a) == b.
+    self assert: (b max: a) == a.
+    self assert: b equals: (Duration seconds: (1 / 4)).
+    self deny: b ~= (Duration seconds: (1 / 4)).
+    self deny: b = (1 / 4).
+    self assert: b hash equals: (Duration seconds: (1 / 4)) hash.
+    self assert: ([ a / 0 ] on: ZeroDivide do: [ :exception | #caught ]) equals: #caught.
+    self assert: ([ a / Duration zero ] on: ZeroDivide do: [ :exception | exception dividend ])
+        equals: (1 / 3)'.
+
+ANSISmalltalkTest compile: 'testDateAndTimeCalendarAndTimeOfDay
+    | date |
+    date := DateAndTime year: 2024 month: 2 day: 29 hour: 20 minute: 4 second: 5.125s3.
+    self assert: date year equals: 2024.
+    self assert: date month equals: 2.
+    self assert: date monthName equals: ''February''.
+    self assert: date monthAbbreviation equals: ''Feb''.
+    self assert: date dayOfMonth equals: 29.
+    self assert: date dayOfYear equals: 60.
+    self assert: date dayOfWeek equals: 5.
+    self assert: date dayOfWeekName equals: ''Thursday''.
+    self assert: date dayOfWeekAbbreviation equals: ''Thu''.
+    self assert: date isLeapYear.
+    self assert: date hour equals: 20.
+    self assert: date hour24 equals: 20.
+    self assert: date hour12 equals: 8.
+    self assert: date meridianAbbreviation equals: ''PM''.
+    self assert: date minute equals: 4.
+    self assert: date second equals: (41 / 8).
+    self assert: date printString equals: '' 2024-02-29T20:04:05.125+00:00''.
+    self assert: date equals: (DateAndTime year: 2024 day: 60 hour: 20 minute: 4 second: (41 / 8))'.
+
+ANSISmalltalkTest compile: 'testDateAndTimeOffsetsAndComparison
+    | date utc next offset |
+    offset := Duration days: 0 hours: 5 minutes: 45 seconds: (1 / 2).
+    date := DateAndTime year: 2024 day: 1 hour: 0 minute: 0 second: (1 / 4) offset: offset.
+    utc := date asUTC.
+    self assert: date offset equals: offset.
+    self assert: utc offset equals: Duration zero.
+    self assert: utc equals: date.
+    self deny: utc ~= date.
+    self assert: utc hash equals: date hash.
+    self assert: date asLocal printString equals: utc printString.
+    self assert: utc dayOfWeek equals: 1.
+    self assert: utc hour12 equals: 6.
+    self assert: utc timeZoneName equals: ''UTC''.
+    self assert: date timeZoneAbbreviation equals: ''UTC+05:45:00.5''.
+    self assert: date printString equals: '' 2024-01-01T00:00:00.25+05:45:00.5''.
+    self assert: utc printString equals: '' 2023-12-31T18:14:59.75+00:00''.
+    self assert: (utc offset: offset) printString equals: date printString.
+    next := date + (Duration seconds: (1 / 3)).
+    self assert: next offset equals: offset.
+    self assert: (next - date) asSeconds equals: (1 / 3).
+    self assert: (next - (Duration seconds: (1 / 3))) equals: date.
+    self assert: date < next.
+    self assert: date <= utc.
+    self assert: next > utc.
+    self assert: next >= date.
+    self assert: (utc between: date and: next).
+    self assert: (next min: date) == date.
+    self assert: (date max: next) == next.
+    self deny: date = Duration zero'.
+
+ANSISmalltalkTest compile: 'testDateAndTimeAcrossGregorianBoundaries
+    | ancient epoch previous distant century reform |
+    ancient := DateAndTime year: -1199 month: 1 day: 5 hour: 20 minute: 33 second: 14.321s3
+        offset: (Duration seconds: -18000).
+    self assert: ancient printString equals: ''-1199-01-05T20:33:14.321-05:00''.
+    epoch := DateAndTime year: 1 day: 1 hour: 0 minute: 0 second: 0.
+    self assert: epoch dayOfWeek equals: 2.
+    self assert: epoch hour12 equals: 12.
+    self assert: epoch meridianAbbreviation equals: ''AM''.
+    previous := epoch - (Duration seconds: 1).
+    self assert: previous year equals: 0.
+    self assert: previous dayOfYear equals: 366.
+    self assert: previous isLeapYear.
+    self assert: previous printString equals: '' 0000-12-31T23:59:59+00:00''.
+    century := DateAndTime year: 1900 day: 60 hour: 0 minute: 0 second: 0.
+    self deny: century isLeapYear.
+    self assert: century month equals: 3.
+    self assert: (DateAndTime year: 2000 day: 60 hour: 0 minute: 0 second: 0) month equals: 2.
+    reform := DateAndTime year: 1582 month: 10 day: 15 hour: 0 minute: 0 second: 0.
+    self assert: (reform - (Duration seconds: 86400)) dayOfMonth equals: 14.
+    distant := DateAndTime year: -10000000000000000000400 day: 60 hour: 0 minute: 0 second: 0.
+    self assert: distant year equals: -10000000000000000000400.
+    self assert: distant month equals: 2.
+    self assert: distant dayOfMonth equals: 29.
+    self assert: (distant + (Duration seconds: 86400)) dayOfMonth equals: 1'.
+
+ANSISmalltalkTest compile: 'testDateAndTimeRejectsOutOfRangeComponents
+    | invalid |
+    invalid := Array
+        with: [ DateAndTime year: 1900 month: 2 day: 29 hour: 0 minute: 0 second: 0 ]
+        with: [ DateAndTime year: 2023 day: 366 hour: 0 minute: 0 second: 0 ]
+        with: [ DateAndTime year: 2024 day: 1 hour: 24 minute: 0 second: 0 ]
+        with: [ DateAndTime year: 2024 day: 1 hour: 0 minute: 0 second: 60 ].
+    invalid do: [ :each |
+        self assert: ([ each value. false ] on: Error do: [ :exception | true ]) ].
+    self assert: ([
+        DateAndTime year: 2024 day: 0 hour: 0 minute: 0 second: 0. false ]
+        on: Error do: [ :exception | true ]).
+    self assert: ([
+        DateAndTime year: 2024 month: 13 day: 1 hour: 0 minute: 0 second: 0. false ]
+        on: Error do: [ :exception | true ]).
+    self assert: ([
+        DateAndTime year: 2024 month: 1 day: 1 hour: 0 minute: -1 second: 0. false ]
+        on: Error do: [ :exception | true ]).
+    self assert: ([
+        DateAndTime year: 2024 day: 1 hour: 0 minute: 0 second: -0.5. false ]
+        on: Error do: [ :exception | true ]).
+    self assert: ([
+        DateAndTime now offset: (Duration seconds: 86401). false ]
+        on: Error do: [ :exception | true ])'.
+
+ANSISmalltalkTest compile: 'testDateAndTimeClock
+    | now precision |
+    now := DateAndTime now.
+    precision := DateAndTime clockPrecision.
+    self assert: now class equals: DateAndTime.
+    self assert: now offset equals: Duration zero.
+    self assert: (now second >= 0 and: [ now second < 60 ]).
+    self assert: precision class equals: Duration.
+    self assert: precision asSeconds > 0'.

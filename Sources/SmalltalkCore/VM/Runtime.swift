@@ -48,9 +48,10 @@ final class SmalltalkRuntime {
     static let shippedDictionaryNames: Set<String> = ["Dictionary", "IdentityDictionary"]
     static let shippedStreamNames: Set<String> = ["CollectionStream", "ReadStream", "WriteStream", "ReadWriteStream"]
     static let shippedFileStreamNames: Set<String> = ["FileStream", "ReadFileStream", "WriteFileStream"]
+    static let shippedDateTimeNames: Set<String> = ["DateAndTime", "Duration"]
     static let floatAliases: Set<String> = ["FloatE", "FloatD", "FloatQ"]
     static let classLimit = 128 + additiveBuiltinNames.count + shippedCollectionNames.count
-        + shippedDictionaryNames.count + shippedStreamNames.count + shippedFileStreamNames.count
+        + shippedDictionaryNames.count + shippedStreamNames.count + shippedFileStreamNames.count + shippedDateTimeNames.count
     static let executionStepLimit = 100_000
     static let evaluationDepthLimit = 256
     private static let compilerDepthLimit = 1_400

@@ -123,6 +123,7 @@ BrowserOrganization compileClass: 'shippedClassCategories
         (''Kernel'' (''Object'' ''Class'' ''Metaclass'' ''UndefinedObject'' ''Boolean'' ''True'' ''False''
             ''Number'' ''BlockClosure'' ''FailedMessage''))
         (''Numbers'' (''Integer'' ''SmallInteger'' ''LargeInteger'' ''Fraction'' ''ScaledDecimal'' ''Float''))
+        (''Date and Time'' (''DateAndTime'' ''Duration''))
         (''Exceptions'' (''Exception'' ''Error'' ''ExceptionSet'' ''MessageNotUnderstood'' ''ZeroDivide''))
         (''Collections & Text'' (''Collection'' ''SequenceableCollection'' ''Array'' ''ByteArray'' ''Interval''
             ''OrderedCollection'' ''SortedCollection'' ''UnorderedCollection'' ''Bag'' ''Set''
@@ -161,6 +162,26 @@ BrowserOrganization compile: 'defaultCategoryOf: name
     self class shippedClassCategories do: [ :entry |
         ((entry at: 2) includes: name) ifTrue: [ ^ entry at: 1 ] ].
     ^ ''User Classes'''.
+
+BrowserOrganization compile: 'classNames: names inCategory: categoryName
+    | group defaultName declarations members matchesDefault |
+    categoryName = ''All'' ifTrue: [ ^ names ].
+    group := self classCategories groupNamed: categoryName.
+    group isNil ifTrue: [ ^ #() ].
+    defaultName := group defaultName.
+    defaultName isNil ifTrue: [ ^ names select: [ :name | group includes: name ] ].
+    declarations := self class shippedClassCategories.
+    defaultName = ''User Classes''
+        ifTrue: [
+            members := declarations inject: #() into: [ :all :entry | all , entry last ].
+            matchesDefault := [ :name | (members includes: name) not ] ]
+        ifFalse: [
+            members := (declarations detect: [ :entry | entry first = defaultName ]
+                ifNone: [ #(nil #()) ]) last.
+            matchesDefault := [ :name | members includes: name ] ].
+    ^ names select: [ :name |
+        (group includes: name) or: [ (matchesDefault value: name) and: [
+            (classCategories explicitGroupOf: name) isNil ] ] ]'.
 
 BrowserOrganization compile: 'protocolsOf: target
     ^ self protocolsOf: target side: #instance'.

@@ -55,7 +55,7 @@ enum ImageFiles {
         let bytes = try encoder.encode(archive)
         guard bytes.count <= ImageCodec.maxBytes else { throw SmalltalkError("Image exceeds the 32 MiB limit.") }
         if FileManager.default.fileExists(atPath: sourcesURL.path) {
-            guard try SourceJournal.readBounded(sourcesURL, maximum: 262_144) == library.data else { throw SmalltalkError("Sources archive \(sourcesName) contains different data.") }
+            guard try SourceJournal.readBounded(sourcesURL, maximum: LibrarySources.maxBytes) == library.data else { throw SmalltalkError("Sources archive \(sourcesName) contains different data.") }
         } else { try SourceJournal.createFile(library.data, at: sourcesURL) }
         let createdChangesFile = candidate !== journal
         if createdChangesFile { try candidate.attach(to: changesURL) }
@@ -135,7 +135,7 @@ enum ImageFiles {
               archive.sourcesFile == URL(fileURLWithPath: archive.sourcesFile).lastPathComponent,
               archive.changesFile == url.deletingPathExtension().appendingPathExtension("changes").lastPathComponent else { throw SmalltalkError("Invalid source references in the image. Keep the image and changes file together.") }
         let directory = url.deletingLastPathComponent()
-        let sources = try SourceJournal.readBounded(directory.appendingPathComponent(archive.sourcesFile), maximum: 262_144)
+        let sources = try SourceJournal.readBounded(directory.appendingPathComponent(archive.sourcesFile), maximum: LibrarySources.maxBytes)
         guard SystemLibrary.digest(sources) == archive.sourcesID else { throw SmalltalkError("The sources archive does not match this image.") }
         let base = try LibrarySources.decode(sources)
         let journal = try SourceJournal.read(directory.appendingPathComponent(archive.changesFile))

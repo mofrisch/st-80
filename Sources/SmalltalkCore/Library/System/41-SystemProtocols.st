@@ -24,6 +24,23 @@ BrowserOrganization compile: 'shippedProtocols
             (''Arithmetic'' (''quo:'' ''rem:'' ''reciprocal'' ''raisedTo:'' ''raisedToInteger:'' ''fractionPart''))
             (''Intervals'' (''to:'' ''to:by:''))
             (''Rounding and Conversion'' (''asInteger'' ''roundTo:'' ''truncateTo:''))))
+        (''DateAndTime'' (
+            (''Calendar'' (''year'' ''month'' ''monthName'' ''monthAbbreviation'' ''dayOfMonth'' ''dayOfYear''
+                ''dayOfWeek'' ''dayOfWeekName'' ''dayOfWeekAbbreviation'' ''isLeapYear''))
+            (''Time of Day'' (''hour'' ''hour12'' ''hour24'' ''minute'' ''second'' ''meridianAbbreviation''))
+            (''Time Zones'' (''asLocal'' ''asUTC'' ''offset'' ''offset:'' ''timeZoneName'' ''timeZoneAbbreviation''))
+            (''Arithmetic'' (''+'' ''-''))
+            (''Comparing'' (''='' ''~='' ''hash'' ''<'' ''<='' ''>'' ''>='' ''between:and:'' ''min:'' ''max:''))
+            (''Printing'' (''printString''))
+            (''Private'' (''_utcSeconds:offset:'' ''_utcSeconds'' ''_secondsOf:'' ''_localDay'' ''_dateParts''
+                ''_timeOfDay'' ''_offsetString''))))
+        (''Duration'' (
+            (''Accessing'' (''asSeconds'' ''days'' ''hours'' ''minutes'' ''seconds''))
+            (''Arithmetic'' (''+'' ''-'' ''*'' ''/'' ''abs'' ''negated''))
+            (''Testing'' (''negative'' ''positive''))
+            (''Comparing'' (''='' ''~='' ''hash'' ''<'' ''<='' ''>'' ''>='' ''between:and:'' ''min:'' ''max:''))
+            (''Printing'' (''printString''))
+            (''Private'' (''_seconds:'' ''_secondsOf:''))))
         (''Integer'' (
             (''Arithmetic'' (''+'' ''-'' ''*'' ''/'' ''//'' ''\\'' ''negated'' ''abs'' ''squared''))
             (''Comparing'' (''<'' ''>'' ''<='' ''>=''))
@@ -337,7 +354,7 @@ BrowserOrganization compile: 'shippedProtocols
         (''BrowserOrganization'' (
             (''Initialization'' (''initialize'' ''shippedProtocols'' ''shippedClassSideProtocols''
                 ''refreshShippedProtocols'' ''fileShippedProtocolsOf:side:into:''))
-            (''Class Categories'' (''classCategories'' ''categoryOf:'' ''defaultCategoryOf:''))
+            (''Class Categories'' (''classCategories'' ''categoryOf:'' ''defaultCategoryOf:'' ''classNames:inCategory:''))
             (''Method Protocols'' (''protocolsOf:'' ''protocolsOf:side:''))))
         (''BrowserOrganizationForm'' (
             (''Initialization'' (''initialize''))
@@ -436,6 +453,10 @@ BrowserOrganization compile: 'shippedProtocols
                 ''testDictionaryDistinguishesNilValuesFromAbsentKeys'' ''testDictionaryEnumeratesKeysAndValues''
                 ''testDictionaryCollectionOperationsPreserveKeysAndType'' ''testDictionaryCopiesMergesAndRemovesKeyGroups''
                 ''testDictionaryEnumerationVisitsASnapshot''))
+            (''Date and Time Tests'' (''testDurationComponentsAndPrinting'' ''testDurationArithmeticAndOrdering''
+                ''testDateAndTimeCalendarAndTimeOfDay'' ''testDateAndTimeOffsetsAndComparison''
+                ''testDateAndTimeAcrossGregorianBoundaries'' ''testDateAndTimeRejectsOutOfRangeComponents''
+                ''testDateAndTimeClock''))
             (''Exception Tests'' (''testExceptionNormalCompletion'' ''testExceptionSignalersAndMetadata''
                 ''testExceptionSelectsNearestMatchingHandler'' ''testExceptionFromAnActionUsesTheOuterEnvironment''
                 ''testExceptionHandlerRunsBeforeUnwindBlocks'' ''testExceptionActionCanReturnFromItsHomeMethod''
@@ -446,6 +467,15 @@ BrowserOrganization compile: 'shippedProtocols
 
 BrowserOrganization compile: 'shippedClassSideProtocols
     ^ #(
+        (''DateAndTime'' (
+            (''Instance Creation'' (''year:month:day:hour:minute:second:'' ''year:month:day:hour:minute:second:offset:''
+                ''year:day:hour:minute:second:'' ''year:day:hour:minute:second:offset:''))
+            (''System Clock'' (''now'' ''clockPrecision''))
+            (''Private'' (''_year:ordinal:hour:minute:second:offset:'' ''_atUTCSeconds:offset:'' ''_checkYear:'' ''_checkOffset:''
+                ''_isLeapYear:'' ''_daysBeforeYear:'' ''_monthStartsFor:'' ''_datePartsForDay:''))))
+        (''Duration'' (
+            (''Instance Creation'' (''seconds:'' ''days:hours:minutes:seconds:'' ''zero''))
+            (''Private'' (''_exactSeconds:'' ''_pad:to:'' ''_printSeconds:'' ''_decimalDigitsOf:''))))
         (''Collection'' ((''Instance Creation'' (''with:'' ''with:with:'' ''with:with:with:'' ''with:with:with:with:'' ''withAll:''))))
         (''UnorderedCollection'' ((''Instance Creation'' (''new:''))))
         (''Dictionary'' ((''Instance Creation'' (''new:'' ''withAll:''))))

@@ -202,6 +202,10 @@ OrderedCollection compile: 'atAllPut: element
 
 OrderedCollection compile: 'replaceFrom: start to: stop with: replacement
     replacement size = (stop - start + 1) ifFalse: [ self error: ''The replacement has the wrong size.'' ].
+    stop < start ifTrue: [
+        self _checkIndex: start.
+        self _checkIndex: stop.
+        ^ self ].
     ^ self replaceFrom: start to: stop with: replacement startingAt: 1'.
 
 OrderedCollection compile: 'replaceFrom: start to: stop with: replacement startingAt: offset
@@ -362,6 +366,9 @@ ByteArray compile: 'atAllPut: element
 
 ByteArray compile: 'replaceFrom: start to: stop with: replacement
     replacement size = (stop - start + 1) ifFalse: [ self error: ''The replacement has the wrong size.'' ].
+    stop < start ifTrue: [
+        storage replaceFrom: start to: stop with: replacement.
+        ^ self ].
     ^ self replaceFrom: start to: stop with: replacement startingAt: 1'.
 
 ByteArray compile: 'replaceFrom: start to: stop with: replacement startingAt: offset

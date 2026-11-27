@@ -341,7 +341,7 @@ extension SmalltalkRuntime {
             case .load("self") where initializer && owner == nil:
                 throw SmalltalkError("self is only available in a class initializer.", at: instruction.position)
             case .store(let name) where !locals.contains(name):
-                if ["nil", "true", "false", "self", "super", "thisContext"].contains(name) {
+                if CodeValidator.reservedIdentifiers.contains(name) {
                     throw SmalltalkError("Cannot assign to \(name) in this scope.", at: instruction.position)
                 }
                 if owner.map({ (side == .instance ? $0.fields : $0.metaclass.fields).contains(name) }) == true { continue }

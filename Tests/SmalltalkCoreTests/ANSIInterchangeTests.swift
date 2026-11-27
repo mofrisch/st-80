@@ -3,6 +3,24 @@ import Testing
 @testable import SmalltalkCore
 
 struct ANSIInterchangeTests {
+    @Test func rootClassesReportTheClassPrimitivesTheyCanPerform() async {
+        let session = SmalltalkSession()
+        let imported = await session.evaluate("""
+            Smalltalk interchangeVersion: '1.0'!
+            Class named: 'SIFReflectionRoot' superclass: 'nil' indexedInstanceVariables: #'none'
+                instanceVariableNames: '' classVariableNames: '' sharedPools: '' classInstanceVariableNames: ''!
+            Class named: 'SIFReflectionChild' superclass: 'SIFReflectionRoot' indexedInstanceVariables: #'none'
+                instanceVariableNames: '' classVariableNames: '' sharedPools: '' classInstanceVariableNames: ''!
+            """)
+        #expect(imported.error == nil)
+        let result = await session.evaluate("""
+            Array with: (SIFReflectionRoot respondsTo: #new) with: (SIFReflectionRoot perform: #new) class
+                with: (SIFReflectionChild respondsTo: #superclass) with: (SIFReflectionChild perform: #superclass)
+            """)
+        #expect(result.value == "#(true SIFReflectionRoot true SIFReflectionRoot)")
+        #expect(await session.evaluate("SIFReflectionRoot respondsTo: #uninstalledMethod").value == "false")
+    }
+
     @Test func importsFileAndRunsInitializersAfterInstallingMethods() async throws {
         let session = SmalltalkSession()
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

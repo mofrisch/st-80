@@ -78,6 +78,46 @@ struct CompilerTests {
         #expect(await session.evaluate("[ :arg | [ | arg | arg := 42 ] value ] value: 0").value == "42")
     }
 
+    @Test func thisContextIsAnOrdinaryIdentifier() async throws {
+        let session = SmalltalkSession()
+        let imported = await session.evaluate("""
+            Smalltalk interchangeVersion: '1.0'!
+            Global constant: 'thisContext'!
+            thisContext initializer! 7!
+            """)
+        try #require(imported.error == nil, "\(imported.error ?? "")")
+        #expect(await session.evaluate("| thisContext | thisContext := 42. thisContext").value == "42")
+        #expect(await session.evaluate("[ :thisContext | thisContext + 1 ] value: 41").value == "42")
+        #expect(await session.compile("echo: thisContext ^ thisContext", in: "Counter").error == nil)
+        #expect(await session.evaluate("Counter new echo: 42").value == "42")
+        #expect(await session.evaluate("thisContext").value == "7")
+        #expect(await session.evaluate("| self | self").error != nil)
+
+        let restored = SmalltalkSession()
+        _ = try await restored.loadImage(session.imageData())
+        #expect(await restored.evaluate("Array with: thisContext with: (Counter new echo: 42)").value == "#(7 42)")
+    }
+
+    @Test func stockCompilerInASavedImageCanDeclareThisContextAfterUpgrade() async throws {
+        let session = SmalltalkSession()
+        let oldMethod = """
+            validateNames: names
+                names do: [ :name |
+                    (#('self' 'super' 'true' 'false' 'nil' 'thisContext') includes: name) ifTrue: [
+                        self fail: 'A pseudo-variable cannot be declared.' ] ].
+                1 to: names size do: [ :index |
+                    1 to: index - 1 do: [ :earlier |
+                        (names at: index) = (names at: earlier) ifTrue: [
+                            self fail: 'Duplicate variable declaration.' ] ] ]
+            """
+        try #require(await session.compile(oldMethod, in: "STCompiler").error == nil)
+        #expect(await session.evaluate("| thisContext | thisContext := 42. thisContext").error != nil)
+
+        let restored = SmalltalkSession()
+        _ = try await restored.loadImage(session.imageData())
+        #expect(await restored.evaluate("| thisContext | thisContext := 42. thisContext").value == "42")
+    }
+
     @Test func aLiveScannerEditChangesWorkspaceAndMethodCompilationAndSurvivesReload() async throws {
         let session = SmalltalkSession()
         let scanner = """

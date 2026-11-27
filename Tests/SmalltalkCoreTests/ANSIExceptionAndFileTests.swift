@@ -52,6 +52,53 @@ struct ANSIExceptionAndFileTests {
         #expect(result.value == "'Forwarded'")
     }
 
+    @Test func passFromAnOuterHandlerUsesTheOriginalSignalingEnvironment() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | passed directOuter |
+            Notification subclass: #AuditEnvironmentNotice instanceVariableNames: ''.
+            Notification subclass: #AuditEnvironmentProbe instanceVariableNames: ''.
+            AuditEnvironmentProbe compile: 'defaultAction ^ AuditEnvironmentNotice signal'.
+            passed := [
+                [
+                    [ AuditEnvironmentProbe signal ] on: AuditEnvironmentNotice do: [ :notice | notice resume: 31 ]
+                ] on: AuditEnvironmentProbe do: [ :exception | exception resume: exception outer ]
+            ] on: AuditEnvironmentProbe do: [ :exception | exception pass ].
+            directOuter := [
+                [ AuditEnvironmentProbe signal ] on: AuditEnvironmentNotice do: [ :notice | notice resume: 31 ]
+            ] on: AuditEnvironmentProbe do: [ :exception | exception resume: exception outer ].
+            Array with: passed with: directOuter
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(31 nil)")
+    }
+
+    @Test func structuralExceptionControlsTakePrecedenceWhileHandlingAReplacement() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | replacement answer |
+            Object subclass: #AuditShadowingDescription instanceVariableNames: ''.
+            AuditShadowingDescription compile: 'description ^ ''Replacement'' '.
+            AuditShadowingDescription compile: 'defaultAction ^ 17'.
+            AuditShadowingDescription compile: 'isResumable ^ true'.
+            AuditShadowingDescription compile: 'messageText ^ nil'.
+            AuditShadowingDescription compile: 'tag ^ nil'.
+            AuditShadowingDescription compile: 'resume: ignored ^ #ordinaryMethod'.
+            Object subclass: #AuditShadowingSelector instanceVariableNames: ''.
+            AuditShadowingSelector compile: 'handles: exception ^ exception class == AuditShadowingDescription'.
+            replacement := AuditShadowingDescription new.
+            answer := [
+                [ 1 + Error signal ] on: Error do: [ :exception | exception resignalAs: replacement ]
+            ] on: AuditShadowingSelector new do: [ :exception |
+                (exception == replacement and: [ exception respondsTo: #resume: ])
+                    ifFalse: [ self error: 'Missing active exception identity or protocol' ].
+                exception resume: 42 ].
+            Array with: answer with: (replacement resume: 0)
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(43 #ordinaryMethod)")
+    }
+
     @Test func writeOnlyBinaryFileSupportsAppendAndPositioning() async throws {
         let directory = try newFixtureDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }

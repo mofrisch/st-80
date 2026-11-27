@@ -37,8 +37,11 @@ CollectionStream compile: '_size
     ^ self _sequence size'.
 
 CollectionStream compile: '_sliceFrom: start to: stop
-    | slice |
-    slice := self _sequence copyFrom: start to: stop.
+    | sequence slice |
+    sequence := self _sequence.
+    (start > stop and: [ sequence isKindOf: Interval ])
+        ifTrue: [ ^ sequence _sequenceFrom: (Array new: 0) ].
+    slice := sequence copyFrom: start to: stop.
     buffer isNil ifTrue: [ ^ slice ].
     ^ backing copyReplaceFrom: 1 to: backing size with: slice'.
 
@@ -138,7 +141,9 @@ ReadStream compile: 'nextLine
     sequence := self _sequence.
     terminator := self _findNext: [ :each | each = Character lf or: [ each = Character cr ] ].
     stop := terminator isNil ifTrue: [ sequence size ] ifFalse: [ terminator - 1 ].
-    result := String withAll: (sequence copyFrom: cursor + 1 to: stop).
+    result := cursor = stop
+        ifTrue: [ String new: 0 ]
+        ifFalse: [ String withAll: (sequence copyFrom: cursor + 1 to: stop) ].
     cursor := terminator ifNil: [ sequence size ].
     terminator notNil ifTrue: [
         ((sequence at: terminator) = Character cr and: [

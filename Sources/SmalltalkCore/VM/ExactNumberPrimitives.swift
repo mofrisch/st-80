@@ -3,6 +3,8 @@ extension SmalltalkRuntime {
 
     func integerProtocol(_ number: BigInteger, _ selector: String, _ arguments: [Value]) throws -> Value? {
         switch selector {
+        case "_integerSqrt":
+            return integerValue(try number.roundedSquareRoot(charge: chargeNumericWork))
         case "bitAnd:", "bitOr:", "bitXor:":
             let operand = try unboundedInteger(arguments[0])
             try chargeNumericWork(max(number.wordCount, operand.wordCount))
@@ -133,7 +135,7 @@ extension SmalltalkRuntime {
 
     func fractionPrimitive(_ number: ExactFraction, _ selector: String, _ arguments: [Value]) throws -> Value? {
         if case .float? = arguments.first, Self.exactBinarySelectors.contains(selector) {
-            return try floatPrimitive(finiteDouble(number.doubleValue), selector, arguments)
+            return try floatPrimitive(finiteDouble(number.doubleValue(charge: chargeNumericWork)), selector, arguments)
         }
         if Self.exactBinarySelectors.contains(selector) {
             let operand: ExactFraction
@@ -152,7 +154,8 @@ extension SmalltalkRuntime {
         case "negated": return try fractionValue(-number.numerator, number.denominator)
         case "abs": return try fractionValue(number.numerator.magnitude, number.denominator)
         case "squared": return try fractionBinary(number, "*", number)
-        case "asFloat", "asFloatE", "asFloatD", "asFloatQ": return try finiteFloat(number.doubleValue)
+        case "asFloat", "asFloatE", "asFloatD", "asFloatQ":
+            return try finiteFloat(number.doubleValue(charge: chargeNumericWork))
         case "asScaledDecimal:": return try convertToScaledDecimal(.fraction(number), scale: arguments[0])
         case "floor": return integerValue(try floorDivision(number.numerator, by: number.denominator).quotient)
         case "truncated", "ceiling", "rounded":

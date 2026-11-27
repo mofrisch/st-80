@@ -193,6 +193,11 @@ Array compile: 'atAllPut: element
 
 Array compile: 'replaceFrom: start to: stop with: replacement
     replacement size = (stop - start + 1) ifFalse: [ self error: ''The replacement has the wrong size.'' ].
+    stop < start ifTrue: [
+        ((start isKindOf: Integer) and: [ (stop isKindOf: Integer) and: [
+            stop >= 1 and: [ start <= self size ] ] ])
+            ifFalse: [ self error: ''Invalid replacement range.'' ].
+        ^ self ].
     ^ self replaceFrom: start to: stop with: replacement startingAt: 1'.
 
 Array compile: 'replaceFrom: start to: stop with: replacement startingAt: offset
@@ -203,7 +208,11 @@ Array compile: 'replaceFrom: start to: stop with: replacement startingAt: offset
     ^ self'.
 
 Array compile: 'replaceFrom: start to: stop withObject: element
-    (start < 1 or: [ stop > self size or: [ stop < start ] ]) ifTrue: [ self error: ''Invalid replacement range.'' ].
+    | size |
+    size := self size.
+    ((start isKindOf: Integer) and: [ (stop isKindOf: Integer) and: [
+        (start between: 1 and: size) and: [ stop between: 1 and: size ] ] ])
+        ifFalse: [ self error: ''Invalid replacement range.'' ].
     start to: stop do: [ :index | self at: index put: element ].
     ^ self'.
 
@@ -336,6 +345,16 @@ Interval compile: 'collect: operation
 
 Interval compile: 'select: predicate
     ^ self asArray select: predicate'.
+
+Interval compile: 'copyFrom: first to: last
+    | result |
+    ((first isKindOf: Integer) and: [
+        (last isKindOf: Integer) and: [
+            (first between: 1 and: count) and: [ last between: 1 and: count ] ] ])
+        ifFalse: [ self error: ''Invalid interval range.'' ].
+    result := Array new: ((last - first + 1) max: 0).
+    first to: last do: [ :index | result at: index - first + 1 put: (self at: index) ].
+    ^ self _sequenceFrom: result'.
 
 Interval compile: ', other
     ^ self asArray , other'.

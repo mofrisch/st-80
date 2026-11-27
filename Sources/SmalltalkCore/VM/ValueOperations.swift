@@ -187,7 +187,8 @@ extension SmalltalkRuntime {
                     case (.largeInteger(let a), .float(let b)), (.float(let b), .largeInteger(let a)):
                         if identity || a.doubleValue != b { return false }
                     case (.fraction(let a), .float(let b)), (.float(let b), .fraction(let a)):
-                        if identity || a.doubleValue != b { return false }
+                        if identity { return false }
+                        if try a.doubleValue(charge: chargeNumericWork) != b { return false }
                     case (.scaledDecimal(let decimal), let other), (let other, .scaledDecimal(let decimal)):
                         if try !equalScaledDecimal(decimal, other: other, identity: identity) { return false }
                     case (.character(let a), .character(let b)): if a != b { return false }

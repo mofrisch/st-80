@@ -172,7 +172,7 @@ private enum CompilerOutput {
 /// Shared checks for executable code, whether it comes from the compiler or an
 /// image. They validate shape and operands without reconstructing source text.
 enum CodeValidator {
-    private static let reserved = ["self", "super", "true", "false", "nil", "thisContext"]
+    static let reservedIdentifiers: Set<String> = ["self", "super", "true", "false", "nil"]
     private static let binary = "+-*/\\~<>=@%,&?!|"
 
     static func identifier(_ name: String) -> Bool {
@@ -182,7 +182,7 @@ enum CodeValidator {
 
     static func validNames(_ names: [String]) -> Bool {
         Set(names).count == names.count && names.allSatisfy {
-            identifier($0) && !reserved.contains($0)
+            identifier($0) && !reservedIdentifiers.contains($0)
         }
     }
 

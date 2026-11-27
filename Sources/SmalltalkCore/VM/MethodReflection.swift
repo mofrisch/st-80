@@ -44,6 +44,7 @@ extension SmalltalkRuntime {
             "\\\\": "Remainder from division rounded down.", "<": "Less than.", ">": "Greater than.",
             "<=": "Less than or equal to.", ">=": "Greater than or equal to.",
             "negated": "Returns the negated value.", "abs": "Returns the absolute value.", "squared": "Returns the square.",
+            "_integerSqrt": "Returns the square root rounded to the nearest integer.",
             "asCharacter": "Returns the character for the receiver's Unicode code point.",
             "numerator": "Returns the integer itself.", "denominator": "Returns one.",
             "asFloat": "Converts the integer to binary64.", "asFloatE": "Converts the integer to binary64.",
@@ -111,7 +112,7 @@ extension SmalltalkRuntime {
         ],
         "String": [",": "Concatenates two strings.", "size": "Returns the number of Unicode code points.", "at:": "Returns the character at a one-based index.", "asString": "Returns the string.", "asSymbol": "Converts the string to a symbol.", "characters": "Returns an array of one-grapheme strings.",
             "asCharacter": "Converts a one-code-point string to a character.",
-            "includes:": "Tests whether a character or substring is present.", "isLetter": "Tests whether the string is one letter.",
+            "includes:": "Tests whether the string contains the given character.", "isLetter": "Tests whether the string is one letter.",
             "isNumber": "Tests whether the string is one numeric character.", "isASCIIDigit": "Tests whether the string is one ASCII digit.",
             "isLowercase": "Tests whether the string is one lowercase character.", "isWhitespace": "Tests whether the string is one whitespace character.",
             "isLineBreak": "Tests whether the string is a line break.", "asIntegerOrNil": "Parses a signed decimal integer.",
@@ -202,9 +203,16 @@ extension SmalltalkRuntime {
         "Transcript": ["record:": "Records transcript output for the current evaluation."],
     ]
 
-    func primitiveSelectors(_ stClass: STClass) -> Set<String> {
-        let own = Set((Self.primitiveDescriptions[stClass.name] ?? [:]).keys)
-        return own.union(stClass.superclass.map(primitiveSelectors) ?? [])
+    func hasReflectedPrimitive(_ selector: String, on receiver: Value) -> Bool {
+        // Class-object dispatch supplies these primitives even when a root
+        // class's metaclass inherits only from Object.
+        if case .classObject = receiver, Self.primitiveDescriptions["Class"]?[selector] != nil { return true }
+        var owner: STClass? = classOf(receiver)
+        while let candidate = owner {
+            if Self.primitiveDescriptions[candidate.name]?[selector] != nil { return true }
+            owner = candidate.superclass
+        }
+        return false
     }
 
     func reflectedMethods(on target: STClass, side: MethodSide) -> [MethodInfo] {

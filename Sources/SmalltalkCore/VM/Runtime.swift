@@ -328,7 +328,7 @@ final class SmalltalkRuntime {
     }
 
     func assign(_ name: String, value: Value, context: Context) throws {
-        guard !["nil", "true", "false", "self", "super", "thisContext"].contains(name) else {
+        guard !CodeValidator.reservedIdentifiers.contains(name) else {
             throw SmalltalkError("\(name) cannot be reassigned.")
         }
         if let environment = context.environment.binding(name) { environment.values[name] = value; return }

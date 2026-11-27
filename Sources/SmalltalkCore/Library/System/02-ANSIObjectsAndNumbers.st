@@ -97,7 +97,7 @@ Number compile: 'raisedToInteger: exponent
     exponent < 0 ifTrue: [ ^ result reciprocal ].
     ^ result'.
 
-Integer compile: 'sqrt ^ self asFloat sqrt'.
+Integer compile: 'sqrt ^ self _integerSqrt'.
 Fraction compile: 'sqrt ^ self asFloat sqrt'.
 ScaledDecimal compile: 'sqrt ^ self asFloat sqrt'.
 
@@ -178,8 +178,9 @@ Transcript compile: 'nextPut: character
     self show: character asString'.
 
 Transcript compile: 'nextPutAll: characters
-    ((characters isKindOf: String) and: [ (characters includes: Character cr) not ])
-        ifTrue: [ ^ self show: characters ].
+    | batch |
+    batch := self _nextPutAllBatch: characters.
+    batch isNil ifFalse: [ ^ self show: batch ].
     characters do: [ :character | self nextPut: character ]'.
 
 Transcript compile: 'space

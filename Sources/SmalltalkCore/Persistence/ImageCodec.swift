@@ -268,6 +268,7 @@ enum ImageCodec {
         }
         if image.version < 10 { try SystemLibrary.shared.get().upgradeANSIBehavior(in: runtime) }
         let library = try? SystemLibrary.shared.get()
+        try library?.upgradeCurrentANSIBehavior(in: runtime)
         let refreshBrowserOrganization = try library?.upgradeBrowserOrganization(in: runtime, classesAdded: !addedClasses.isEmpty) ?? false
         guard runtime.classes["UIBinding"]?.lookup("reconcileMount:") != nil else {
             throw invalid("The image is missing UIBinding>>reconcileMount:. Start a fresh session.")
@@ -424,7 +425,9 @@ enum ImageCodec {
                 guard case .classObject(let stClass)? = globals[name], stClass === runtime.classes[name] else { throw invalid("Class binding \(name) is missing.") }
             }
         }
-        guard Set(globals.keys).isDisjoint(with: ["nil", "true", "false", "self", "super", "thisContext"]) else { throw invalid("Reserved global variable.") }
+        guard CodeValidator.reservedIdentifiers.isDisjoint(with: globals.keys) else {
+            throw invalid("Reserved global variable.")
+        }
         runtime.globals = globals
         runtime.declaredGlobals = declaredGlobals
         guard case .object(let desktop)? = globals["Desktop"], runtime.isUIClass(desktop.stClass, named: "DesktopManager"),

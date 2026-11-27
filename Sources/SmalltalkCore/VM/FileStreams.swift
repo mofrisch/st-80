@@ -279,12 +279,12 @@ extension SmalltalkRuntime {
     /// The shipped stream and enumeration methods are pure with these backing
     /// types. Keep large transfers within the execution budget, while allowing
     /// current-image method edits and user collections to use ordinary sends.
-    func nextPutAllBatch(_ stream: STObject, source: Value) throws -> Value? {
-        let name = stream.stClass.name
-        let receiver = Value.object(stream)
+    func nextPutAllBatch(_ receiver: Value, source: Value) throws -> Value? {
+        let name = classOf(receiver).name
+        let isTranscript = name == "Transcript"
         let isFileStream = name == "WriteFileStream"
-        guard isFileStream || name == "WriteStream" || name == "ReadWriteStream" else { return nil }
-        guard let library = try? SystemLibrary.shared.get(), let arrayClass = classes["Array"] else { return .nilValue }
+        guard isTranscript || isFileStream || name == "WriteStream" || name == "ReadWriteStream" else { return nil }
+        guard let library = try? SystemLibrary.shared.get() else { return .nilValue }
 
         func isShipped(_ selector: String, on object: Value, owner name: String, side: MethodSide = .instance) -> Bool {
             guard let (method, owner, methodSide) = lookupMethod(selector, on: object),
@@ -292,7 +292,31 @@ extension SmalltalkRuntime {
             return library.sources[side][name]?[selector] == method.source
         }
 
-        guard isShipped("nextPut:", on: receiver, owner: name),
+        guard isShipped("nextPut:", on: receiver, owner: name) else { return .nilValue }
+        if isTranscript {
+            guard case .transcript = receiver, let text = source.textContents, !text.utf8.contains(13),
+                  lookupMethod("do:", on: source) == nil,
+                  isShipped("show:", on: receiver, owner: name),
+                  lookupMethod("record:", on: receiver) == nil,
+                  case .object(let model)? = globals["TranscriptBuffer"],
+                  isShipped("append:", on: .object(model), owner: "TranscriptModel"),
+                  isShipped("changed:", on: .object(model), owner: "Model"),
+                  isShipped("dependents", on: .object(model), owner: "Model"),
+                  let character = classes["Character"],
+                  isShipped("cr", on: .classObject(character), owner: "Character", side: .classSide),
+                  isShipped("codePoint:", on: .classObject(character), owner: "Character", side: .classSide),
+                  lookupMethod("asCharacter", on: .integer(13)) == nil,
+                  lookupMethod("asString", on: .character(13)) == nil,
+                  lookupMethod("=", on: .character(13)) == nil else { return .nilValue }
+            // A dependent can observe each individual nextPut: through the model.
+            switch model.fields["dependents"] {
+            case .nilValue?: return source
+            case .array(let observers)? where observers.elements.isEmpty: return source
+            default: return .nilValue
+            }
+        }
+
+        guard case .object(let stream) = receiver, let arrayClass = classes["Array"],
               isShipped("with:", on: .classObject(arrayClass), owner: "Array", side: .classSide) else {
             return .nilValue
         }

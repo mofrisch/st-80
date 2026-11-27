@@ -53,7 +53,8 @@ BrowserOrganization compile: 'shippedProtocols
             (''Rounding'' (''ceiling'' ''floor'' ''rounded'' ''truncated'' ''integerPart''))
             (''Printing'' (''printStringRadix:'' ''printOn:base:showRadix:''))
             (''Converting'' (''asCharacter'' ''asFloat'' ''asFloatE'' ''asFloatD'' ''asFloatQ'' ''asScaledDecimal:''))
-            (''Iteration'' (''timesRepeat:'' ''to:do:'' ''to:by:do:''))))
+            (''Iteration'' (''timesRepeat:'' ''to:do:'' ''to:by:do:''))
+            (''Private'' (''_integerSqrt''))))
         (''Boolean'' (
             (''Logical Operations'' (''not'' ''and:'' ''or:'' ''&'' ''|'' ''eqv:'' ''xor:''))
             (''Conditionals'' (''ifTrue:'' ''ifFalse:'' ''ifTrue:ifFalse:'' ''ifFalse:ifTrue:''))))
@@ -211,7 +212,7 @@ BrowserOrganization compile: 'shippedProtocols
             (''Initialization'' (''initializeFrom:to:by:''))
             (''Accessing'' (''size'' ''at:'' ''isEmpty'' ''includes:''))
             (''Enumerating'' (''do:'' ''collect:'' ''select:''))
-            (''Copying'' ('',''))))
+            (''Copying'' (''copyFrom:to:'' '',''))))
         (''BlockClosure'' (
             (''Evaluation'' (''value'' ''value:'' ''value:value:'' ''argumentCount'' ''valueWithArguments:''))
             (''Exception Handling'' (''on:do:''))

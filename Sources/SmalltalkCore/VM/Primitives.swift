@@ -21,7 +21,7 @@ extension SmalltalkRuntime {
         case "respondsTo:":
             let name = try symbol(args[0])
             return .boolean(try lookupMethod(name, on: receiver) != nil
-                || primitiveSelectors(classOf(receiver)).contains(name)
+                || hasReflectedPrimitive(name, on: receiver)
                 || supportsIndexedOperation(name, on: receiver)
                 || respondsToActiveExceptionControl(receiver, selector: name))
         case let name where Self.exceptionControlSelectors.contains(name):
@@ -138,9 +138,13 @@ extension SmalltalkRuntime {
             default: return nil
             }
         case .transcript:
-            guard selector == "record:" else { return nil }
-            try appendTranscript(string(args[0]))
-            return receiver
+            switch selector {
+            case "record:":
+                try appendTranscript(string(args[0]))
+                return receiver
+            case "_nextPutAllBatch:": return try nextPutAllBatch(receiver, source: args[0])
+            default: return nil
+            }
         case .object(let object):
             if selector == "_spliceAt:remove:with:", let ordered = classes["OrderedCollection"], object.stClass.inherits(from: ordered) {
                 guard case .array(let incoming) = args[2] else { throw SmalltalkError("Invalid collection storage.") }
@@ -150,7 +154,7 @@ extension SmalltalkRuntime {
                 return try commitStreamWrite(object, incoming: args[0])
             }
             if selector == "_nextPutAllBatch:" {
-                return try nextPutAllBatch(object, source: args[0])
+                return try nextPutAllBatch(receiver, source: args[0])
             }
             if selector.hasPrefix("_"), let stream = classes["FileStream"], object.stClass.inherits(from: stream) {
                 for name in ["FileStream", "ReadFileStream", "WriteFileStream"] {
@@ -292,8 +296,8 @@ extension SmalltalkRuntime {
             case "<=": return .boolean(lower != .orderedDescending)
             case ">": return .boolean(lower == .orderedDescending)
             case ">=": return .boolean(lower != .orderedAscending)
-            case "min:": return lower == .orderedDescending ? args[0] : receiver
-            case "max:": return lower == .orderedAscending ? args[0] : receiver
+            case "min:": return lower == .orderedAscending ? receiver : args[0]
+            case "max:": return lower == .orderedDescending ? receiver : args[0]
             default:
                 return .boolean(try lower != .orderedAscending && collate(string, with: args[1]) != .orderedDescending)
             }
@@ -322,7 +326,12 @@ extension SmalltalkRuntime {
             if case .character(let codePoint) = args[0] {
                 return .boolean(string.unicodeScalars.contains { $0.value == codePoint })
             }
-            if let substring = args[0].textContents { return .boolean(string.contains(substring)) }
+            // The previous bundled scanner sent this from its compiler sandbox
+            // while compiling the replacement scanner during bootstrap.
+            if compilationMode, activations.last?.context.homeClass?.name == "STScanner",
+               string == "+-*/\\~<>=@%,&?!|", let legacyCharacter = args[0].textContents {
+                return .boolean(string.contains(legacyCharacter))
+            }
             return .boolean(false)
         case "isLetter": return .boolean(string.count == 1 && string.first?.isLetter == true)
         case "isNumber": return .boolean(string.count == 1 && string.first?.isNumber == true)

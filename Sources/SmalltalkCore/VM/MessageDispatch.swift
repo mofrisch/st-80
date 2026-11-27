@@ -36,6 +36,8 @@ extension SmalltalkRuntime {
             try enter()
             defer { depth -= 1 }
             guard arguments.count == CodeValidator.arity(of: selector) else { throw SmalltalkError("Wrong number of arguments for \(selector).") }
+            if case .normal = lookup, exceptionAction?.usesStructuralControls == true,
+               let result = try structuralExceptionControl(receiver, selector, arguments) { return result }
             if let (method, owner, side) = lookupMethod(selector, on: receiver, startingAt: lookup) {
                 return try invoke(method, owner: owner, receiver: receiver, arguments: arguments, side: side)
             }

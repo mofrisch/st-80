@@ -3,6 +3,33 @@ import Testing
 @testable import SmalltalkCore
 
 struct ANSIBindingImageTests {
+    @Test(arguments: [false, true])
+    func savedImagesUpgradeShippedIntervalCopyAndKeepCustomOverrides(custom: Bool) async throws {
+        let session = SmalltalkSession()
+        let data = try await session.worker.submitThrowing { runtime in
+            let interval = try #require(runtime.classes["Interval"])
+            if custom {
+                try runtime.compile("copyFrom: first to: last ^ #(77)", in: interval)
+            } else {
+                interval.methods.removeValue(forKey: "copyFrom:to:")
+            }
+            let stream = try #require(runtime.classes["CollectionStream"])
+            try runtime.compile("""
+                _sliceFrom: start to: stop
+                    | slice |
+                    slice := self _sequence copyFrom: start to: stop.
+                    buffer isNil ifTrue: [ ^ slice ].
+                    ^ backing copyReplaceFrom: 1 to: backing size with: slice
+                """, in: stream)
+            return try ImageCodec.encode(runtime, workspace: "", transcript: "")
+        }
+        let restored = SmalltalkSession()
+        _ = try await restored.loadImage(data)
+        let result = await restored.evaluate("[ (1 to: 3) copyFrom: 4 to: 1 ] on: Error do: [ :error | #invalidIndex ]")
+        #expect(result.value == (custom ? "#(77)" : "#invalidIndex"))
+        #expect(await restored.evaluate("(ReadStream on: (1 to: 0)) contents").value == "#()")
+    }
+
     @Test func legacyImagesUpgradeShippedBehaviorAndRetainCustomMethods() async throws {
         let session = SmalltalkSession()
         let data = try await session.worker.submitThrowing { runtime in

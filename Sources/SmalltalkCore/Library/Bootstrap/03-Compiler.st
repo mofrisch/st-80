@@ -79,7 +79,7 @@ STCompiler compile: 'identifier
 
 STCompiler compile: 'validateNames: names
     names do: [ :name |
-        (#(''self'' ''super'' ''true'' ''false'' ''nil'' ''thisContext'') includes: name) ifTrue: [
+        (#(''self'' ''super'' ''true'' ''false'' ''nil'') includes: name) ifTrue: [
             self fail: ''A pseudo-variable cannot be declared.'' ] ].
     1 to: names size do: [ :index |
         1 to: index - 1 do: [ :earlier |

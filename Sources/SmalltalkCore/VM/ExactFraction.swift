@@ -54,10 +54,7 @@ final class ExactFraction: Codable, Sendable, Equatable {
         lhs.numerator == rhs.numerator && lhs.denominator == rhs.denominator
     }
 
-    var doubleValue: Double {
-        let top = numerator.floatingComponents
-        let bottom = denominator.floatingComponents
-        return Double(sign: top.coefficient.sign, exponent: top.exponent - bottom.exponent,
-                      significand: (top.coefficient / bottom.coefficient).magnitude)
+    func doubleValue(charge: (Int) throws -> Void) throws -> Double {
+        try numerator.doubleValue(dividedBy: denominator, charge: charge)
     }
 }

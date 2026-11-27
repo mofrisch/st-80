@@ -46,7 +46,8 @@ STScanner compile: 'isIdentifierPart: character
     ^ (self isIdentifierStart: character) or: [ character notNil and: [ character isNumber ] ]'.
 
 STScanner compile: 'isBinary: character
-    ^ character notNil and: [ ''+-*/\~<>=@%,&?!|'' includes: character ]'.
+    ^ character notNil and: [ character size = 1 and: [
+        ''+-*/\~<>=@%,&?!|'' includes: character asCharacter ] ]'.
 
 STScanner compile: 'skipTrivia
     | character |

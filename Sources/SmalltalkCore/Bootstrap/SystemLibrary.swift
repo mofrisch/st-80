@@ -176,21 +176,52 @@ struct SystemLibrary: Sendable {
             ("WriteFileStream", .instance, "nextPutAll:", "e284b35e8e85205e0742622a4770d0f247686aec32f5bfa147096a14f6294276"),
             ("ApplicationMenu", .classSide, "fileMenu", "a2f6fc0bf846041b0151c6cb2293f6fe3749b38bc2377b69418af861cd087a2f"),
         ]
-        func install(_ selector: String, on owner: STClass, side: MethodSide) throws {
-            guard let code = seed[side][owner.name]?[selector], let source = sources[side][owner.name]?[selector] else {
-                throw SmalltalkError("Missing bundled ANSI method \(owner.name)»\(selector).")
-            }
-            owner[side][selector] = try code.validatedMethod(selector: selector, source: source)
-        }
         for (name, side, selector, hash) in previous {
             guard let owner = runtime.classes[name], let old = owner[side][selector],
                   Self.digest(Data(old.source.utf8)) == hash else { continue }
             if name == "Number", owner.methods["_coerceRoundingFactor:"] == nil {
                 guard owner.methods.count < SmalltalkRuntime.methodsPerSideLimit else { continue }
-                try install("_coerceRoundingFactor:", on: owner, side: .instance)
+                try installBundledMethod("_coerceRoundingFactor:", on: owner)
             }
-            try install(selector, on: owner, side: side)
+            try installBundledMethod(selector, on: owner, side: side)
         }
+    }
+
+    /// Update stock library and compiler methods in already-saved images.
+    func upgradeCurrentANSIBehavior(in runtime: SmalltalkRuntime) throws {
+        let selector = "copyFrom:to:"
+        if let interval = runtime.classes["Interval"], interval.methods[selector] == nil,
+           interval.methods.count < SmalltalkRuntime.methodsPerSideLimit,
+           let inherited = interval.superclass?.lookup(selector)?.0,
+           Self.digest(Data(inherited.source.utf8)) == "baddcf954fc8c10aad26b65fafc4d3141e77688e3c8b0e00e157d864716dc1f7" {
+            try installBundledMethod(selector, on: interval)
+        }
+        let previous: [(String, MethodSide, String, String)] = [
+            ("CollectionStream", .instance, "_sliceFrom:to:", "33a5793e7590a90a2f8ec120cfa8fc770f97c37b124be13af8e8f26188f0c7b7"),
+            ("ReadStream", .instance, "nextLine", "3e8c7e8bdfd2d1692d1c2a1f79971d78c662dd78387403c0fa7ebd48c15bbd2e"),
+            ("STCompiler", .instance, "validateNames:", "952c549838c500573b424f1fc3ac1725f263502cd9a4f0a4ca33481e5dc8681f"),
+            ("STScanner", .instance, "isBinary:", "8f9b611482286a44c54c29eed24f711b6115fc10b9ed36b63c837ec9bd4a5017"),
+            ("STSourceScanner", .instance, "token:value:", "8dd1c8d42cecd567393b843510c0d0bdd72a513886917e7d7712701c5087b189"),
+            ("Integer", .instance, "sqrt", "fc3b3aead2ade1001067870caae4c1dc452003ebe5ea5f9ce72575297133067a"),
+            ("Array", .instance, "replaceFrom:to:with:", "defc5b01df6b6da8c341cc8ec587b625284afe50df265bbb856b55b41f8ca5eb"),
+            ("Array", .instance, "replaceFrom:to:withObject:", "766d1f192d67d2efcdd737638d2f32634dd24bfb3f3cc61e1d9d9649479e38a6"),
+            ("OrderedCollection", .instance, "replaceFrom:to:with:", "defc5b01df6b6da8c341cc8ec587b625284afe50df265bbb856b55b41f8ca5eb"),
+            ("ByteArray", .instance, "replaceFrom:to:with:", "defc5b01df6b6da8c341cc8ec587b625284afe50df265bbb856b55b41f8ca5eb"),
+            ("Transcript", .instance, "nextPutAll:", "0eaed9f2c0e56e6f86b9aaabd2bbb0dc325e7a33ba0d9b7751acfc9d4d04fd29"),
+            ("TestRunner", .classSide, "testSelectorsFor:", "2093debff5e3ffedfe588bc9688be5b118f3119a3f9eb8baab44ed8ee572fd28"),
+        ]
+        for (name, side, selector, hash) in previous {
+            guard let owner = runtime.classes[name], let old = owner[side][selector],
+                  Self.digest(Data(old.source.utf8)) == hash else { continue }
+            try installBundledMethod(selector, on: owner, side: side)
+        }
+    }
+
+    private func installBundledMethod(_ selector: String, on owner: STClass, side: MethodSide = .instance) throws {
+        guard let code = seed[side][owner.name]?[selector], let source = sources[side][owner.name]?[selector] else {
+            throw SmalltalkError("Missing bundled ANSI method \(owner.name)»\(selector).")
+        }
+        owner[side][selector] = try code.validatedMethod(selector: selector, source: source)
     }
 
     /// Update shipped browser code only. Smalltalk merges the defaults the
@@ -220,6 +251,8 @@ struct SystemLibrary: Sendable {
                 "c78aa3118354a6a154dd054e2f9eac77d18efd675f2542e748cfa762fc695f64",
                 "8b97cd52d95fcb53aaff65d8bfe1846c2daca64e5b9385ff08d5cdb7912f591e",
                 "fd4eca47479b562f9bd4515d5cc5f52ee9b365181cf1e6da3d27427ce67a1f56",
+                "0b2f94eddeb68f29c68c1123fe637f81a71cd6f7971874f9fdc64e8049944eeb",
+                "2dc4596961268fbbda4353352e1c00d5981c79405df3cf56e7928b9a7ede4ead",
             ]),
             (.instance, "shippedClassSideProtocols", [
                 "7b2f2950f5dc051c01fdcd0afcdde26c8505606a3c1f370ad2c6910c5eff398c",

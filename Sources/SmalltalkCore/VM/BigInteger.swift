@@ -123,18 +123,45 @@ final class BigInteger: Codable, Sendable, Comparable, CustomStringConvertible {
         return text
     }
 
-    var floatingComponents: (coefficient: Double, exponent: Int) {
-        let magnitude = value.magnitude
-        let shift = max(0, magnitude.bitWidth - UInt64.bitWidth)
-        let coefficient = Double(UInt64(truncatingIfNeeded: magnitude >> shift))
-        return (isNegative ? -coefficient : coefficient, shift)
-    }
-
     var doubleValue: Double {
         if let small = int64 { return Double(small) }
         let overflow = isNegative ? -Double.infinity : Double.infinity
         if value.magnitude.bitWidth > 1_024 { return overflow }
         return Double(String(value)) ?? overflow
+    }
+
+    /// Round an exact ratio once, including ties and subnormals, before converting it to binary64.
+    func doubleValue(dividedBy denominator: BigInteger, charge: (Int) throws -> Void) throws -> Double {
+        let sign: FloatingPointSign = isNegative ? .minus : .plus
+        if isZero { return 0 }
+        let top = value.magnitude
+        let bottom = denominator.value.magnitude
+        var exponent = top.bitWidth - bottom.bitWidth
+        if exponent > 1_024 { return isNegative ? -.infinity : .infinity }
+        if exponent < -1_075 { return isNegative ? -0.0 : 0.0 }
+        try charge(Self.workProduct(max(wordCount, denominator.wordCount), 4))
+        if exponent >= 0 ? top < (bottom << exponent) : (top << -exponent) < bottom { exponent -= 1 }
+
+        let unit = max(exponent - Double.significandBitCount, -1_074)
+        let divisor = bottom << max(0, unit)
+        let quotient = (top << max(0, -unit)).quotientAndRemainder(dividingBy: divisor)
+        var significand = UInt64(quotient.quotient)
+        let remainderTimesTwo = quotient.remainder << 1
+        if remainderTimesTwo > divisor || remainderTimesTwo == divisor && significand & 1 == 1 { significand += 1 }
+        return Double(sign: sign, exponent: unit, significand: Double(significand))
+    }
+
+    func roundedSquareRoot(charge: (Int) throws -> Void) throws -> BigInteger {
+        guard !isNegative else { throw SmalltalkError("Square root requires a nonnegative integer.") }
+        if isZero { return self }
+        // The dependency uses Newton's method, doubling significant bits on each iteration.
+        let iterations = Int.bitWidth - bitWidth.leadingZeroBitCount + 2
+        try charge(Self.workProduct(Self.workProduct(wordCount, wordCount), iterations))
+        let magnitude = value.magnitude
+        let root = magnitude.squareRoot()
+        // The midpoint squared is root² + root + 1/4.
+        let rounded = magnitude - root * root > root ? root + 1 : root
+        return BigInteger(value: BigInt(rounded))
     }
 
     /// Allows the diagnostic printer to stop without formatting the tail.

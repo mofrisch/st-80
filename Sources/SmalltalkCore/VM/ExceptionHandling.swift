@@ -29,11 +29,13 @@ final class SmalltalkExceptionAction {
     let signal: SmalltalkSignal
     let handler: SmalltalkExceptionHandler
     let exception: Value
+    let usesStructuralControls: Bool
 
-    init(signal: SmalltalkSignal, handler: SmalltalkExceptionHandler, exception: Value) {
+    init(signal: SmalltalkSignal, handler: SmalltalkExceptionHandler, exception: Value, usesStructuralControls: Bool) {
         self.signal = signal
         self.handler = handler
         self.exception = exception
+        self.usesStructuralControls = usesStructuralControls
     }
 }
 
@@ -148,8 +150,11 @@ extension SmalltalkRuntime {
         let previousAction = exceptionAction
         defer { exceptionHandler = previousHandler; exceptionAction = previousAction }
         var candidate = start
+        var defaultEnvironment = previousHandler
+        let usesStructuralControls = !isExceptionInstance(exception)
         while let handler = try matchingHandler(for: exception, from: candidate) {
-            let action = SmalltalkExceptionAction(signal: signal, handler: handler, exception: exception)
+            let action = SmalltalkExceptionAction(signal: signal, handler: handler, exception: exception,
+                                                 usesStructuralControls: usesStructuralControls)
             exceptionHandler = handler.enclosing
             exceptionAction = action
             do {
@@ -159,10 +164,11 @@ extension SmalltalkRuntime {
                 if transfer.kind == .resumed { return transfer.value ?? .nilValue }
                 guard transfer.kind == .passed else { throw transfer }
                 candidate = handler.enclosing
+                defaultEnvironment = signal.environment
                 exceptionAction = previousAction
             }
         }
-        exceptionHandler = previousHandler
+        exceptionHandler = defaultEnvironment
         exceptionAction = nil
         let previousDefault = exceptionDefaultSignal
         exceptionDefaultSignal = signal
@@ -183,13 +189,33 @@ extension SmalltalkRuntime {
         return try equal(receiver, action.exception, identity: true, dispatch: false)
     }
 
+    private func isExceptionInstance(_ receiver: Value) -> Bool {
+        guard let base = classes["Exception"] else { return false }
+        return classOf(receiver).inherits(from: base)
+    }
+
+    // A replacement description may have unrelated methods that use the same
+    // selectors. Its handler still receives the active exception controls.
+    func structuralExceptionControl(_ receiver: Value, _ selector: String, _ arguments: [Value]) throws -> Value? {
+        guard let action = exceptionAction, action.usesStructuralControls,
+              Self.exceptionControlSelectors.contains(selector),
+              try equal(receiver, action.exception, identity: true, dispatch: false) else { return nil }
+        return try performExceptionControl(action, selector, arguments)
+    }
+
     func exceptionControlPrimitive(_ receiver: Value, _ selector: String, _ arguments: [Value]) throws -> Value? {
         guard let action = exceptionAction, try equal(receiver, action.exception, identity: true, dispatch: false) else {
-            if let base = classes["Exception"], classOf(receiver).inherits(from: base) {
+            if isExceptionInstance(receiver) {
                 throw SmalltalkError("There is no active handler for this exception.")
             }
             return nil
         }
+        return try performExceptionControl(action, selector, arguments)
+    }
+
+    private func performExceptionControl(_ action: SmalltalkExceptionAction, _ selector: String,
+                                         _ arguments: [Value]) throws -> Value {
+        let receiver = action.exception
         switch selector {
         case "isNested":
             return .boolean(try matchingHandler(for: receiver, from: action.handler.enclosing) != nil)

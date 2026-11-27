@@ -148,7 +148,7 @@ BrowserOrganization compileClass: 'shippedClassCategories
         (''Examples'' (''Counter'' ''WorkspaceExamples''))
         (''Tests'' (''TestCase'' ''TestOutcome'' ''TestResult'' ''TestRunner''
             ''CounterTest'' ''CollectionsTest'' ''BindingTestModel'' ''UIBindingTest''
-            ''ANSIDispatchProbe'' ''ANSIProbeError'' ''ANSIProbeException'' ''ANSIProbeWarning''
+            ''ANSIDispatchProbe'' ''ANSIEqualityProbe'' ''ANSIProbeError'' ''ANSIProbeException'' ''ANSIProbeWarning''
             ''ANSIClassStateProbe'' ''ANSIClassStateChild'' ''ANSISmalltalkTest'')))'.
 
 BrowserOrganization compile: 'classCategories

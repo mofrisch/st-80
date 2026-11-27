@@ -79,6 +79,23 @@ struct VMRegressionTests {
         #expect(try !runtime.equal(left, right))
     }
 
+    @Test func sequenceEqualityKeepsComputedElementsAliveDuringGarbageCollection() async {
+        let session = SmalltalkSession()
+        let result = await session.worker.submit { runtime in
+            runtime.memory.stressCollection = true
+            return runtime.run("""
+                SequenceableCollection subclass: #ComputedComparisonSequence instanceVariableNames: ''.
+                ComputedComparisonSequence compile: 'size ^ 1'.
+                ComputedComparisonSequence compile: 'at: index
+                    ToolVM collectGarbage.
+                    ^ Array with: (OrderedCollection with: 7)'.
+                ComputedComparisonSequence new = ComputedComparisonSequence new
+                """)
+        }
+        #expect(result.executionError == nil)
+        #expect(result.value == "true")
+    }
+
     @Test(arguments: ["=", "~=", "includes:"])
     func arrayComparisonsRespectTheExecutionBudget(_ selector: String) throws {
         let runtime = SmalltalkRuntime(bootstrap: false)

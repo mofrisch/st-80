@@ -9,7 +9,7 @@ extension SmalltalkRuntime {
         case "hash", "identityHash": return .integer(try hashValue(receiver, identity: selector == "identityHash"))
         case "yourself": return receiver
         case "printString": return .string(printValue(receiver))
-        case "=", "==": return .boolean(try equal(receiver, args[0], identity: selector == "=="))
+        case "=", "==": return .boolean(try equal(receiver, args[0], identity: selector == "==", dispatch: false))
         case "~~": return .boolean(try !equal(receiver, args[0], identity: true))
         case "~=": return .boolean(try !equal(receiver, args[0]))
         case "isNil": return .boolean(isNil(receiver))
@@ -70,7 +70,11 @@ extension SmalltalkRuntime {
             switch selector {
             case "size": return .integer(Int64(array.elements.count))
             case "isEmpty": return .boolean(array.elements.isEmpty)
-            case "includes:": return .boolean(try array.elements.contains { try equal($0, args[0]) })
+            case "includes:":
+                for index in array.elements.indices {
+                    if try equal(array.elements[index], args[0]) { return .boolean(true) }
+                }
+                return .boolean(false)
             case "joinedStringFrom:to:":
                 let first = try integer(args[0]), last = try integer(args[1])
                 guard first >= 1, first <= array.elements.count + 1, last >= first - 1, last <= array.elements.count else {

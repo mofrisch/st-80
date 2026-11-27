@@ -1,6 +1,19 @@
 "Behavior from the ANSI Smalltalk draft (J20 revision 1.9)."
 
 Object subclass: #ANSIDispatchProbe instanceVariableNames: ''.
+Object subclass: #ANSIEqualityProbe instanceVariableNames: 'value'.
+
+ANSIEqualityProbe compile: 'value: aValue
+    value := aValue'.
+
+ANSIEqualityProbe compile: 'value
+    ^ value'.
+
+ANSIEqualityProbe compile: '= other
+    ^ other class == self class and: [ value = other value ]'.
+
+ANSIEqualityProbe compile: 'hash
+    ^ value hash'.
 
 ANSIDispatchProbe compile: 'touch
     42'.
@@ -1074,3 +1087,76 @@ ANSISmalltalkTest compile: 'testWarningSubclassCanDefineItsDefaultAction
     self assert: ANSIProbeWarning signal equals: #customWarning.
     self assert: ([ ANSIProbeWarning signal ] on: Warning do: [ :exception | exception class ])
         equals: ANSIProbeWarning'.
+
+ANSISmalltalkTest compile: 'testSequenceEqualityUsesClassSizeAndIndexedElements
+    | bytes ordered sorted descending interval |
+    bytes := ByteArray with: 0 with: 2.
+    self assert: bytes equals: ((ByteArray new: 2) at: 2 put: 2; yourself).
+    self assert: bytes hash equals: (ByteArray with: 0 with: 2) hash.
+    self deny: bytes = #(0 2).
+    ordered := OrderedCollection with: 3 with: 2.
+    self assert: ordered equals: (OrderedCollection with: 3 with: 2).
+    self deny: ordered = (OrderedCollection with: 2 with: 3).
+    self deny: ordered = (OrderedCollection with: 3).
+    self deny: ordered == ordered copy.
+    sorted := SortedCollection with: 3 with: 2.
+    descending := (SortedCollection sortBlock: [ :left :right | left > right ]) add: 2; add: 3; yourself.
+    self assert: sorted equals: (SortedCollection with: 2 with: 3).
+    self deny: sorted = descending.
+    interval := 1 to: 7 by: 2.
+    self assert: interval equals: (1 to: 8 by: 2).
+    self assert: interval hash equals: (1 to: 8 by: 2) hash.
+    self deny: interval = #(1 3 5 7).
+    self deny: interval = (1 to: 10 by: 3).
+    self deny: (1 to: 1000000000000000000000) = (2 to: 1000000000000000000001)'.
+
+ANSISmalltalkTest compile: 'testSequenceKeysRespectValueOrIdentityLookup
+    | first equivalent dictionary identities |
+    first := OrderedCollection with: (ByteArray with: 1).
+    equivalent := OrderedCollection with: (ByteArray with: 1).
+    dictionary := Dictionary new at: first put: 42; yourself.
+    identities := IdentityDictionary new at: first put: 42; yourself.
+    self assert: (dictionary at: equivalent) equals: 42.
+    self deny: (identities includesKey: equivalent).
+    self assert: (identities at: first) equals: 42'.
+
+ANSISmalltalkTest compile: 'testArrayComparisonAndMembershipSendElementEquality
+    | first equivalent different |
+    first := ANSIEqualityProbe new value: 7; yourself.
+    equivalent := ANSIEqualityProbe new value: 7; yourself.
+    different := ANSIEqualityProbe new value: 8; yourself.
+    self assert: first = equivalent.
+    self deny: first ~= equivalent.
+    self assert: first ~= different.
+    self assert: first ~~ equivalent.
+    self assert: (Array with: first) equals: (Array with: equivalent).
+    self assert: ((Array with: first) includes: equivalent).
+    self deny: ((Array with: first) includes: different).
+    self assert: (Set with: first with: equivalent) size equals: 1'.
+
+ANSISmalltalkTest compile: 'testStringEqualityAndMembershipUseCharacterElements
+    | composed decomposed |
+    composed := String with: (Character codePoint: 233).
+    decomposed := String with: $e with: (Character codePoint: 769).
+    self assert: composed size equals: 1.
+    self assert: decomposed size equals: 2.
+    self deny: composed = decomposed.
+    self deny: composed asSymbol == decomposed asSymbol.
+    self assert: composed hash equals: composed copy hash.
+    self assert: (decomposed includes: $e).
+    self deny: (decomposed includes: composed first)'.
+
+ANSISmalltalkTest compile: 'testCyclicSequencesRetainStructuralEquality
+    | left right leftArray rightArray |
+    leftArray := Array new: 1.
+    rightArray := Array new: 1.
+    left := OrderedCollection with: leftArray with: 7.
+    right := OrderedCollection with: rightArray with: 7.
+    leftArray at: 1 put: left.
+    rightArray at: 1 put: right.
+    self assert: left equals: right.
+    self assert: left hash equals: right hash.
+    self assert: leftArray equals: rightArray.
+    right at: 2 put: 8.
+    self assert: left ~= right.
+    self deny: leftArray = rightArray'.

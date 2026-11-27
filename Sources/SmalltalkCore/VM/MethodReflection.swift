@@ -142,6 +142,10 @@ extension SmalltalkRuntime {
         ],
         "Array": ["size": "Returns the number of elements.", "at:": "Returns the element at a one-based index.", "at:put:": "Sets an element.", "do:": "Visits each element.", "collect:": "Transforms each element.", "select:": "Filters elements.", "isEmpty": "Tests whether the array is empty.", "includes:": "Tests whether the array contains an element.",
             "joinedStringFrom:to:": "Joins the strings in an index range."],
+        "SequenceableCollection": [
+            "=": "Compares collections of the same class by their indexed elements.",
+            "hash": "Returns a hash compatible with equality, including for cyclic collections.",
+        ],
         "OrderedCollection": [
             "_spliceAt:remove:with:": "Splices the active storage range and updates the collection size.",
         ],

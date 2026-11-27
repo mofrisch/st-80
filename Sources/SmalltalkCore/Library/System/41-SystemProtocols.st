@@ -85,6 +85,7 @@ BrowserOrganization compile: 'shippedProtocols
                 ''asSortedCollection'' ''asSortedCollection:''))
             (''Maintenance'' (''rehash''))))
         (''SequenceableCollection'' (
+            (''Comparing'' (''='' ''hash''))
             (''Accessing'' (''at:ifAbsent:'' ''first'' ''last'' ''before:'' ''after:''))
             (''Searching'' (''findFirst:'' ''findLast:'' ''indexOf:'' ''indexOf:ifAbsent:''
                 ''indexOfSubCollection:startingAt:'' ''indexOfSubCollection:startingAt:ifAbsent:''))
@@ -427,6 +428,7 @@ BrowserOrganization compile: 'shippedProtocols
             (''Fixtures'' (''setUp'' ''tearDown''))
             (''Tests'' (''testBindingReadsAndUpdatesTheLabel'' ''testUnbindingStopsUpdates''))))
         (''ANSIDispatchProbe'' ((''Dispatch'' (''touch'' ''doesNotUnderstand:'')) (''Exception Selection'' (''handles:''))))
+        (''ANSIEqualityProbe'' ((''Accessing'' (''value'' ''value:'')) (''Comparing'' (''='' ''hash''))))
         (''ANSIClassStateProbe'' ((''Accessing'' (''slot''))))
         (''ANSIProbeException'' ((''Signaling'' (''defaultAction'' ''isResumable''))))
         (''ANSIProbeWarning'' ((''Signaling'' (''defaultAction''))))
@@ -458,6 +460,9 @@ BrowserOrganization compile: 'shippedProtocols
                 ''testDictionaryDistinguishesNilValuesFromAbsentKeys'' ''testDictionaryEnumeratesKeysAndValues''
                 ''testDictionaryCollectionOperationsPreserveKeysAndType'' ''testDictionaryCopiesMergesAndRemovesKeyGroups''
                 ''testDictionaryEnumerationVisitsASnapshot''))
+            (''Equality Tests'' (''testSequenceEqualityUsesClassSizeAndIndexedElements''
+                ''testSequenceKeysRespectValueOrIdentityLookup'' ''testArrayComparisonAndMembershipSendElementEquality''
+                ''testStringEqualityAndMembershipUseCharacterElements'' ''testCyclicSequencesRetainStructuralEquality''))
             (''Date and Time Tests'' (''testDurationComponentsAndPrinting'' ''testDurationArithmeticAndOrdering''
                 ''testDateAndTimeCalendarAndTimeOfDay'' ''testDateAndTimeOffsetsAndComparison''
                 ''testDateAndTimeAcrossGregorianBoundaries'' ''testDateAndTimeRejectsOutOfRangeComponents''

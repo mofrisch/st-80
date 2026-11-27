@@ -160,7 +160,7 @@ Duration compileClass: '_decimalDigitsOf: fraction
     ^ self _pad: digits to: places'.
 
 TimeLocal compileClass: 'offset
-    "This implementation's local time is UTC."
+    "This implementation uses UTC as local time."
     ^ Duration zero'.
 
 TimeLocal compileClass: 'clockPrecision

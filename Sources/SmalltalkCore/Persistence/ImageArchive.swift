@@ -12,6 +12,8 @@ struct ImageArchive: Codable {
     var transcript: String
     var executableMethods: [String: [String: MethodCode]]?
     var executableClassMethods: [String: [String: MethodCode]]?
+    var declaredGlobals: [String: DeclaredBinding]? = nil
+    var sharedPools: [String: [String: ImagePoolBinding]]? = nil
 }
 
 struct ImageClass: Codable {
@@ -22,6 +24,9 @@ struct ImageClass: Codable {
     var classMethods: [String: String]?
     var classFields: [String]? = nil
     var classState: [String: ImageValue]? = nil
+    var classVariables: [String: ImageValue]? = nil
+    var sharedPools: [String]? = nil
+    var indexedStorage: IndexedStorage? = nil
 
     subscript(side: MethodSide) -> [String: String] {
         get { side == .instance ? methods : classMethods ?? [:] }
@@ -49,6 +54,12 @@ enum ImageNode: Codable {
 struct ImageObject: Codable {
     var className: String
     var fields: [String: ImageValue]
+    var indexedFields: [ImageValue]? = nil
+}
+
+struct ImagePoolBinding: Codable {
+    var value: ImageValue
+    var kind: DeclaredBinding
 }
 
 struct ImageEnvironment: Codable {
@@ -64,6 +75,7 @@ struct ImageBlock: Codable {
     var homeClass: String?
     var isWorkspace: Bool
     var methodSide: MethodSide?
+    var initializingPool: String? = nil
 }
 
 /// Executable bytecode belongs to the image. Original spelling, comments and method

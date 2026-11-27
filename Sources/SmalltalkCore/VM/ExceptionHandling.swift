@@ -28,9 +28,9 @@ final class SmalltalkSignal {
 final class SmalltalkExceptionAction {
     let signal: SmalltalkSignal
     let handler: SmalltalkExceptionHandler
-    let exception: STObject
+    let exception: Value
 
-    init(signal: SmalltalkSignal, handler: SmalltalkExceptionHandler, exception: STObject) {
+    init(signal: SmalltalkSignal, handler: SmalltalkExceptionHandler, exception: Value) {
         self.signal = signal
         self.handler = handler
         self.exception = exception
@@ -96,9 +96,6 @@ extension SmalltalkRuntime {
         guard case .block(let handlerBlock) = action, handlerBlock.parameters.count == 1 else {
             throw SmalltalkError("An exception handler must be a one-argument block.")
         }
-        guard lookupMethod("handles:", on: selector) != nil else {
-            throw SmalltalkError("An exception selector must understand handles:.")
-        }
         let previous = exceptionHandler
         let handler = SmalltalkExceptionHandler(selector: selector, action: action, enclosing: previous)
         exceptionHandler = handler
@@ -125,12 +122,8 @@ extension SmalltalkRuntime {
         evaluationRoots.append(exception)
         defer { evaluationRoots.removeSubrange(rootCount...) }
         while true {
-            let receiver = evaluationRoots[rootCount]
-            guard case .object(let object) = receiver, let base = classes["Exception"], object.stClass.inherits(from: base) else {
-                throw SmalltalkError("Expected an exception.")
-            }
             do {
-                return try runExceptionAction(for: object, from: signal.environment, signal: signal)
+                return try runExceptionAction(for: evaluationRoots[rootCount], from: signal.environment, signal: signal)
             } catch let transfer as ExceptionTransfer where transfer.target == ObjectIdentifier(signal) {
                 switch transfer.kind {
                 case .resignaled: evaluationRoots[rootCount] = transfer.value ?? .nilValue
@@ -141,16 +134,16 @@ extension SmalltalkRuntime {
         }
     }
 
-    private func matchingHandler(for exception: STObject, from start: SmalltalkExceptionHandler?) throws -> SmalltalkExceptionHandler? {
+    private func matchingHandler(for exception: Value, from start: SmalltalkExceptionHandler?) throws -> SmalltalkExceptionHandler? {
         var candidate = start
         while let handler = candidate {
-            if try boolean(send(handler.selector, "handles:", [.object(exception)])) { return handler }
+            if try boolean(send(handler.selector, "handles:", [exception])) { return handler }
             candidate = handler.enclosing
         }
         return nil
     }
 
-    private func runExceptionAction(for exception: STObject, from start: SmalltalkExceptionHandler?, signal: SmalltalkSignal) throws -> Value {
+    private func runExceptionAction(for exception: Value, from start: SmalltalkExceptionHandler?, signal: SmalltalkSignal) throws -> Value {
         let previousHandler = exceptionHandler
         let previousAction = exceptionAction
         defer { exceptionHandler = previousHandler; exceptionAction = previousAction }
@@ -160,7 +153,7 @@ extension SmalltalkRuntime {
             exceptionHandler = handler.enclosing
             exceptionAction = action
             do {
-                let result = try invokeBlock(handler.action, [.object(exception)])
+                let result = try invokeBlock(handler.action, [exception])
                 throw ExceptionTransfer(.returned, to: handler, value: result)
             } catch let transfer as ExceptionTransfer where transfer.target == ObjectIdentifier(action) {
                 if transfer.kind == .resumed { return transfer.value ?? .nilValue }
@@ -174,29 +167,40 @@ extension SmalltalkRuntime {
         let previousDefault = exceptionDefaultSignal
         exceptionDefaultSignal = signal
         defer { exceptionDefaultSignal = previousDefault }
-        let receiver = Value.object(exception)
-        let result = try send(receiver, "defaultAction", [])
+        let result = try send(exception, "defaultAction", [])
         return try withRoots([result]) { _ in
-            if try boolean(send(receiver, "isResumable", [])) { return result }
-            throw SmalltalkError(try readableString(send(receiver, "description", [])))
+            if try boolean(send(exception, "isResumable", [])) { return result }
+            throw SmalltalkError(try readableString(send(exception, "description", [])))
         }
     }
 
-    private func exceptionTransfer(_ selector: String, arguments: [Value], exception: STObject) throws -> Value {
-        guard let action = exceptionAction, action.exception === exception else {
-            throw SmalltalkError("There is no active handler for this exception.")
+    static let exceptionControlSelectors: Set<String> = [
+        "isNested", "outer", "pass", "resignalAs:", "resume", "resume:", "retry", "retryUsing:", "return", "return:",
+    ]
+
+    func respondsToActiveExceptionControl(_ receiver: Value, selector: String) throws -> Bool {
+        guard Self.exceptionControlSelectors.contains(selector), let action = exceptionAction else { return false }
+        return try equal(receiver, action.exception, identity: true, dispatch: false)
+    }
+
+    func exceptionControlPrimitive(_ receiver: Value, _ selector: String, _ arguments: [Value]) throws -> Value? {
+        guard let action = exceptionAction, try equal(receiver, action.exception, identity: true, dispatch: false) else {
+            if let base = classes["Exception"], classOf(receiver).inherits(from: base) {
+                throw SmalltalkError("There is no active handler for this exception.")
+            }
+            return nil
         }
         switch selector {
         case "isNested":
-            return .boolean(try matchingHandler(for: exception, from: action.handler.enclosing) != nil)
+            return .boolean(try matchingHandler(for: receiver, from: action.handler.enclosing) != nil)
         case "outer":
-            return try runExceptionAction(for: exception, from: action.handler.enclosing, signal: action.signal)
+            return try runExceptionAction(for: receiver, from: action.handler.enclosing, signal: action.signal)
         case "pass":
             throw ExceptionTransfer(.passed, to: action)
         case "resignalAs:":
             throw ExceptionTransfer(.resignaled, to: action.signal, value: arguments[0])
         case "resume", "resume:":
-            guard try boolean(send(.object(exception), "isResumable", [])) else {
+            guard try boolean(send(receiver, "isResumable", [])) else {
                 throw SmalltalkError("This exception cannot be resumed.")
             }
             throw ExceptionTransfer(.resumed, to: action, value: arguments.first)
@@ -229,9 +233,6 @@ extension SmalltalkRuntime {
             let message = try send(receiver, "description", [])
             if let signal = exceptionDefaultSignal { throw ExceptionTransfer(.unhandled, to: signal, value: message) }
             throw SmalltalkError(try readableString(message))
-        case "isNested", "outer", "pass", "resignalAs:", "resume", "resume:", "retry", "retryUsing:", "return", "return:":
-            guard let exceptionClass = classes["Exception"], object.stClass.inherits(from: exceptionClass) else { return nil }
-            return try exceptionTransfer(selector, arguments: arguments, exception: object)
         default:
             return nil
         }

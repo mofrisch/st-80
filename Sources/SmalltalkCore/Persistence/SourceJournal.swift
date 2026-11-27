@@ -301,6 +301,17 @@ extension SmalltalkRuntime {
             }
             try compile(record.source, in: stClass, side: record.side)
         case .classDefinition:
+            if let definition = try SmalltalkInterchange.classDeclaration(in: compileWorkspace(record.source)) {
+                guard definition.name == record.className else {
+                    throw SmalltalkError("The class definition does not match its history entry.")
+                }
+                if let existing = classes[record.className] {
+                    try acceptDefinition(record.source, for: existing)
+                } else {
+                    try defineInterchangeClass(definition)
+                }
+                break
+            }
             guard let parent = record.superclass.flatMap({ classes[$0] }), let fields = record.fields else {
                 throw SmalltalkError("The superclass of the class being restored is missing.")
             }

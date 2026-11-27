@@ -17,6 +17,20 @@ enum Value {
     case classObject(STClass), object(STObject), block(STBlock), array(STArray), transcript
 }
 
+enum IndexedStorage: String, Codable {
+    case object, byte
+}
+
+enum DeclaredBinding: String, Codable {
+    case variable, constant, initializedConstant
+    var isConstant: Bool { self != .variable }
+}
+
+struct PoolBinding {
+    var value: Value = .nilValue
+    var kind: DeclaredBinding
+}
+
 final class STClass {
     let name: String
     private var directSuperclass: STClass?
@@ -44,12 +58,20 @@ final class STClass {
         set { metaclass.methods = newValue }
     }
     var classState: [String: Value] = [:]
+    var classVariables: [String: Value]
+    let sharedPools: [String]
+    let ownIndexedStorage: IndexedStorage?
+    var indexedStorage: IndexedStorage? { ownIndexedStorage ?? superclass?.indexedStorage }
     var fields: [String] { (superclass?.fields ?? []) + ownFields }
 
-    init(_ name: String, superclass: STClass?, fields: [String] = [], classFields: [String] = []) {
+    init(_ name: String, superclass: STClass?, fields: [String] = [], classFields: [String] = [],
+         classVariables: [String] = [], sharedPools: [String] = [], indexedStorage: IndexedStorage? = nil) {
         self.name = name
         directSuperclass = superclass
         ownFields = fields
+        self.classVariables = Dictionary(uniqueKeysWithValues: classVariables.map { ($0, .nilValue) })
+        self.sharedPools = sharedPools
+        ownIndexedStorage = indexedStorage
         if !classFields.isEmpty { metaclass.ownFields = classFields }
         if let superclass {
             for name in superclass.classState.keys { classState[name] = .nilValue }
@@ -61,6 +83,9 @@ final class STClass {
         name = "\(instanceClass.name) class"
         self.instanceClass = instanceClass
         ownFields = []
+        classVariables = [:]
+        sharedPools = []
+        ownIndexedStorage = nil
     }
 
     subscript(side: MethodSide) -> [String: Method] {
@@ -97,11 +122,14 @@ final class STObject {
     let nativeID = UUID().uuidString
     let stClass: STClass
     var fields: [String: Value]
+    var indexedFields: [Value]
     var fileStream: FileStreamHandle?
 
-    init(_ stClass: STClass) {
+    init(_ stClass: STClass, indexedCount: Int = 0) {
         self.stClass = stClass
         fields = Dictionary(uniqueKeysWithValues: stClass.fields.map { ($0, .nilValue) })
+        indexedFields = Array(repeating: stClass.indexedStorage == .byte ? .integer(0) : .nilValue,
+                              count: indexedCount)
     }
 }
 
@@ -132,6 +160,7 @@ struct Context {
     let homeID: Int
     let isWorkspace: Bool
     var methodSide: MethodSide = .instance
+    var initializingPool: String?
     var debuggerOrigin: DebuggerOrigin?
 }
 

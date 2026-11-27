@@ -124,7 +124,7 @@ private struct ApplicationMenuItems: View {
 }
 
 private enum NativeMenuAction: String {
-    case settings, acceptMethod, openImage, saveImage, saveImageAs, close
+    case settings, acceptMethod, openImage, importInterchange, saveImage, saveImageAs, close
     case clearTranscript, arrangeTools, codeChanges, openChanges, reset
     case browser, workspace, transcript
 
@@ -146,6 +146,7 @@ private enum NativeMenuAction: String {
         case .settings: await controller.showSettings()
         case .acceptMethod: await controller.performCommand(rawValue)
         case .openImage: await controller.openImage()
+        case .importInterchange: await controller.chooseInterchangeFile()
         case .saveImage: await controller.saveImage()
         case .saveImageAs: await controller.saveImage(asNewFile: true)
         case .close: NSApp.keyWindow?.performClose(nil)

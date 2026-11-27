@@ -1,7 +1,7 @@
 import Foundation
 
 enum ImageCodec {
-    static let version = 9
+    static let version = 10
     static let supportedVersions = 6...version
     static let maxBytes = 32 * 1_024 * 1_024
     static let maxNodes = 40_000
@@ -55,35 +55,55 @@ enum ImageCodec {
             }
         }
 
-        var globals: [String: ImageValue] = [:]
-        for name in runtime.globals.keys.sorted() { globals[name] = try value(runtime.globals[name]!) }
+        func bindings(_ bindings: [String: Value]) throws -> [String: ImageValue] {
+            var result: [String: ImageValue] = [:]
+            for name in bindings.keys.sorted() { result[name] = try value(bindings[name]!) }
+            return result
+        }
+
+        let globals = try bindings(runtime.globals)
         let classes = try runtime.classes.values.sorted { $0.name < $1.name }.map { stClass in
-            var state: [String: ImageValue] = [:]
-            for name in stClass.classState.keys.sorted() { state[name] = try value(stClass.classState[name]!) }
+            let state = try bindings(stClass.classState)
+            let classVariables = try bindings(stClass.classVariables)
             let classFields = stClass.metaclass.ownFields
             return ImageClass(name: stClass.name, superclass: stClass.superclass?.name, fields: stClass.ownFields,
                               methods: stClass.methods.mapValues(\.source),
                               classMethods: stClass.classMethods.isEmpty ? nil : stClass.classMethods.mapValues(\.source),
-                              classFields: classFields.isEmpty ? nil : classFields, classState: state.isEmpty ? nil : state)
+                              classFields: classFields.isEmpty ? nil : classFields, classState: state.isEmpty ? nil : state,
+                              classVariables: classVariables.isEmpty ? nil : classVariables,
+                              sharedPools: stClass.sharedPools.isEmpty ? nil : stClass.sharedPools,
+                              indexedStorage: stClass.ownIndexedStorage)
         }
+        var sharedPools: [String: [String: ImagePoolBinding]] = [:]
+        for poolName in runtime.sharedPools.keys.sorted() {
+            let pool = runtime.sharedPools[poolName]!
+            var encodedPool: [String: ImagePoolBinding] = [:]
+            for name in pool.keys.sorted() {
+                let binding = pool[name]!
+                encodedPool[name] = ImagePoolBinding(value: try value(binding.value), kind: binding.kind)
+            }
+            sharedPools[poolName] = encodedPool
+        }
+
         var nodes: [ImageNode] = []
         var index = 0
         while index < pending.count {
             switch pending[index] {
             case .object(let object):
-                var fields: [String: ImageValue] = [:]
-                for name in object.fields.keys.sorted() { fields[name] = try value(object.fields[name]!) }
-                nodes.append(.object(ImageObject(className: object.stClass.name, fields: fields)))
+                let fields = try bindings(object.fields)
+                let indexedFields = object.indexedFields.isEmpty ? nil : try object.indexedFields.map(value)
+                nodes.append(.object(ImageObject(className: object.stClass.name, fields: fields, indexedFields: indexedFields)))
             case .array(let array): nodes.append(.array(try array.elements.map(value)))
             case .environment(let environment):
                 let parent = try environment.parent.map { try register($0, .environment($0)) }
-                var values: [String: ImageValue] = [:]
-                for name in environment.values.keys.sorted() { values[name] = try value(environment.values[name]!) }
-                nodes.append(.environment(ImageEnvironment(parent: parent, values: values)))
+                nodes.append(.environment(ImageEnvironment(parent: parent, values: try bindings(environment.values))))
             case .block(let block):
                 let environment = try register(block.context.environment, .environment(block.context.environment))
                 let side = block.context.methodSide
-                nodes.append(.block(ImageBlock(parameters: block.parameters, body: block.body, environment: environment, receiver: try value(block.context.receiver), homeClass: block.context.homeClass?.name, isWorkspace: block.context.isWorkspace, methodSide: side == .classSide ? side : nil)))
+                nodes.append(.block(ImageBlock(parameters: block.parameters, body: block.body, environment: environment,
+                                               receiver: try value(block.context.receiver), homeClass: block.context.homeClass?.name,
+                                               isWorkspace: block.context.isWorkspace, methodSide: side == .classSide ? side : nil,
+                                               initializingPool: block.context.initializingPool)))
             }
             index += 1
         }
@@ -93,7 +113,10 @@ enum ImageCodec {
         })
         let code = includesCode ? runtime.classes.mapValues { $0.methods.mapValues(MethodCode.init) }.filter { !$0.value.isEmpty } : nil
         let classCode = includesCode ? runtime.classes.mapValues { $0.classMethods.mapValues(MethodCode.init) }.filter { !$0.value.isEmpty } : [:]
-        return ImageArchive(classes: classes, globals: globals, nodes: nodes, workspace: workspace, transcript: transcript, executableMethods: code, executableClassMethods: classCode.isEmpty ? nil : classCode)
+        return ImageArchive(classes: classes, globals: globals, nodes: nodes, workspace: workspace, transcript: transcript,
+                            executableMethods: code, executableClassMethods: classCode.isEmpty ? nil : classCode,
+                            declaredGlobals: runtime.declaredGlobals.isEmpty ? nil : runtime.declaredGlobals,
+                            sharedPools: sharedPools.isEmpty ? nil : sharedPools)
     }
 
     static func decode(_ data: Data) throws -> (SmalltalkRuntime, LoadedImage) {
@@ -144,13 +167,38 @@ enum ImageCodec {
     }
 
     private static func restoreGraph(_ image: ImageArchive, executableMethods: [String: [String: MethodCode]], into runtime: SmalltalkRuntime) throws {
+        let supportsANSIStorage = image.version >= 10
         var records: [String: ImageClass] = [:]
         for record in image.classes {
+            guard supportsANSIStorage || record.classVariables == nil && record.sharedPools == nil && record.indexedStorage == nil else {
+                throw invalid("ANSI class metadata requires image version 10.")
+            }
             guard records.updateValue(record, forKey: record.name) == nil else { throw invalid("Duplicate class \(record.name).") }
+        }
+        let declaredGlobals = image.declaredGlobals ?? [:]
+        let sharedPools = image.sharedPools ?? [:]
+        guard supportsANSIStorage || image.declaredGlobals == nil && image.sharedPools == nil else {
+            throw invalid("ANSI global and pool metadata requires image version 10.")
+        }
+        try validateNames(Array(declaredGlobals.keys))
+        try validateNames(Array(sharedPools.keys))
+        guard declaredGlobals.keys.allSatisfy({
+            image.globals[$0] != nil && records[$0] == nil && runtime.globals[$0] == nil && sharedPools[$0] == nil
+        }) else { throw invalid("Invalid declared global binding.") }
+        // Class layouts require declared pools. Fill their values after all object shells exist.
+        for (name, pool) in sharedPools {
+            guard case .nilValue? = image.globals[name], records[name] == nil, runtime.globals[name] == nil,
+                  pool.count <= 1_000 else {
+                throw invalid("Invalid pool binding for \(name).")
+            }
+            try validateNames(Array(pool.keys))
+            runtime.sharedPools[name] = pool.mapValues { PoolBinding(kind: $0.kind) }
+            runtime.globals[name] = .nilValue
         }
         for builtin in runtime.classes.values {
             if records[builtin.name] == nil, SmalltalkRuntime.additiveBuiltinNames.contains(builtin.name) { continue }
-            guard let record = records[builtin.name], record.classFields?.isEmpty != false else {
+            guard let record = records[builtin.name], record.classFields?.isEmpty != false,
+                  record.classVariables?.isEmpty != false, record.sharedPools?.isEmpty != false, record.indexedStorage == nil else {
                 throw invalid("Built-in class \(builtin.name) is missing or has an invalid layout.")
             }
             let newLayout = record.superclass == builtin.superclass?.name && record.fields == builtin.ownFields
@@ -167,12 +215,18 @@ enum ImageCodec {
             let previous = remaining.count
             var unresolved: [ImageClass] = []
             for record in remaining {
-                guard let parentName = record.superclass else { throw invalid("Superclass is missing.") }
-                if let parent = runtime.classes[parentName] {
-                    let stClass = try runtime.subclass(of: parent, name: record.name, fields: record.fields.joined(separator: " "),
-                                                       classFields: record.classFields ?? [])
-                    guard stClass.ownFields == record.fields else { throw invalid("Invalid instance variables.") }
-                } else { unresolved.append(record) }
+                guard supportsANSIStorage || record.superclass != nil else { throw invalid("Superclass is missing.") }
+                if let parentName = record.superclass, runtime.classes[parentName] == nil {
+                    unresolved.append(record)
+                    continue
+                }
+                let parent = record.superclass.flatMap { runtime.classes[$0] }
+                let stClass = try runtime.subclass(of: parent, name: record.name, fields: record.fields.joined(separator: " "),
+                                                   classFields: record.classFields ?? [],
+                                                   classVariables: record.classVariables?.keys.sorted() ?? [],
+                                                   pools: record.sharedPools ?? [], indexedStorage: record.indexedStorage,
+                                                   ansi: supportsANSIStorage)
+                guard stClass.ownFields == record.fields else { throw invalid("Invalid instance variables.") }
             }
             remaining = unresolved
             guard remaining.count < previous else { throw invalid("The class hierarchy contains a cycle or an unknown superclass.") }
@@ -212,6 +266,7 @@ enum ImageCodec {
             if image.version < 8 { try library.installANSIProtocols(in: runtime) }
             addedClasses = try library.installANSIClasses(missingClasses, in: runtime)
         }
+        if image.version < 10 { try SystemLibrary.shared.get().upgradeANSIBehavior(in: runtime) }
         let library = try? SystemLibrary.shared.get()
         let refreshBrowserOrganization = try library?.upgradeBrowserOrganization(in: runtime, classesAdded: !addedClasses.isEmpty) ?? false
         guard runtime.classes["UIBinding"]?.lookup("reconcileMount:") != nil else {
@@ -227,8 +282,11 @@ enum ImageCodec {
                 guard let stClass = runtime.classes[record.className],
                       stClass === runtime.classes["String"] || SmalltalkRuntime.heapBuiltinNames.contains(stClass.name)
                         || !SmalltalkRuntime.builtinNames.contains(stClass.name),
-                      Set(record.fields.keys) == Set(stClass.fields) else { throw invalid("Invalid object layout.") }
-                let object = try runtime.object(stClass)
+                      Set(record.fields.keys) == Set(stClass.fields),
+                      record.indexedFields == nil || supportsANSIStorage && stClass.indexedStorage != nil else {
+                    throw invalid("Invalid object layout.")
+                }
+                let object = try runtime.object(stClass, indexedCount: record.indexedFields?.count ?? 0)
                 shells.append(.value(.object(object)))
             case .array(let values):
                 shells.append(.value(try runtime.array(count: values.count)))
@@ -296,6 +354,13 @@ enum ImageCodec {
             switch (node, shells[id]) {
             case (.object(let record), .value(.object(let object))):
                 object.fields = try record.fields.mapValues(value)
+                if let indexedFields = record.indexedFields {
+                    let elements = try indexedFields.map(value)
+                    guard object.stClass.indexedStorage != .byte || elements.allSatisfy(SmalltalkRuntime.isByte) else {
+                        throw invalid("Invalid byte-indexed object contents.")
+                    }
+                    object.indexedFields = elements
+                }
                 if refreshBrowserOrganization, runtime.isUIClass(object.stClass, named: "BrowserOrganization"),
                    object.fields["systemProtocols"] != nil {
                     object.fields["systemProtocols"] = .nilValue
@@ -323,7 +388,15 @@ enum ImageCodec {
                     while let current = ancestor, current !== homeClass { ancestor = current.superclass }
                     guard ancestor != nil else { throw invalid("Invalid class method home class.") }
                 }
-                block.context = Context(environment: try environment(record.environment), receiver: receiver, homeClass: homeClass, homeID: 0, isWorkspace: record.isWorkspace, methodSide: side)
+                if let pool = record.initializingPool {
+                    guard supportsANSIStorage, runtime.sharedPools[pool] != nil, homeClass == nil,
+                          runtime.isNil(receiver), !record.isWorkspace, side == .instance else {
+                        throw invalid("Invalid pool initializer context.")
+                    }
+                }
+                block.context = Context(environment: try environment(record.environment), receiver: receiver, homeClass: homeClass,
+                                        homeID: 0, isWorkspace: record.isWorkspace, methodSide: side,
+                                        initializingPool: record.initializingPool)
             default: throw invalid("The object table is inconsistent.")
             }
         }
@@ -332,6 +405,12 @@ enum ImageCodec {
             let state = record.classState ?? [:]
             guard Set(state.keys) == Set(stClass.classState.keys) else { throw invalid("Invalid class instance variables for \(record.name).") }
             stClass.classState = try state.mapValues(value)
+            stClass.classVariables = try (record.classVariables ?? [:]).mapValues(value)
+        }
+        for (name, pool) in sharedPools {
+            runtime.sharedPools[name] = try pool.mapValues { binding in
+                PoolBinding(value: try value(binding.value), kind: binding.kind)
+            }
         }
         var globals = try image.globals.mapValues(value)
         for name in SmalltalkRuntime.additiveBuiltinNames.union(addedClasses) where records[name] == nil && globals[name] == nil {
@@ -347,6 +426,7 @@ enum ImageCodec {
         }
         guard Set(globals.keys).isDisjoint(with: ["nil", "true", "false", "self", "super", "thisContext"]) else { throw invalid("Reserved global variable.") }
         runtime.globals = globals
+        runtime.declaredGlobals = declaredGlobals
         guard case .object(let desktop)? = globals["Desktop"], runtime.isUIClass(desktop.stClass, named: "DesktopManager"),
               case .object(let model)? = desktop.fields["model"], runtime.isUIClass(model.stClass, named: "DesktopModel") else {
             throw invalid("The image has no valid window manager.")

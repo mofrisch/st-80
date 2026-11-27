@@ -26,7 +26,9 @@ enum HeapReference {
     func trace(_ visit: (HeapReference) -> Void) {
         func value(_ value: Value) { if let reference = HeapReference(value) { visit(reference) } }
         switch self {
-        case .object(let object): object.fields.values.forEach(value)
+        case .object(let object):
+            object.fields.values.forEach(value)
+            object.indexedFields.forEach(value)
         case .array(let array): array.elements.forEach(value)
         case .environment(let environment):
             environment.values.values.forEach(value)
@@ -42,6 +44,7 @@ enum HeapReference {
         case .object(let object):
             object.fileStream = nil
             object.fields.removeAll()
+            object.indexedFields.removeAll()
         case .array(let array): array.elements.removeAll()
         case .environment(let environment):
             environment.values.removeAll()
@@ -109,7 +112,7 @@ final class ObjectMemory {
     var statistics: GCStatistics {
         GCStatistics(liveObjects: objects.count, liveArrays: arrays.count, liveBlocks: blocks.count,
                      liveEnvironments: environments.count,
-                     liveSlots: objects.reduce(0) { $0 + $1.fields.count }
+                     liveSlots: objects.reduce(0) { $0 + $1.fields.count + $1.indexedFields.count }
                         + arrays.reduce(0) { $0 + $1.elements.count }
                         + environments.reduce(0) { $0 + $1.values.count + ($1.parent == nil ? 0 : 1) }
                         + blocks.count * 2,
@@ -201,6 +204,10 @@ extension SmalltalkRuntime {
         var roots = globals.values.compactMap(HeapReference.init)
         for stClass in classes.values {
             roots.append(contentsOf: stClass.classState.values.lazy.compactMap(HeapReference.init))
+            roots.append(contentsOf: stClass.classVariables.values.lazy.compactMap(HeapReference.init))
+        }
+        for pool in sharedPools.values {
+            roots.append(contentsOf: pool.values.lazy.compactMap { HeapReference($0.value) })
         }
         roots.append(contentsOf: inspectorRoots.lazy.compactMap(HeapReference.init))
         roots.append(contentsOf: evaluationRoots.compactMap(HeapReference.init))
@@ -224,9 +231,12 @@ extension SmalltalkRuntime {
 
     func collectGarbageIfDue() { memory.collectIfDue { garbageCollectionRoots } }
 
-    func object(_ stClass: STClass) throws -> STObject {
+    func object(_ stClass: STClass, indexedCount: Int = 0) throws -> STObject {
+        guard (0...arrayLimit).contains(indexedCount), indexedCount == 0 || stClass.indexedStorage != nil else {
+            throw SmalltalkError("Invalid indexed instance size.")
+        }
         try checkAllocation()
-        let object = STObject(stClass)
+        let object = STObject(stClass, indexedCount: indexedCount)
         memory.register(object)
         registerMVCBinding(object)
         return object

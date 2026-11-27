@@ -74,6 +74,8 @@ final class SmalltalkRuntime {
     var acknowledgedWindowEvent: Int64 = 0
     var classes: [String: STClass] = [:]
     var globals: [String: Value] = [:]
+    var declaredGlobals: [String: DeclaredBinding] = [:]
+    var sharedPools: [String: [String: PoolBinding]] = [:]
     var transcript = ""
     var steps = 0
     private var stepLimit: Int
@@ -135,7 +137,10 @@ final class SmalltalkRuntime {
 
     deinit {
         // Class state can refer back to the class that owns it.
-        for stClass in classes.values { stClass.classState.removeAll() }
+        for stClass in classes.values {
+            stClass.classState.removeAll()
+            stClass.classVariables.removeAll()
+        }
     }
 
     func tick() throws {
@@ -258,14 +263,24 @@ final class SmalltalkRuntime {
     }
 
     func evaluate(_ source: String) throws -> Value {
+        if SmalltalkInterchange.recognizes(source) {
+            return try importInterchange([source])
+        }
         let syntax = try compileWorkspace(source)
+        return try executeSource(syntax, source: source)
+    }
+
+    func executeSource(_ syntax: Body, source: String, initializer: Bool = false,
+                       classHome: STClass? = nil, initializingPool: String? = nil) throws -> Value {
         let body = BytecodeBody.lower(syntax)
         nextHome += 1
         let homeID = nextHome
         activeHomes.insert(homeID)
         defer { activeHomes.remove(homeID) }
-        let context = Context(environment: try environment(), receiver: .nilValue, homeClass: nil, homeID: homeID,
-                              isWorkspace: true, debuggerOrigin: DebuggerOrigin(source: source))
+        let context = Context(environment: try environment(), receiver: classHome.map(Value.classObject) ?? .nilValue,
+                              homeClass: classHome, homeID: homeID, isWorkspace: !initializer,
+                              methodSide: classHome == nil ? .instance : .classSide, initializingPool: initializingPool,
+                              debuggerOrigin: DebuggerOrigin(source: source))
         do { return try execute(body, context: context, referenceBody: useASTInterpreterForTesting ? syntax : nil, debuggerKind: .workspace) }
         catch let signal as ReturnSignal where signal.homeID == homeID { return signal.value }
     }
@@ -297,13 +312,17 @@ final class SmalltalkRuntime {
         case "nil": return .nilValue
         case "true": return .boolean(true)
         case "false": return .boolean(false)
-        case "self": return context.receiver
+        case "self":
+            guard context.isWorkspace || context.homeClass != nil else { throw SmalltalkError("self is unavailable in this initializer.") }
+            return context.receiver
         case "super": throw SmalltalkError("super must be the receiver of a message.")
         default: break
         }
         if let environment = context.environment.binding(name), let value = environment.values[name] { return value }
         if case .object(let object) = context.receiver, let value = object.fields[name] { return value }
         if let receiver = classFieldReceiver(name, context: context) { return receiver.classState[name] ?? .nilValue }
+        if let owner = classVariableOwner(name, context: context) { return owner.classVariables[name] ?? .nilValue }
+        if let pool = try poolVariableOwner(name, context: context) { return sharedPools[pool]![name]!.value }
         if let value = globals[name] { return value }
         throw SmalltalkError("Unknown variable: \(name)")
     }
@@ -315,7 +334,14 @@ final class SmalltalkRuntime {
         if let environment = context.environment.binding(name) { environment.values[name] = value; return }
         if case .object(let object) = context.receiver, object.fields[name] != nil { object.fields[name] = value; return }
         if let receiver = classFieldReceiver(name, context: context) { receiver.classState[name] = value; return }
-        guard name != "Transcript", classes[name] == nil, !Self.floatAliases.contains(name) else {
+        if let owner = classVariableOwner(name, context: context) { owner.classVariables[name] = value; return }
+        if let pool = try poolVariableOwner(name, context: context) {
+            guard !sharedPools[pool]![name]!.kind.isConstant else { throw SmalltalkError("\(name) cannot be reassigned.") }
+            sharedPools[pool]![name]!.value = value
+            return
+        }
+        guard name != "Transcript", classes[name] == nil, !Self.floatAliases.contains(name),
+              declaredGlobals[name]?.isConstant != true, sharedPools[name] == nil else {
             throw SmalltalkError("\(name) cannot be reassigned.")
         }
         if context.isWorkspace || globals[name] != nil {
@@ -331,6 +357,25 @@ final class SmalltalkRuntime {
               receiver.classState[name] != nil, let home = context.homeClass,
               home.metaclass.fields.contains(name) else { return nil }
         return receiver
+    }
+
+    private func classVariableOwner(_ name: String, context: Context) -> STClass? {
+        var owner = context.homeClass
+        while let current = owner {
+            if current.classVariables[name] != nil { return current }
+            owner = current.superclass
+        }
+        return nil
+    }
+
+    private func poolVariableOwner(_ name: String, context: Context) throws -> String? {
+        if let pool = context.initializingPool { return sharedPools[pool]?[name] == nil ? nil : pool }
+        var owner: String?
+        for pool in context.homeClass?.sharedPools ?? [] where sharedPools[pool]?[name] != nil {
+            guard owner == nil else { throw SmalltalkError("Pool variable \(name) is ambiguous.") }
+            owner = pool
+        }
+        return owner
     }
 
     func value(_ literal: Literal) throws -> Value {

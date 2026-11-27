@@ -161,6 +161,38 @@ struct SystemLibrary: Sendable {
         }
     }
 
+    /// Apply ANSI fixes to previous shipped implementations, retaining methods
+    /// whose owners changed their source in the image.
+    func upgradeANSIBehavior(in runtime: SmalltalkRuntime) throws {
+        let previous: [(String, MethodSide, String, String)] = [
+            ("Number", .instance, "roundTo:", "cff8084078c35d4e8ad7f05394caaee5cb3f0f68b7fbf1df399101254b6756fc"),
+            ("Number", .instance, "truncateTo:", "fb48538a48c844cb22069037bb6c932d53b12bf6906beb8299230b29d9168348"),
+            ("Float", .instance, "log:", "157de5c473c332c4353a5c8583f594c12f041c32b1ed41d69726bdad9a28bd7d"),
+            ("Float", .instance, "floorLog:", "0239951c85db5e024921a60e0ae2943b21d5bd91142ffd6aa8c4daaf1d036051"),
+            ("SequenceableCollection", .instance, "indexOfSubCollection:startingAt:ifAbsent:", "93b7313d2973e689bc724bc5bed5fe23509439b89f42bb1132ea1ca8aca7030b"),
+            ("SequenceableCollection", .instance, "copyReplaceAll:with:", "74d8c3839c765f33276e436f23d079187f2fca6b95ef6bf573c97203308177c6"),
+            ("WriteStream", .instance, "nextPutAll:", "6e79e850dc0f072a275e35899f18f591bd49848d0183d35935922ccc1b8d5e23"),
+            ("ReadWriteStream", .instance, "nextPutAll:", "6e79e850dc0f072a275e35899f18f591bd49848d0183d35935922ccc1b8d5e23"),
+            ("WriteFileStream", .instance, "nextPutAll:", "e284b35e8e85205e0742622a4770d0f247686aec32f5bfa147096a14f6294276"),
+            ("ApplicationMenu", .classSide, "fileMenu", "a2f6fc0bf846041b0151c6cb2293f6fe3749b38bc2377b69418af861cd087a2f"),
+        ]
+        func install(_ selector: String, on owner: STClass, side: MethodSide) throws {
+            guard let code = seed[side][owner.name]?[selector], let source = sources[side][owner.name]?[selector] else {
+                throw SmalltalkError("Missing bundled ANSI method \(owner.name)»\(selector).")
+            }
+            owner[side][selector] = try code.validatedMethod(selector: selector, source: source)
+        }
+        for (name, side, selector, hash) in previous {
+            guard let owner = runtime.classes[name], let old = owner[side][selector],
+                  Self.digest(Data(old.source.utf8)) == hash else { continue }
+            if name == "Number", owner.methods["_coerceRoundingFactor:"] == nil {
+                guard owner.methods.count < SmalltalkRuntime.methodsPerSideLimit else { continue }
+                try install("_coerceRoundingFactor:", on: owner, side: .instance)
+            }
+            try install(selector, on: owner, side: side)
+        }
+    }
+
     /// Update shipped browser code only. Smalltalk merges the defaults the
     /// next time that the browser's catalog is used.
     func upgradeBrowserOrganization(in runtime: SmalltalkRuntime, classesAdded: Bool) throws -> Bool {
@@ -187,6 +219,7 @@ struct SystemLibrary: Sendable {
                 "71d48031db4dc35c95db45ac06fb70d52359900c1fd9cbb3043998fc6c2c4180",
                 "c78aa3118354a6a154dd054e2f9eac77d18efd675f2542e748cfa762fc695f64",
                 "8b97cd52d95fcb53aaff65d8bfe1846c2daca64e5b9385ff08d5cdb7912f591e",
+                "fd4eca47479b562f9bd4515d5cc5f52ee9b365181cf1e6da3d27427ce67a1f56",
             ]),
             (.instance, "shippedClassSideProtocols", [
                 "7b2f2950f5dc051c01fdcd0afcdde26c8505606a3c1f370ad2c6910c5eff398c",

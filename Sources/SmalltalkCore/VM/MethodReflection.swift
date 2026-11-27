@@ -104,6 +104,7 @@ extension SmalltalkRuntime {
             "ceiling": "Rounds up to an integer.", "floor": "Rounds down to an integer.",
             "truncated": "Rounds toward zero to an integer.", "rounded": "Rounds to the nearest integer.",
             "sqrt": "Square root.", "exp": "Exponential function.", "ln": "Natural logarithm.",
+            "_floorLog:": "Computes an integer logarithm with a check at powers of the base.",
             "arcSin": "Arcsine.", "arcCos": "Arccosine.", "arcTan": "Arctangent.",
             "asFraction": "Converts the binary64 value exactly to a rational.",
             "sin": "Sine.", "cos": "Cosine.", "tan": "Tangent.",

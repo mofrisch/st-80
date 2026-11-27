@@ -173,7 +173,11 @@ WriteStream compile: 'nextPut: element
     ^ element'.
 
 WriteStream compile: 'nextPutAll: elements
-    self _write: elements asArray'.
+    | batch |
+    batch := self _nextPutAllBatch: elements.
+    batch isNil
+        ifTrue: [ elements do: [ :each | self nextPut: each ] ]
+        ifFalse: [ self _write: batch ]'.
 
 WriteStream compile: 'cr
     self nextPut: Character lf'.
@@ -192,7 +196,11 @@ ReadWriteStream compile: 'nextPut: element
     ^ element'.
 
 ReadWriteStream compile: 'nextPutAll: elements
-    self _write: elements asArray'.
+    | batch |
+    batch := self _nextPutAllBatch: elements.
+    batch isNil
+        ifTrue: [ elements do: [ :each | self nextPut: each ] ]
+        ifFalse: [ self _write: batch ]'.
 
 ReadWriteStream compile: 'cr
     self nextPut: Character lf'.

@@ -28,11 +28,12 @@ final class FileStreamHandle {
     enum Mode: String {
         case read, create, append, truncate
 
-        func flags(check: Bool) -> Int32 {
+        func flags(check: Bool, writableOnly: Bool = false) -> Int32 {
+            let access = writableOnly ? O_WRONLY : O_RDWR
             switch self {
             case .read: return O_RDONLY
-            case .create: return O_RDWR | O_CREAT | (check ? O_EXCL : 0)
-            case .append, .truncate: return O_RDWR | (check ? 0 : O_CREAT)
+            case .create: return access | O_CREAT | (check ? O_EXCL : 0)
+            case .append, .truncate: return access | (check ? 0 : O_CREAT)
             }
         }
     }
@@ -45,13 +46,22 @@ final class FileStreamHandle {
     let type: ExternalType
     let mode: Mode
     private let file: FileHandle
+    private let writableOnly: Bool
+    private let hasUnreadableTextPrefix: Bool
+    private var shadow: FileHandle?
     private static let chunkSize = 4_096
     private var cache = Data()
     private var cacheOffset: Int64 = 0
     var cursor = Cursor()
 
     init(path: String, mode: Mode, check: Bool, type: ExternalType) throws {
-        let descriptor = open(path, mode.flags(check: check) | O_CLOEXEC | O_NONBLOCK, mode_t(0o666))
+        let flags = O_CLOEXEC | O_NONBLOCK
+        let permissions = mode_t(0o666)
+        var descriptor = open(path, mode.flags(check: check) | flags, permissions)
+        let writableOnly = descriptor < 0 && mode != .read && (errno == EACCES || errno == EPERM)
+        if writableOnly {
+            descriptor = open(path, mode.flags(check: check, writableOnly: true) | flags, permissions)
+        }
         guard descriptor >= 0 else { throw FileStreamFailure.system(operation: "open", code: errno) }
         let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
         var info = stat()
@@ -61,12 +71,31 @@ final class FileStreamHandle {
         guard (info.st_mode & S_IFMT) == S_IFREG else {
             throw FileStreamFailure.invalid("FileStream expects a regular file.")
         }
+        let startsEmpty = mode == .create || mode == .truncate || info.st_size == 0
+        // Preserve readable stream contents for bytes written from an empty
+        // backing store without broadening the external file's permissions.
+        self.shadow = writableOnly && startsEmpty ? try Self.openShadow() : nil
         if mode == .create || mode == .truncate {
             try handle.truncate(atOffset: 0)
         }
         file = handle
+        self.writableOnly = writableOnly
+        hasUnreadableTextPrefix = writableOnly && !startsEmpty && type == .text
         self.type = type
         self.mode = mode
+    }
+
+    private static func openShadow() throws -> FileHandle {
+        let temporary = FileManager.default.temporaryDirectory.appendingPathComponent("st80-file-stream.XXXXXX")
+        var template = temporary.path.utf8CString
+        return try template.withUnsafeMutableBufferPointer { buffer in
+            let path = buffer.baseAddress!
+            let descriptor = mkstemp(path)
+            guard descriptor >= 0 else { throw FileStreamFailure.system(operation: "create stream backing", code: errno) }
+            let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+            guard unlink(path) == 0 else { throw FileStreamFailure.system(operation: "unlink stream backing", code: errno) }
+            return handle
+        }
     }
 
     func close() throws {
@@ -85,8 +114,12 @@ final class FileStreamHandle {
     }
 
     func bytes(at offset: Int64, count: Int) throws -> Data {
-        try file.seek(toOffset: UInt64(offset))
-        return try file.read(upToCount: count) ?? Data()
+        if count == 0 { return Data() }
+        guard let input = writableOnly ? shadow : file else {
+            throw FileStreamFailure.system(operation: "read", code: EACCES)
+        }
+        try input.seek(toOffset: UInt64(offset))
+        return try input.read(upToCount: count) ?? Data()
     }
 
     private func byte(at offset: Int64, charge: (Int) throws -> Void) throws -> UInt8? {
@@ -153,6 +186,13 @@ final class FileStreamHandle {
             cursor = Cursor()
             return
         }
+        if hasUnreadableTextPrefix {
+            // End-of-file is usable for appending even when the number of
+            // Unicode scalars in the existing bytes cannot be determined.
+            guard position == nil else { throw FileStreamFailure.system(operation: "read", code: EACCES) }
+            cursor = Cursor(offset: try byteCount())
+            return
+        }
         let start = position.map { $0 < cursor.position } == true ? Cursor() : cursor
         let end = try advanced(from: start, by: position.map { $0 - start.position } ?? Int64.max, charge: charge)
         if let position {
@@ -163,10 +203,18 @@ final class FileStreamHandle {
         cursor = end
     }
 
+    func sequencePosition() throws -> Int64 {
+        guard !hasUnreadableTextPrefix || cursor.offset == 0 else {
+            throw FileStreamFailure.invalid("Cannot determine the text position without read access to the file.")
+        }
+        return cursor.position
+    }
+
     func write(_ data: Data, elementCount: Int, charge: (Int) throws -> Void) throws {
         guard !data.isEmpty else { return }
-        let endOfReplacement = try advanced(from: cursor, by: Int64(elementCount), charge: charge).offset
         let endOfFile = try byteCount()
+        let endOfReplacement = cursor.offset == endOfFile ? endOfFile
+            : try advanced(from: cursor, by: Int64(elementCount), charge: charge).offset
         guard endOfReplacement <= endOfFile else {
             throw FileStreamFailure.invalid("The file shrank before the write.")
         }
@@ -184,6 +232,10 @@ final class FileStreamHandle {
             try charge(Int(tailSize))
         }
         cache.removeAll()
+        var committed = false
+        defer {
+            if !committed { shadow = nil }
+        }
         if shift > 0 && tailSize > 0 {
             var stop = endOfFile
             while stop > endOfReplacement {
@@ -198,10 +250,13 @@ final class FileStreamHandle {
                 try moveBytes(from: start, to: start + shift, count: count)
                 start += Int64(count)
             }
-            try file.truncate(atOffset: UInt64(endOfFile + shift))
+            let truncatedSize = UInt64(endOfFile + shift)
+            try file.truncate(atOffset: truncatedSize)
+            try shadow?.truncate(atOffset: truncatedSize)
         }
         try store(data, at: cursor.offset)
         cursor = Cursor(offset: newEnd, position: cursor.position + Int64(elementCount))
+        committed = true
     }
 
     private func moveBytes(from source: Int64, to target: Int64, count: Int) throws {
@@ -213,10 +268,63 @@ final class FileStreamHandle {
     private func store(_ data: Data, at offset: Int64) throws {
         try file.seek(toOffset: UInt64(offset))
         try file.write(contentsOf: data)
+        if let shadow {
+            try shadow.seek(toOffset: UInt64(offset))
+            try shadow.write(contentsOf: data)
+        }
     }
 }
 
 extension SmalltalkRuntime {
+    /// The shipped stream and enumeration methods are pure with these backing
+    /// types. Keep large transfers within the execution budget, while allowing
+    /// current-image method edits and user collections to use ordinary sends.
+    func nextPutAllBatch(_ stream: STObject, source: Value) throws -> Value? {
+        let name = stream.stClass.name
+        let receiver = Value.object(stream)
+        let isFileStream = name == "WriteFileStream"
+        guard isFileStream || name == "WriteStream" || name == "ReadWriteStream" else { return nil }
+        guard let library = try? SystemLibrary.shared.get(), let arrayClass = classes["Array"] else { return .nilValue }
+
+        func isShipped(_ selector: String, on object: Value, owner name: String, side: MethodSide = .instance) -> Bool {
+            guard let (method, owner, methodSide) = lookupMethod(selector, on: object),
+                  owner.name == name, methodSide == side else { return false }
+            return library.sources[side][name]?[selector] == method.source
+        }
+
+        guard isShipped("nextPut:", on: receiver, owner: name),
+              isShipped("with:", on: .classObject(arrayClass), owner: "Array", side: .classSide) else {
+            return .nilValue
+        }
+        if isFileStream {
+            guard lookupMethod("_writeFileElements:", on: receiver) == nil else { return .nilValue }
+        } else {
+            guard let backing = stream.fields["backing"],
+                  lookupMethod("_commitWrite:", on: receiver) == nil,
+                  ["Array", "OrderedCollection", "String", "ByteArray"].contains(classOf(backing).name),
+                  ["_write:", "_sequence", "_checkWrite:"].allSatisfy({
+                      isShipped($0, on: receiver, owner: "CollectionStream")
+                  }) else { return .nilValue }
+        }
+
+        if classOf(source).name == "ByteArray" {
+            guard case .object(let bytes) = source, let storage = bytes.fields["storage"], case .array(let array) = storage,
+                  isShipped("do:", on: source, owner: "ByteArray"), lookupMethod("do:", on: storage) == nil,
+                  classes["BlockClosure"]?.lookup("value:") == nil,
+                  lookupMethod("ifNil:", on: .nilValue) == nil, lookupMethod("ifNil:", on: .integer(0)) == nil else {
+                return .nilValue
+            }
+            if isFileStream { return source }
+            try chargeNumericWork(array.elements.count)
+            return try self.array(array.elements.map { isNil($0) ? .integer(0) : $0 })
+        }
+
+        guard lookupMethod("do:", on: source) == nil else { return .nilValue }
+        if case .array = source { return source }
+        guard source.textContents != nil else { return .nilValue }
+        return isFileStream ? source : try array(sequenceElements(source))
+    }
+
     func fileStreamPrimitive(_ stream: STObject, _ selector: String, _ args: [Value]) throws -> Value {
         do {
             return try performFileStreamPrimitive(stream, selector, args)
@@ -260,7 +368,7 @@ extension SmalltalkRuntime {
         case "_fileIsEmpty":
             return .boolean(try file.byteCount() == 0)
         case "_filePosition":
-            return .integer(file.cursor.position)
+            return .integer(try file.sequencePosition())
         case "_seekFile:":
             try file.seek(to: fileCount(args[0]), charge: chargeNumericWork)
         case "_seekFileToEnd":

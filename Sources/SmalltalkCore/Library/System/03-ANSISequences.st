@@ -88,10 +88,13 @@ SequenceableCollection compile: 'indexOfSubCollection: target startingAt: start
     ^ self indexOfSubCollection: target startingAt: start ifAbsent: [ 0 ]'.
 
 SequenceableCollection compile: 'indexOfSubCollection: target startingAt: start ifAbsent: alternative
-    | width last offset |
-    start < 1 ifTrue: [ self error: ''The search must start at a positive index.'' ].
+    | length width last offset |
+    length := self size.
+    ((start isKindOf: Integer) and: [ start between: 1 and: length ])
+        ifFalse: [ self error: ''Search start is outside the collection.'' ].
     width := target size.
-    last := self size - width + 1.
+    width = 0 ifTrue: [ ^ alternative value ].
+    last := length - width + 1.
     start to: last do: [ :index |
         offset := 1.
         [ offset <= width and: [ (self at: index + offset - 1) = (target at: offset) ] ]
@@ -155,13 +158,16 @@ SequenceableCollection compile: 'copyReplaceFrom: start to: stop with: replaceme
     ^ self _sequenceFrom: result'.
 
 SequenceableCollection compile: 'copyReplaceAll: target with: replacements
-    | matches width count next index result position cursor |
+    | matches width count next last index result position cursor |
     width := target size.
     width = 0 ifTrue: [ ^ self copy ].
     matches := Array new: self size // width.
     count := 0.
     next := 1.
-    [ index := self indexOfSubCollection: target startingAt: next. index ~= 0 ] whileTrue: [
+    last := self size - width + 1.
+    [ next <= last and: [
+        index := self indexOfSubCollection: target startingAt: next.
+        index ~= 0 ] ] whileTrue: [
         count := count + 1.
         matches at: count put: index.
         next := index + width ].

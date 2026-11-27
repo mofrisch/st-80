@@ -75,6 +75,21 @@ extension SmalltalkRuntime {
         case "sqrt": return try finiteFloat(number.squareRoot())
         case "exp": return try finiteFloat(exp(number))
         case "ln": return try finiteFloat(log(number))
+        case "_floorLog:":
+            let base = try floatingNumber(arguments[0])
+            guard number > 0, base > 1 else {
+                throw SmalltalkError("Floor logarithm requires a positive receiver and a base greater than one.")
+            }
+            let estimate = (log(number) / log(base)).rounded(.down)
+            guard let exponent = BigInteger(exactly: estimate) else {
+                throw SmalltalkError("Floating-point logarithm is outside the supported range.")
+            }
+            // The rounded log quotient can land on either side of an exact power.
+            // Check its neighbors when binary64 can distinguish consecutive exponents.
+            let upper = estimate + 1
+            if upper - estimate == 1, pow(base, upper) <= number { return integerValue(exponent + .one) }
+            if estimate - (estimate - 1) == 1, pow(base, estimate) > number { return integerValue(exponent - .one) }
+            return integerValue(exponent)
         case "arcCos": return try finiteFloat(acos(number))
         case "arcSin": return try finiteFloat(asin(number))
         case "arcTan": return try finiteFloat(atan(number))

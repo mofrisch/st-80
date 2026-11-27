@@ -61,10 +61,20 @@ Number compile: 'reciprocal
     ^ 1 / self'.
 
 Number compile: 'roundTo: factor
-    ^ (self / factor) rounded * factor'.
+    | quotient |
+    quotient := ((self isKindOf: Float) or: [ factor isKindOf: Float ])
+        ifTrue: [ self / factor ]
+        ifFalse: [ self asFraction / factor asFraction ].
+    ^ quotient rounded * (self _coerceRoundingFactor: factor)'.
 
 Number compile: 'truncateTo: factor
-    ^ (self quo: factor) * factor'.
+    ^ (self quo: factor) * (self _coerceRoundingFactor: factor)'.
+
+Number compile: '_coerceRoundingFactor: factor
+    (self isKindOf: Float) ifTrue: [ ^ factor asFloat ].
+    ((self isKindOf: ScaledDecimal) and: [ factor isKindOf: Integer ])
+        ifTrue: [ ^ factor asScaledDecimal: 0 ].
+    ^ factor'.
 
 Number compile: 'raisedTo: exponent
     (exponent isKindOf: Integer) ifTrue: [ ^ self raisedToInteger: exponent ].
@@ -157,10 +167,10 @@ Float compile: 'radiansToDegrees
     ^ self * 180 / Float pi'.
 
 Float compile: 'log: base
-    ^ self ln / base ln'.
+    ^ self ln / base asFloat ln'.
 
 Float compile: 'floorLog: base
-    ^ (self log: base) floor'.
+    ^ self _floorLog: base'.
 
 Transcript compile: 'nextPut: character
     (character isKindOf: Character) ifFalse: [ self error: ''Transcript expects a character.'' ].

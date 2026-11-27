@@ -23,7 +23,8 @@ BrowserOrganization compile: 'shippedProtocols
             (''Sign'' (''negative'' ''positive'' ''strictlyPositive'' ''sign''))
             (''Arithmetic'' (''quo:'' ''rem:'' ''reciprocal'' ''raisedTo:'' ''raisedToInteger:'' ''fractionPart''))
             (''Intervals'' (''to:'' ''to:by:''))
-            (''Rounding and Conversion'' (''asInteger'' ''roundTo:'' ''truncateTo:''))))
+            (''Rounding and Conversion'' (''asInteger'' ''roundTo:'' ''truncateTo:''))
+            (''Private'' (''_coerceRoundingFactor:''))))
         (''DateAndTime'' (
             (''Calendar'' (''year'' ''month'' ''monthName'' ''monthAbbreviation'' ''dayOfMonth'' ''dayOfYear''
                 ''dayOfWeek'' ''dayOfWeekName'' ''dayOfWeekAbbreviation'' ''isLeapYear''))
@@ -76,7 +77,8 @@ BrowserOrganization compile: 'shippedProtocols
             (''Converting'' (''asFloat'' ''asFloatE'' ''asFloatD'' ''asFloatQ'' ''asScaledDecimal:'' ''ceiling'' ''floor'' ''truncated'' ''rounded'' ''asFraction'' ''integerPart''))
             (''Mathematical Functions'' (''sqrt'' ''exp'' ''ln'' ''log:'' ''floorLog:''))
             (''Trigonometry'' (''sin'' ''cos'' ''tan'' ''arcSin'' ''arcCos'' ''arcTan'' ''degreesToRadians'' ''radiansToDegrees''))
-            (''Iteration'' (''to:do:'' ''to:by:do:''))))
+            (''Iteration'' (''to:do:'' ''to:by:do:''))
+            (''Private'' (''_floorLog:''))))
         (''Collection'' (
             (''Testing'' (''notEmpty'' ''allSatisfy:'' ''anySatisfy:'' ''occurrencesOf:''))
             (''Searching'' (''detect:'' ''detect:ifNone:''))

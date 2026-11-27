@@ -67,8 +67,9 @@ extension SmalltalkRuntime {
         case .string(let text):
             return try newString(text)
         case .object(let original):
-            let copy = try object(original.stClass)
+            let copy = try object(original.stClass, indexedCount: original.indexedFields.count)
             copy.fields = original.fields
+            copy.indexedFields = original.indexedFields
             return .object(copy)
         case .array(let original):
             return try array(original.elements)
@@ -81,8 +82,7 @@ extension SmalltalkRuntime {
         var hash = Hasher()
         switch value {
         case .integer, .largeInteger, .fraction, .scaledDecimal, .float:
-            // Mixed equality uses both exact comparisons and rounded binary64
-            // comparisons. Every representation must agree when either does.
+            // Mixed equality can round different exact values to the same Float.
             hash.combine("Number")
         case .character(let scalar):
             return Int64(scalar)
@@ -183,9 +183,9 @@ extension SmalltalkRuntime {
                         if identity || b.denominator != .one || b.numerator != a { return false }
                     case (.float(let a), .float(let b)): if a != b { return false }
                     case (.integer(let a), .float(let b)), (.float(let b), .integer(let a)):
-                        if identity || Int64(exactly: b) != a { return false }
+                        if identity || Double(a) != b { return false }
                     case (.largeInteger(let a), .float(let b)), (.float(let b), .largeInteger(let a)):
-                        if identity || BigInteger(exactly: b) != a { return false }
+                        if identity || a.doubleValue != b { return false }
                     case (.fraction(let a), .float(let b)), (.float(let b), .fraction(let a)):
                         if identity || a.doubleValue != b { return false }
                     case (.scaledDecimal(let decimal), let other), (let other, .scaledDecimal(let decimal)):
@@ -230,6 +230,13 @@ extension SmalltalkRuntime {
 }
 
 extension Value {
+    var isInteger: Bool {
+        switch self {
+        case .integer, .largeInteger: return true
+        default: return false
+        }
+    }
+
     var isNumeric: Bool {
         switch self {
         case .integer, .largeInteger, .fraction, .scaledDecimal, .float: return true

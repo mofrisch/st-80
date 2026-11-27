@@ -459,6 +459,14 @@ final class AppController {
         imageHasChanges = true
     }
 
+    func importInterchange(from url: URL) async throws -> EvaluationResult {
+        let result = try await session.importInterchange(from: url)
+        // Initializers can change the image before a later initializer fails.
+        imageHasChanges = true
+        apply(result)
+        return result
+    }
+
     func setSavedImageURL(_ url: URL?, includingPendingEdits: Bool = false) {
         imageURL = url
         imageHasChanges = includingPendingEdits && (controlEdits.hasPendingEdits || !pendingWindowEvents.isEmpty)

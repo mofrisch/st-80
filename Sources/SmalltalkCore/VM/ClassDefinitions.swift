@@ -1,17 +1,36 @@
 extension SmalltalkRuntime {
-    func subclass(of superclass: STClass, name: String, fields source: String, classFields: [String] = []) throws -> STClass {
-        try validateSuperclass(superclass)
-        guard name.first?.isUppercase == true && name.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" }) else {
+    func subclass(of superclass: STClass?, name: String, fields source: String, classFields: [String] = [],
+                  classVariables: [String] = [], pools: [String] = [], indexedStorage: IndexedStorage? = nil,
+                  ansi: Bool = false) throws -> STClass {
+        if let superclass { try validateSuperclass(superclass) }
+        if ansi {
+            guard CodeValidator.validNames([name]) else { throw SmalltalkError("Invalid class name \(name).") }
+        } else if name.first?.isUppercase != true || !CodeValidator.validNames([name]) {
             throw SmalltalkError("Class names must begin with an uppercase letter.")
         }
         guard globals[name] == nil else { throw SmalltalkError("\(name) already exists.") }
         guard classes.count < Self.classLimit else { throw SmalltalkError("A session can contain at most \(Self.classLimit) classes.") }
         let fields = source.split(whereSeparator: \.isWhitespace).map(String.init)
-        try validateFields(fields, inherited: superclass.fields)
-        try validateFields(classFields, inherited: superclass.metaclass.fields)
-        let stClass = STClass(name, superclass: superclass, fields: fields, classFields: classFields)
+        try validateFields(fields, inherited: superclass?.fields ?? [])
+        try validateFields(classFields, inherited: superclass?.metaclass.fields ?? [])
+        try validateFields(classVariables, inherited: [])
+        guard Set(classVariables).isDisjoint(with: fields + classFields) else {
+            throw SmalltalkError("Class variables share names with instance variables.")
+        }
+        guard CodeValidator.validNames(pools), pools.allSatisfy({ sharedPools[$0] != nil }) else {
+            throw SmalltalkError("Shared pool names must be unique and identify declared pools.")
+        }
+        let inherited = superclass?.indexedStorage
+        let layout = indexedStorage ?? inherited
+        guard inherited == nil || indexedStorage == nil || inherited == indexedStorage,
+              layout != .byte || fields.isEmpty && (superclass?.fields.isEmpty ?? true) else {
+            throw SmalltalkError("Byte-indexed classes cannot have named fields or inherit object-indexed storage.")
+        }
+        let stClass = STClass(name, superclass: superclass, fields: fields, classFields: classFields,
+                              classVariables: classVariables, sharedPools: pools, indexedStorage: indexedStorage)
+        if superclass == nil { stClass.rootMetaclassSuperclass = classes["Object"] }
         if recordingChanges {
-            try journal.append(kind: .classDefinition, className: name, superclass: superclass.name,
+            try journal.append(kind: .classDefinition, className: name, superclass: superclass?.name,
                                fields: fields, classFields: classFields, source: definitionSource(for: stClass))
         }
         classes[name] = stClass
@@ -36,6 +55,18 @@ extension SmalltalkRuntime {
 
     func definitionSource(for target: STClass) -> String {
         let parent = target.superclass?.name ?? "nil"
+        if (target.superclass == nil && !Self.builtinNames.contains(target.name))
+            || target.ownIndexedStorage != nil || !target.classVariables.isEmpty
+            || !target.sharedPools.isEmpty || target.name.first?.isUppercase == false {
+            return """
+            Class named: '\(target.name)' superclass: '\(parent)'
+                indexedInstanceVariables: #'\(target.ownIndexedStorage?.rawValue ?? "none")'
+                instanceVariableNames: '\(target.ownFields.joined(separator: " "))'
+                classVariableNames: '\(target.classVariables.keys.sorted().joined(separator: " "))'
+                sharedPools: '\(target.sharedPools.joined(separator: " "))'
+                classInstanceVariableNames: '\(target.metaclass.ownFields.joined(separator: " "))'
+            """
+        }
         let source = "\(parent) subclass: #\(target.name)\n    instanceVariableNames: '\(target.ownFields.joined(separator: " "))'"
         let classFields = target.metaclass.ownFields
         guard !classFields.isEmpty else { return source }
@@ -44,6 +75,16 @@ extension SmalltalkRuntime {
 
     func acceptDefinition(_ source: String, for target: STClass) throws {
         let body = try compileWorkspace(source)
+        if let definition = try SmalltalkInterchange.classDeclaration(in: body) {
+            guard definition.name == target.name else { throw SmalltalkError("The definition must name the selected class \(target.name).") }
+            guard Set(definition.classVariables) == Set(target.classVariables.keys),
+                  definition.pools == target.sharedPools, definition.indexedStorage == target.ownIndexedStorage else {
+                throw SmalltalkError("A live class must keep its declared shared variables, pools, and indexed storage.")
+            }
+            try redefineClass(target, superclass: superclass(named: definition.superclass), fields: definition.fields,
+                              classFields: definition.classFields, source: source)
+            return
+        }
         guard body.temporaries.isEmpty, body.expressions.count == 1,
               case .send(let receiver, let selector, let arguments) = body.expressions[0].kind,
               (selector == "subclass:instanceVariableNames:" && arguments.count == 2)
@@ -66,9 +107,24 @@ extension SmalltalkRuntime {
                           classFields: classFields, source: source)
     }
 
-    func redefineClass(_ target: STClass, superclass: STClass, fields: [String], classFields: [String], source: String? = nil) throws {
+    func redefineClass(_ target: STClass, superclass: STClass?, fields: [String], classFields: [String], source: String? = nil) throws {
         guard !Self.builtinNames.contains(target.name) else { throw SmalltalkError("Built-in class layouts are read-only.") }
-        try validateSuperclass(superclass)
+        if let superclass { try validateSuperclass(superclass) }
+        if target.superclass !== superclass {
+            func sharedBindings(in parent: STClass?) -> [String: ObjectIdentifier] {
+                var result: [String: ObjectIdentifier] = [:]
+                var owner = parent
+                while let stClass = owner {
+                    for name in stClass.classVariables.keys where result[name] == nil { result[name] = ObjectIdentifier(stClass) }
+                    owner = stClass.superclass
+                }
+                return result
+            }
+            guard superclass?.indexedStorage == target.superclass?.indexedStorage,
+                  sharedBindings(in: superclass) == sharedBindings(in: target.superclass) else {
+                throw SmalltalkError("Changing superclass must preserve inherited indexed storage and class variable bindings.")
+            }
+        }
         var ancestor: STClass? = superclass
         while let current = ancestor {
             guard current !== target else { throw SmalltalkError("A class cannot inherit from itself or one of its subclasses.") }
@@ -85,6 +141,11 @@ extension SmalltalkRuntime {
         func plan(_ current: STClass, own: [String], inherited: [String]) throws {
             try validateFields(own, inherited: inherited)
             let layout = inherited + own
+            let owner = current.instanceClass ?? current
+            guard Set(own).isDisjoint(with: owner.classVariables.keys),
+                  current.indexedStorage != .byte || layout.isEmpty else {
+                throw SmalltalkError("The named fields conflict with the class's shared or indexed storage.")
+            }
             let removed = Set(current.fields).subtracting(layout)
             for method in current.methods.values {
                 if !removed.isEmpty, let field = method.body.reference(to: removed, excluding: Set(method.parameters)) {
@@ -99,8 +160,8 @@ extension SmalltalkRuntime {
             }
         }
 
-        try plan(target, own: fields, inherited: superclass.fields)
-        try plan(target.metaclass, own: classFields, inherited: superclass.metaclass.fields)
+        try plan(target, own: fields, inherited: superclass?.fields ?? [])
+        try plan(target.metaclass, own: classFields, inherited: superclass?.metaclass.fields ?? [])
         try validateRetainedCode(target: target, superclass: superclass, removedFields: removedFields)
         // The allocation registry also holds unreachable instances. Their old
         // field values must not veto an edit to the reachable object space.
@@ -123,9 +184,11 @@ extension SmalltalkRuntime {
         }
 
         let previousSuperclass = target.superclass
+        let previousRoot = target.rootMetaclassSuperclass
         let previousFields = target.ownFields
         let previousClassFields = target.metaclass.ownFields
         target.superclass = superclass
+        target.rootMetaclassSuperclass = superclass == nil ? classes["Object"] : nil
         target.ownFields = fields
         target.metaclass.ownFields = classFields
         for update in updates { update.object.fields = update.next }
@@ -134,11 +197,12 @@ extension SmalltalkRuntime {
             try validateCompilerClasses()
             if let error = projectWindows().error { throw SmalltalkError(error) }
             if recordingChanges {
-                try journal.append(kind: .classDefinition, className: target.name, superclass: superclass.name,
+                try journal.append(kind: .classDefinition, className: target.name, superclass: superclass?.name,
                                    fields: fields, classFields: classFields, source: source ?? definitionSource(for: target))
             }
         } catch {
             target.superclass = previousSuperclass
+            target.rootMetaclassSuperclass = previousRoot
             target.ownFields = previousFields
             target.metaclass.ownFields = previousClassFields
             for update in updates { update.object.fields = update.previous }
@@ -149,12 +213,12 @@ extension SmalltalkRuntime {
         catalogDirty = true
     }
 
-    private func validateRetainedCode(target: STClass, superclass: STClass, removedFields: [ObjectIdentifier: Set<String>]) throws {
+    private func validateRetainedCode(target: STClass, superclass: STClass?, removedFields: [ObjectIdentifier: Set<String>]) throws {
         func validateHome(_ receiver: STClass, home: STClass) throws {
             var ancestor: STClass? = receiver
             while let current = ancestor, current !== home {
                 if current === target { ancestor = superclass }
-                else if current === target.metaclass { ancestor = superclass.metaclass }
+                else if current === target.metaclass { ancestor = superclass?.metaclass ?? classes["Object"] }
                 else { ancestor = current.superclass }
             }
             guard ancestor != nil else {

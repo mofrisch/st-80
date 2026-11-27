@@ -8,7 +8,10 @@ enum MessageLookup {
 
 extension SmalltalkRuntime {
     func superLookup(_ context: Context) throws -> MessageLookup {
-        if context.methodSide == .classSide, let home = context.homeClass { return .classSuper(home.superclass) }
+        if context.methodSide == .classSide, let home = context.homeClass {
+            if home.superclass == nil, let root = home.rootMetaclassSuperclass { return .instanceSuper(root) }
+            return .classSuper(home.superclass)
+        }
         guard let superclass = context.homeClass?.superclass else { throw SmalltalkError("super is unavailable here.") }
         return .instanceSuper(superclass)
     }
@@ -89,6 +92,7 @@ extension SmalltalkRuntime {
             let lexical = block.context
             let context = Context(environment: environment, receiver: lexical.receiver, homeClass: lexical.homeClass,
                                   homeID: lexical.homeID, isWorkspace: lexical.isWorkspace, methodSide: lexical.methodSide,
+                                  initializingPool: lexical.initializingPool,
                                   debuggerOrigin: lexical.debuggerOrigin)
             return try execute(block.body, context: context, referenceBody: block.referenceBody, debuggerKind: .block)
         }

@@ -100,7 +100,11 @@ WriteFileStream compile: 'nextPut: element
     ^ element'.
 
 WriteFileStream compile: 'nextPutAll: elements
-    self _writeFileElements: elements'.
+    | batch |
+    batch := self _nextPutAllBatch: elements.
+    batch isNil
+        ifTrue: [ elements do: [ :each | self nextPut: each ] ]
+        ifFalse: [ self _writeFileElements: batch ]'.
 
 WriteFileStream compile: 'cr
     self nextPut: Character lf'.

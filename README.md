@@ -304,7 +304,7 @@ The prototype has these limits.
 - The interpreter uses this project's stack instruction set. Images are specific to this VM.
 - Each class has its own metaclass, which stores its class-side methods. `Greeter class` returns the metaclass and `Greeter class instanceClass` returns `Greeter`. In a class-side method, `self` is the receiving class and `super` starts lookup at the defining class's superclass on the class side.
 - Declare per-class state with `Object subclass: #Greeter instanceVariableNames: 'name' classInstanceVariableNames: 'defaultName'`. Inherited class instance variables start at `nil` independently on every class. Edit the declaration of an existing class with `Greeter class instanceVariableNames: 'defaultName'`.
-- `subclass:instanceVariableNames:` is the short form. The longer Smalltalk-80 message is accepted with empty class variables and pool dictionaries.
+- `subclass:instanceVariableNames:` is the short form. The longer Smalltalk-80 message can declare shared class variables and import named pools that have been defined in an ANSI interchange file.
 - `new` sends `initialize`. With no explicit `^`, a method returns `self` and a block returns its last expression.
 - Assigning an undeclared name in a workspace creates a persistent workspace variable. `| temp |` declares a local that lasts for the evaluation.
 - Arithmetic between integers and fractions stays exact. The VM uses [attaswift/BigInt](https://github.com/attaswift/BigInt) for large integers and charges the execution budget before expensive library calls.
@@ -322,6 +322,12 @@ The prototype has these limits.
 - Value previews and `printString` produce at most 64 KiB and visit at most 4,096 values, ending with `…` when truncated. Binding previews share a 64 KiB budget per snapshot and use at most 4 KiB per binding.
 - Object memory uses the collector described above. The system does not yet include Smalltalk processes or BitBlt.
 - The default evaluation budget is 100,000 execution steps, including bytecode instructions and call entry. The VM allows 256 call levels and 32 syntactic nesting levels. The normal heap permits up to 100,000 registered nodes after collection, and arrays can hold 65,535 elements. A class can have 127 named instance variables including inherited fields and can define 1,000 methods per side. Changes already performed survive an evaluation error.
+
+### ANSI Smalltalk interchange
+
+Choose **File → Import ANSI Smalltalk …** to load a UTF-8 Smalltalk Interchange Format 1.0 file. You can also evaluate the complete file in a Workspace. The importer compiles and validates the declarations and methods before installing them, then runs the initializers in file order. If an initializer fails, the installed definitions and any earlier changes stay in the image.
+
+Interchange files can define classes, class and instance methods, global variables and constants, and shared pools. Shared class variables are visible on both sides of the declaring class and in subclasses. A class can declare object-indexed storage with `#'object'` or byte-indexed storage with `#'byte'`. Its methods can use `self basicNew:`, `self basicSize`, `self basicAt:`, and `self basicAt:put:` for that storage. The image saves the layouts and their values.
 
 ## App icon
 

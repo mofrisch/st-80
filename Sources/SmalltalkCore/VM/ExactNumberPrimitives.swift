@@ -92,9 +92,17 @@ extension SmalltalkRuntime {
             }
             return integerValue(number)
         case "to:do:", "to:by:do:":
+            let hasStep = selector == "to:by:do:"
+            let increment = hasStep ? arguments[1] : .integer(1)
+            let block = arguments[hasStep ? 2 : 1]
+            if !arguments[0].isInteger || !increment.isInteger {
+                let receiver = integerValue(number)
+                let interval = try send(receiver, "to:by:", [arguments[0], increment])
+                _ = try send(interval, "do:", [block])
+                return receiver
+            }
             let end = try unboundedInteger(arguments[0])
-            let step = selector == "to:do:" ? .one : try unboundedInteger(arguments[1])
-            let block = arguments[selector == "to:do:" ? 1 : 2]
+            let step = try unboundedInteger(increment)
             guard !step.isZero else { throw SmalltalkError("The step size must be nonzero.") }
             var current = number
             while step.isNegative ? current >= end : current <= end {

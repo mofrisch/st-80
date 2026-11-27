@@ -267,6 +267,7 @@ struct ImageTests {
         let original = SmalltalkSession()
         let image = try await original.imageData()
         var archive = try JSONDecoder().decode(ImageArchive.self, from: image)
+        archive.version = 9
         let names = ["Dictionary", "IdentityDictionary"]
         archive.classes.removeAll { names.contains($0.name) }
         for name in names {
@@ -349,6 +350,7 @@ struct ImageTests {
             }
         }
         var archive = try JSONDecoder().decode(ImageArchive.self, from: await original.imageData())
+        archive.version = 9
         let names = SmalltalkRuntime.shippedFileStreamNames
         archive.classes.removeAll { names.contains($0.name) }
         for name in names {
@@ -414,6 +416,7 @@ struct ImageTests {
             }
         }
         var archive = try JSONDecoder().decode(ImageArchive.self, from: await original.imageData())
+        archive.version = 9
         let names = SmalltalkRuntime.shippedDateTimeNames
         archive.classes.removeAll { names.contains($0.name) }
         for name in names {
@@ -446,6 +449,7 @@ struct ImageTests {
     func versionNineImagesBackfillNotificationsWithoutReplacingBindings(customBinding: Bool) async throws {
         let original = SmalltalkSession()
         var archive = try JSONDecoder().decode(ImageArchive.self, from: await original.imageData())
+        archive.version = 9
         let names = SmalltalkRuntime.shippedNotificationNames.union(["ANSIProbeWarning"])
         archive.classes.removeAll { names.contains($0.name) }
         for name in names {

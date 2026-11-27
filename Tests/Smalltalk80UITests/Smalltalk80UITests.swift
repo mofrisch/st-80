@@ -3,6 +3,33 @@ import XCTest
 
 @MainActor
 final class Smalltalk80UITests: XCTestCase {
+    func testFileMenuImportsAnANSIProgramIntoTheLiveImage() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("st80-ansi-ui-\(UUID())")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("Imported.st")
+        try """
+        Smalltalk interchangeVersion: '1.0'!
+        Global constant: 'ImportedAnswer'!
+        ImportedAnswer initializer! 42!
+        """.write(to: file, atomically: true, encoding: .utf8)
+
+        let app = launchFreshApp()
+        defer { app.terminate() }
+        choose("Import ANSI Smalltalk …", from: "File", in: app)
+        let open = app.buttons["OKButton"]
+        XCTAssertTrue(open.waitForExistence(timeout: 5))
+        navigateFilePanel(in: app, to: file.path)
+        open.click()
+        let closed = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: open)
+        wait(for: [closed], timeout: 5)
+
+        let workspace = app.windows["toolWindow-1"]
+        replaceText(in: workspace.textViews["workspaceEditor"], with: "ImportedAnswer")
+        workspace.buttons["executeButton"].click()
+        XCTAssertTrue(workspace.staticTexts["42"].waitForExistence(timeout: 5))
+    }
+
     func testSettingsMenuAndShortcutOpenOneSmalltalkWindow() throws {
         let app = launchFreshApp(opening: [])
         let menus = app.menuBars.menuBarItems

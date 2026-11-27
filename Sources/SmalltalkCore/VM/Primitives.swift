@@ -4,6 +4,8 @@ import Foundation
 extension SmalltalkRuntime {
     func primitive(_ receiver: Value, _ selector: String, _ args: [Value]) throws -> Value? {
         switch selector {
+        case "basicNew:", "basicSize", "basicAt:", "basicAt:put:":
+            return try indexedPrimitive(receiver, selector, args)
         case "class": return .classObject(classOf(receiver))
         case "copy": return try copyValue(receiver)
         case "hash", "identityHash": return .integer(try hashValue(receiver, identity: selector == "identityHash"))
@@ -18,7 +20,12 @@ extension SmalltalkRuntime {
         case "ifNotNil:": return isNil(receiver) ? .nilValue : try invokeBlock(args[0])
         case "respondsTo:":
             let name = try symbol(args[0])
-            return .boolean(lookupMethod(name, on: receiver) != nil || primitiveSelectors(classOf(receiver)).contains(name))
+            return .boolean(try lookupMethod(name, on: receiver) != nil
+                || primitiveSelectors(classOf(receiver)).contains(name)
+                || supportsIndexedOperation(name, on: receiver)
+                || respondsToActiveExceptionControl(receiver, selector: name))
+        case let name where Self.exceptionControlSelectors.contains(name):
+            if let result = try exceptionControlPrimitive(receiver, selector, args) { return result }
         case "perform:": return try send(receiver, symbol(args[0]), [])
         case "perform:with:", "perform:with:with:", "perform:with:with:with:":
             return try send(receiver, symbol(args[0]), Array(args.dropFirst()))
@@ -49,7 +56,7 @@ extension SmalltalkRuntime {
             case "ifTrue:ifFalse:": return try invokeBlock(args[b ? 0 : 1])
             case "ifFalse:ifTrue:": return try invokeBlock(args[b ? 1 : 0])
             case "and:": return b ? .boolean(try boolean(invokeBlock(args[0]))) : .boolean(false)
-            case "or:": return b ? .boolean(true) : .boolean(try boolean(invokeBlock(args[0])))
+            case "or:": return b ? .boolean(true) : .boolean(try boolean(evaluateValuable(args[0], as: "value")))
             case "&": return .boolean(try boolean(args[0]) && b)
             case "|": return .boolean(try boolean(args[0]) || b)
             case "eqv:": return .boolean(try boolean(args[0]) == b)
@@ -101,16 +108,16 @@ extension SmalltalkRuntime {
                 defer { evaluationRoots.removeSubrange(rootCount...) }
                 switch selector {
                 case "do:":
-                    for element in elements { _ = try invokeBlock(args[0], [element]) }
+                    for element in elements { _ = try evaluateValuable(args[0], as: "value:", [element]) }
                     return receiver
                 case "collect:":
                     return try self.array(elements.map {
-                        let result = try invokeBlock(args[0], [$0])
+                        let result = try evaluateValuable(args[0], as: "value:", [$0])
                         evaluationRoots.append(result)
                         return result
                     })
                 default:
-                    return try self.array(elements.filter { try boolean(invokeBlock(args[0], [$0])) })
+                    return try self.array(elements.filter { try boolean(evaluateValuable(args[0], as: "value:", [$0])) })
                 }
             default: return nil
             }
@@ -125,7 +132,7 @@ extension SmalltalkRuntime {
             case "whileTrue", "whileFalse", "whileTrue:", "whileFalse:":
                 let condition = selector == "whileTrue" || selector == "whileTrue:"
                 while try boolean(invokeBlock(receiver)) == condition {
-                    if let body = args.first { _ = try invokeBlock(body) }
+                    if let body = args.first { _ = try evaluateValuable(body, as: "value") }
                 }
                 return .nilValue
             default: return nil
@@ -141,6 +148,9 @@ extension SmalltalkRuntime {
             }
             if selector == "_commitWrite:", let stream = classes["CollectionStream"], object.stClass.inherits(from: stream) {
                 return try commitStreamWrite(object, incoming: args[0])
+            }
+            if selector == "_nextPutAllBatch:" {
+                return try nextPutAllBatch(object, source: args[0])
             }
             if selector.hasPrefix("_"), let stream = classes["FileStream"], object.stClass.inherits(from: stream) {
                 for name in ["FileStream", "ReadFileStream", "WriteFileStream"] {
@@ -225,6 +235,12 @@ extension SmalltalkRuntime {
         }
         return count
     }
+
+    private func evaluateValuable(_ valuable: Value, as selector: String, _ arguments: [Value] = []) throws -> Value {
+        if case .block = valuable { return try invokeBlock(valuable, arguments) }
+        return try send(valuable, selector, arguments)
+    }
+
     private func stringPrimitive(_ receiver: Value, contents string: String, _ selector: String, _ args: [Value]) throws -> Value? {
         switch selector {
         case ",":
@@ -255,7 +271,9 @@ extension SmalltalkRuntime {
             try setString(object, contents: stringFromCharacters(args[0]))
             return receiver
         case "do:":
-            for scalar in string.unicodeScalars { _ = try invokeBlock(args[0], [.character(scalar.value)]) }
+            for scalar in string.unicodeScalars {
+                _ = try evaluateValuable(args[0], as: "value:", [.character(scalar.value)])
+            }
             return receiver
         case "asLowercase", "asUppercase":
             var result = String.UnicodeScalarView()
@@ -388,10 +406,11 @@ extension SmalltalkRuntime {
         let character = Character(String(scalar))
         switch selector {
         case "codePoint", "hash", "identityHash": return .integer(Int64(codePoint))
-        case "asString": return .string(String(scalar))
+        case "asString": return try newString(String(scalar))
         case "isLetter": return .boolean(character.isLetter)
-        case "isDigit": return .boolean(scalar.properties.numericType == .decimal)
-        case "isAlphaNumeric": return .boolean(character.isLetter || scalar.properties.numericType == .decimal)
+        case "isDigit", "isAlphaNumeric":
+            let isDigit = (0x30...0x39).contains(codePoint)
+            return .boolean(isDigit || (selector == "isAlphaNumeric" && character.isLetter))
         case "isLowercase": return .boolean(character.isLowercase)
         case "isUppercase": return .boolean(character.isUppercase)
         case "asLowercase", "asUppercase":
@@ -460,14 +479,15 @@ extension SmalltalkRuntime {
         case "instanceVariableNamesText": return .string(stClass.fields.isEmpty ? "None" : stClass.fields.joined(separator: " · "))
         case "subclass:instanceVariableNames:", "subclass:instanceVariableNames:classInstanceVariableNames:",
              "subclass:instanceVariableNames:classVariableNames:poolDictionaries:category:":
-            if args.count == 5 {
-                guard try string(args[2]).isEmpty && string(args[3]).isEmpty else { throw SmalltalkError("Class variables and pool dictionaries are not implemented.") }
-                _ = try string(args[4])
-            }
-            let classFields = try args.count == 3 ? string(args[2]).split(whereSeparator: \.isWhitespace).map(String.init) : []
-            return .classObject(try subclass(of: stClass, name: symbol(args[0]), fields: string(args[1]), classFields: classFields))
+            let classFields = try args.count == 3 ? SmalltalkInterchange.names(in: string(args[2])) : []
+            let classVariables = try args.count == 5 ? SmalltalkInterchange.names(in: string(args[2])) : []
+            let pools = try args.count == 5 ? SmalltalkInterchange.names(in: string(args[3])) : []
+            if args.count == 5 { _ = try string(args[4]) }
+            return .classObject(try subclass(of: stClass, name: symbol(args[0]), fields: string(args[1]), classFields: classFields,
+                                             classVariables: classVariables, pools: pools))
         case "new:":
-            guard stClass.name == "Array" || stClass.name == "String" else { throw SmalltalkError("Only Array and String support new:.") }
+            if stClass.indexedStorage != nil { return try indexedPrimitive(.classObject(stClass), "basicNew:", args) }
+            guard stClass.name == "Array" || stClass.name == "String" else { throw SmalltalkError("This class does not support new:.") }
             let count = try integer(args[0])
             guard (0...Int64(arrayLimit)).contains(count) else { throw SmalltalkError("Array size must be between 0 and \(arrayLimit).") }
             if stClass.name == "String" { return try newString(String(repeating: " ", count: Int(count))) }
@@ -481,21 +501,23 @@ extension SmalltalkRuntime {
             }
             let object = try object(stClass)
             let instance = Value.object(object)
-            _ = try send(instance, "initialize", [])
+            if lookupMethod("initialize", on: instance) != nil || stClass.inherits(from: classes["Object"]!) {
+                return try withRoots([instance]) { _ in
+                    _ = try send(instance, "initialize", [])
+                    return instance
+                }
+            }
             return instance
         default: return nil
         }
     }
 
     func integerPrimitive(_ n: Int64, _ selector: String, _ args: [Value]) throws -> Value? {
-        if let operand = args.first, Self.exactBinarySelectors.contains(selector) || selector == "to:do:" || selector == "to:by:do:" {
+        if let operand = args.first, Self.exactBinarySelectors.contains(selector) {
             switch operand {
             case .largeInteger, .fraction, .scaledDecimal, .float:
                 return try largeIntegerPrimitive(BigInteger(n), selector, args)
             default: break
-            }
-            if selector == "to:by:do:", case .largeInteger = args[1] {
-                return try largeIntegerPrimitive(BigInteger(n), selector, args)
             }
         }
         switch selector {
@@ -545,9 +567,12 @@ extension SmalltalkRuntime {
             if n > 0 { for _ in 0..<n { _ = try invokeBlock(args[0]) } }
             return .integer(n)
         case "to:do:", "to:by:do:":
-            let end = try integer(args[0])
-            let step: Int64 = selector == "to:do:" ? 1 : try integer(args[1])
-            let block = args[selector == "to:do:" ? 1 : 2]
+            let hasStep = selector == "to:by:do:"
+            let increment = hasStep ? args[1] : .integer(1)
+            guard case .integer(let end) = args[0], case .integer(let step) = increment else {
+                return try largeIntegerPrimitive(BigInteger(n), selector, args)
+            }
+            let block = args[hasStep ? 2 : 1]
             guard step != 0 else { throw SmalltalkError("The step size must be nonzero.") }
             var current = n
             while step > 0 ? current <= end : current >= end {

@@ -20,6 +20,7 @@ ApplicationMenu compileClass: 'fileMenu
             add: (self command: #acceptMethod title: ''Accept'' shortcut: ''⌘S'');
             add: UIDivider new; yourself);
         add: (self command: #openImage title: ''Open Image …'' shortcut: ''⇧⌘O'');
+        add: (self command: #importInterchange title: ''Import ANSI Smalltalk …'' shortcut: nil);
         add: ((self command: #saveImage title: ''Save Image …'' shortcut: ''⇧⌘S'') role: #unnamedImage; yourself);
         add: ((self command: #saveImage title: ''Save Image'' shortcut: ''⇧⌘S'') role: #namedImage; yourself);
         add: (self command: #saveImageAs title: ''Save Image As …'' shortcut: ''⇧⌥⌘S'');

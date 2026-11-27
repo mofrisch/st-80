@@ -16,6 +16,26 @@ public actor SmalltalkSession {
         await worker.submit { $0.run(source) }
     }
 
+    /// Reads an ANSI Smalltalk Interchange Format 1.0 file into this session.
+    public func importInterchange(from url: URL) async throws -> EvaluationResult {
+        try await importInterchange(from: [url])
+    }
+
+    /// Loads the files of one program and runs their initializers in the order given.
+    public func importInterchange(from urls: [URL]) async throws -> EvaluationResult {
+        guard !urls.isEmpty else { throw SmalltalkInterchange.invalid("Select at least one interchange file.") }
+        var remainingBytes = SmalltalkInterchange.maximumBytes
+        let sources = try urls.map { url in
+            let data = try SourceJournal.readBounded(url, maximum: remainingBytes)
+            remainingBytes -= data.count
+            guard let source = String(data: data, encoding: .utf8) else {
+                throw SmalltalkInterchange.invalid("\(url.lastPathComponent) must be UTF-8.")
+            }
+            return source
+        }
+        return await worker.submit { $0.runInterchange(sources) }
+    }
+
     public func inspectSource(_ source: String) async -> EvaluationResult {
         await worker.submit { $0.run(source, inspectingResult: true) }
     }

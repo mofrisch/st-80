@@ -42,6 +42,26 @@ extension AppController {
         }
     }
 
+    func chooseInterchangeFile() async {
+        await runOperation {
+            let panel = NSOpenPanel()
+            panel.title = "Import ANSI Smalltalk"
+            panel.canChooseDirectories = false
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            guard await flushWindowStateRequiringSuccess() else { return }
+            do {
+                let result = try await importInterchange(from: url)
+                if let error = result.error {
+                    presentErrorWithoutActiveWindow(error, title: "Could not import ANSI Smalltalk")
+                }
+            } catch {
+                let reason = error.localizedDescription
+                self.error = reason
+                presentErrorWithoutActiveWindow(reason, title: "Could not import ANSI Smalltalk")
+            }
+        }
+    }
+
     enum ImageSaveResult {
         case saved, cancelled, failed(String)
     }

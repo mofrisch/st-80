@@ -57,8 +57,8 @@ final class STClass {
         get { metaclass.methods }
         set { metaclass.methods = newValue }
     }
-    var classState: [String: Value] = [:]
-    var classVariables: [String: Value]
+    var classState: IdentifierMap<Value> = [:]
+    var classVariables: IdentifierMap<Value>
     let sharedPools: [String]
     let ownIndexedStorage: IndexedStorage?
     let usesANSIAllocation: Bool
@@ -71,7 +71,7 @@ final class STClass {
         self.name = name
         directSuperclass = superclass
         ownFields = fields
-        self.classVariables = Dictionary(uniqueKeysWithValues: classVariables.map { ($0, .nilValue) })
+        self.classVariables = IdentifierMap(uniqueKeysWithValues: classVariables.map { ($0, .nilValue) })
         self.sharedPools = sharedPools
         ownIndexedStorage = indexedStorage
         self.usesANSIAllocation = usesANSIAllocation
@@ -125,13 +125,13 @@ final class STObject {
     // Native handles are stable while live and regenerated on image load.
     let nativeID = UUID().uuidString
     let stClass: STClass
-    var fields: [String: Value]
+    var fields: IdentifierMap<Value>
     var indexedFields: [Value]
     var fileStream: FileStreamHandle?
 
     init(_ stClass: STClass, indexedCount: Int = 0) {
         self.stClass = stClass
-        fields = Dictionary(uniqueKeysWithValues: stClass.fields.map { ($0, .nilValue) })
+        fields = IdentifierMap(uniqueKeysWithValues: stClass.fields.map { ($0, .nilValue) })
         indexedFields = Array(repeating: stClass.indexedStorage == .byte ? .integer(0) : .nilValue,
                               count: indexedCount)
     }
@@ -143,7 +143,7 @@ final class STArray {
 }
 
 final class Environment {
-    var values: [String: Value] = [:]
+    var values: IdentifierMap<Value> = [:]
     var parent: Environment?
     init(parent: Environment? = nil) { self.parent = parent }
 

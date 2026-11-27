@@ -100,7 +100,7 @@ struct BytecodeBody: Codable, Sendable {
         }
         remainingInstructions -= instructions.count
         guard CodeValidator.validNames(parameters), CodeValidator.validNames(temporaries),
-              Set(parameters).isDisjoint(with: temporaries) else {
+              IdentifierKey.set(parameters).isDisjoint(with: IdentifierKey.set(temporaries)) else {
             throw SmalltalkError("Invalid bytecode variable declarations.")
         }
         var stack: [OperandKind] = []
@@ -180,14 +180,15 @@ struct BytecodeBody: Codable, Sendable {
 
     /// Inspect executable code when live class editing removes a slot. Block
     /// parameters and local declarations shadow fields just as in source code.
-    func reference(to removed: Set<String>, excluding outerNames: Set<String>) -> String? {
-        let locals = outerNames.union(temporaries)
+    func reference(to removed: Set<IdentifierKey>, excluding outerNames: Set<IdentifierKey>) -> String? {
+        let locals = outerNames.union(IdentifierKey.set(temporaries))
         for instruction in instructions {
             switch instruction.operation {
             case .load(let name), .store(let name):
-                if removed.contains(name), !locals.contains(name) { return name }
+                let key = IdentifierKey(name)
+                if removed.contains(key), !locals.contains(key) { return name }
             case .makeBlock(let parameters, let body):
-                if let reference = body.reference(to: removed, excluding: locals.union(parameters)) { return reference }
+                if let reference = body.reference(to: removed, excluding: locals.union(IdentifierKey.set(parameters))) { return reference }
             default:
                 break
             }

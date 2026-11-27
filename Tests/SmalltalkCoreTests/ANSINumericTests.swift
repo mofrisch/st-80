@@ -2,6 +2,42 @@ import SmalltalkCore
 import Testing
 
 struct ANSINumericTests {
+    @Test(arguments: ["quo:", "rem:"])
+    func divisionReturnsTheZeroDivideResumptionValue(selector: String) async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | calls answer dividend |
+            calls := 0.
+            answer := [ 7 \(selector) 0 ] on: ZeroDivide do: [ :exception |
+                calls := calls + 1.
+                dividend := exception dividend.
+                exception resume: -7 ].
+            Array with: answer with: calls with: dividend
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(-7 1 7)")
+        let object = await session.evaluate("""
+            [ 7 \(selector) -0.0 ] on: ZeroDivide do: [ :exception | exception resume: #replacement ]
+            """)
+        #expect(object.value == "#replacement")
+    }
+
+    @Test(arguments: ["/", "//", "\\\\", "quo:", "rem:"])
+    func divisionSignalsZeroDivideAfterFloatConversion(selector: String) async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | divisor dividend answer |
+            divisor := 1 / (10 raisedToInteger: 324).
+            dividend := Float fminDenormalized.
+            answer := [ dividend \(selector) divisor ] on: ZeroDivide do: [ :exception |
+                exception dividend == dividend ifFalse: [ self error: 'Wrong dividend' ].
+                exception resume: #replacement ].
+            Array with: (divisor ~= 0 and: [ divisor asFloat = 0.0 ]) with: answer
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(true #replacement)")
+    }
+
     @Test func exactSquareRootsRoundTheResultWithinBinary64Range() async {
         let session = SmalltalkSession()
         let result = await session.evaluate("""

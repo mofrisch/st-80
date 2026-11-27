@@ -67,16 +67,19 @@ extension SmalltalkRuntime {
         case "+": return try finiteFloat(number + floatingNumber(arguments[0]))
         case "-": return try finiteFloat(number - floatingNumber(arguments[0]))
         case "*": return try finiteFloat(number * floatingNumber(arguments[0]))
-        case "/", "//", "\\\\", "_floatRem:":
+        case "/", "//", "\\\\", "_floatQuo:", "_floatRem:":
             let divisor = try floatingNumber(arguments[0])
-            guard divisor != 0 else { throw SmalltalkError("Division by zero.") }
+            guard divisor != 0 else { return try signalZeroDivide(dividend: .float(number)) }
             if selector == "/" { return try finiteFloat(number / divisor) }
-            if selector == "//" {
+            if selector == "//" || selector == "_floatQuo:" {
                 let dividend = Self.dyadicComponents(number)
                 let denominator = Self.dyadicComponents(divisor)
                 let shift = dividend.exponent - denominator.exponent
                 let top = dividend.coefficient.shiftedLeft(max(0, shift))
                 let bottom = denominator.coefficient.shiftedLeft(max(0, -shift))
+                if selector == "_floatQuo:" {
+                    return integerValue(try top.divided(by: bottom, charge: chargeNumericWork).quotient)
+                }
                 return integerValue(try floorDivision(top, by: bottom).quotient)
             }
             let remainder = number.truncatingRemainder(dividingBy: divisor)

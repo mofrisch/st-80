@@ -21,27 +21,29 @@ enum ImageFiles {
         // Capture its class definitions before attaching the method sources.
         let definitions = Dictionary(uniqueKeysWithValues: library.definitions.map { ($0.name, $0) })
         func depth(_ cls: STClass) -> Int { var n = 0; var c = cls.superclass; while let parent = c { n += 1; c = parent.superclass }; return n }
-        for cls in runtime.classes.values.sorted(by: { depth($0) == depth($1) ? $0.name < $1.name : depth($0) < depth($1) }) where !SmalltalkRuntime.builtinNames.contains(cls.name) {
+        for cls in runtime.classes.values.sorted(by: { depth($0) == depth($1) ? IdentifierKey.precedes($0.name, $1.name) : depth($0) < depth($1) }) where !SmalltalkRuntime.builtinNames.contains(cls.name) {
             let base = definitions[cls.name]
             let classFields = cls.metaclass.ownFields
             if base?.superclass == cls.superclass?.name && base?.fields == cls.ownFields && (base?.classFields ?? []) == classFields { continue }
             if !candidate.records.contains(where: {
-                $0.kind == .classDefinition && $0.className == cls.name && $0.superclass == cls.superclass?.name
-                    && $0.fields == cls.ownFields && ($0.classFields ?? []) == classFields
+                $0.kind == .classDefinition && IdentifierKey($0.className) == IdentifierKey(cls.name)
+                    && $0.superclass.map(IdentifierKey.init) == cls.superclass.map { IdentifierKey($0.name) }
+                    && $0.fields?.map(IdentifierKey.init) == cls.ownFields.map(IdentifierKey.init)
+                    && ($0.classFields ?? []).map(IdentifierKey.init) == classFields.map(IdentifierKey.init)
             }) {
                 try candidate.append(kind: .classDefinition, className: cls.name, superclass: cls.superclass?.name,
                                      fields: cls.ownFields, classFields: classFields, source: runtime.definitionSource(for: cls))
             }
         }
         var methods: [ImageFileArchive.CodeRecord] = []
-        for cls in runtime.classes.values.sorted(by: { $0.name < $1.name }) {
+        for cls in runtime.classes.values.sorted(by: { IdentifierKey.precedes($0.name, $1.name) }) {
             for side in MethodSide.allCases {
                 for method in cls[side].values.sorted(by: { $0.selector.utf8.lexicographicallyPrecedes($1.selector.utf8) }) {
                     var changeID: String?
                     if library.sources[side][cls.name]?[method.selector]?.utf8.elementsEqual(method.source.utf8) != true {
                         let selector = SelectorKey(method.selector)
                         if let existing = candidate.records.last(where: {
-                            $0.kind == .method && $0.className == cls.name && $0.side == side
+                            $0.kind == .method && IdentifierKey($0.className) == IdentifierKey(cls.name) && $0.side == side
                                 && $0.selector.map(SelectorKey.init) == selector && $0.source.utf8.elementsEqual(method.source.utf8)
                         }) { changeID = existing.id }
                         else { changeID = try candidate.append(kind: .method, className: cls.name, selector: method.selector, side: side, source: method.source).id }
@@ -148,8 +150,8 @@ enum ImageFiles {
         var memory = archive.memory
         guard memory.format == "st80-image", memory.version == archive.version, memory.executableMethods == nil,
               memory.executableClassMethods == nil else { throw SmalltalkError("The image contains invalid object memory.") }
-        var code: [MethodSide: [String: SelectorMap<MethodCode>]] = [:]
-        let records = Dictionary(memory.classes.enumerated().map { ($0.element.name, $0.offset) }, uniquingKeysWith: { first, _ in first })
+        var code: [MethodSide: IdentifierMap<SelectorMap<MethodCode>>] = [:]
+        let records = IdentifierMap(uniqueKeysWithValues: memory.classes.enumerated().map { ($0.element.name, $0.offset) })
         guard records.count == memory.classes.count, memory.classes.allSatisfy({ $0.methods.isEmpty && $0[.classSide].isEmpty }) else { throw SmalltalkError("The image file contains duplicate classes or embedded sources.") }
         for record in archive.methods {
             let side = record.side
@@ -157,7 +159,7 @@ enum ImageFiles {
             let source: String
             if let changeID = record.changeID {
                 guard let change = changes[changeID], change.kind == .method, change.sequence <= archive.checkpoint,
-                      change.className == record.className, change.side == side,
+                      IdentifierKey(change.className) == IdentifierKey(record.className), change.side == side,
                       change.selector.map(SelectorKey.init) == SelectorKey(record.code.selector) else {
                     throw SmalltalkError("The method source is missing from the changes log.")
                 }

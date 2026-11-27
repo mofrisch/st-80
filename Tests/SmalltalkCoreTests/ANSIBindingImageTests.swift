@@ -4,6 +4,75 @@ import Testing
 
 struct ANSIBindingImageTests {
     @Test(arguments: [false, true])
+    func unicodeVariableBindingsSurviveImageLoad(native: Bool) async throws {
+        let session = SmalltalkSession()
+        let composed = "\u{00E9}"
+        let decomposed = "e\u{0301}"
+        let firstClass = "UnicodeBindings\(composed)"
+        let secondClass = "UnicodeBindings\(decomposed)"
+        let setup = await session.evaluate("""
+            Smalltalk interchangeVersion: '1.0'!
+            Global variable: 'global\(composed)'!
+            Global variable: 'global\(decomposed)'!
+            Global variable: 'unicodeBindingsObject'!
+            Global variable: 'unicodeBindingsClosure'!
+            Pool named: 'UnicodeBindingsPool'!
+            UnicodeBindingsPool variable: 'pool\(composed)'!
+            UnicodeBindingsPool variable: 'pool\(decomposed)'!
+            Class named: '\(firstClass)' superclass: 'Object' indexedInstanceVariables: #'none'
+                instanceVariableNames: 'slot\(composed) slot\(decomposed)'
+                classVariableNames: 'shared\(composed) shared\(decomposed)'
+                sharedPools: 'UnicodeBindingsPool'
+                classInstanceVariableNames: 'state\(composed) state\(decomposed)'!
+            Class named: '\(secondClass)' superclass: 'Object' indexedInstanceVariables: #'none'
+                instanceVariableNames: '' classVariableNames: '' sharedPools: '' classInstanceVariableNames: ''!
+            \(firstClass) method! marker ^ 7!
+            \(secondClass) method! marker ^ 7!
+            \(firstClass) method! example: \(composed) with: \(decomposed)
+                slot\(composed) := \(composed). slot\(decomposed) := \(decomposed)!
+            \(firstClass) method! slots ^ Array with: slot\(composed) with: slot\(decomposed)!
+            \(firstClass) classMethod! names
+                ^ Array with: (Array with: state\(composed) with: state\(decomposed))
+                    with: (Array with: shared\(composed) with: shared\(decomposed))
+                    with: (Array with: pool\(composed) with: pool\(decomposed))!
+            \(firstClass) initializer!
+                state\(composed) := 31. state\(decomposed) := 32.
+                shared\(composed) := 41. shared\(decomposed) := 42!
+            UnicodeBindingsPool initializerFor: 'pool\(composed)'! 51!
+            UnicodeBindingsPool initializerFor: 'pool\(decomposed)'! 52!
+            global\(composed) initializer! 61!
+            global\(decomposed) initializer! 62!
+            Global initializer!
+                | \(composed) \(decomposed) |
+                \(composed) := 11. \(decomposed) := 12.
+                unicodeBindingsClosure := [ Array with: \(composed) with: \(decomposed) ].
+                unicodeBindingsObject := \(firstClass) new.
+                unicodeBindingsObject example: 21 with: 22!
+            """)
+        try #require(setup.error == nil, "\(setup.error ?? "")")
+
+        let restored = SmalltalkSession()
+        if native {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("st80-unicode-\(UUID())")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let image = directory.appendingPathComponent("UnicodeBindings.stimage")
+            try await session.saveImage(to: image, workspace: "", transcript: "")
+            _ = try await restored.loadImage(from: image)
+        } else {
+            _ = try await restored.loadImage(session.imageData())
+        }
+        let result = await restored.evaluate("""
+            Array with: unicodeBindingsClosure value with: unicodeBindingsObject slots
+                with: \(firstClass) names with: (Array with: global\(composed) with: global\(decomposed))
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(#(11 12) #(21 22) #(#(31 32) #(41 42) #(51 52)) #(61 62))")
+        #expect(await restored.evaluate("\(firstClass) == \(secondClass)").value == "false")
+        #expect(await restored.evaluate("\(secondClass) new marker").value == "7")
+    }
+
+    @Test(arguments: [false, true])
     func savedImagesUpgradeShippedIntervalCopyAndKeepCustomOverrides(custom: Bool) async throws {
         let session = SmalltalkSession()
         let data = try await session.worker.submitThrowing { runtime in
@@ -28,6 +97,33 @@ struct ANSIBindingImageTests {
         let result = await restored.evaluate("[ (1 to: 3) copyFrom: 4 to: 1 ] on: Error do: [ :error | #invalidIndex ]")
         #expect(result.value == (custom ? "#(77)" : "#invalidIndex"))
         #expect(await restored.evaluate("(ReadStream on: (1 to: 0)) contents").value == "#()")
+    }
+
+    @Test func savedImagesUpgradeShippedDivisionAndSortingMethods() async throws {
+        let original = SmalltalkSession()
+        let data = try await original.worker.submitThrowing { runtime in
+            let number = try #require(runtime.classes["Number"])
+            let sorted = try #require(runtime.classes["SortedCollection"])
+            let zeroDivide = try #require(runtime.classes["ZeroDivide"])
+            try runtime.compile(#"""
+                quo: divisor
+                    | quotient |
+                    quotient := self // divisor.
+                    (quotient < 0 and: [ (self \\ divisor) ~= 0 ]) ifTrue: [ ^ quotient + 1 ].
+                    ^ quotient
+                """#, in: number)
+            let sorter = try #require(sorted.methods["_sorted:by:"]).source
+            try runtime.compile(sorter.replacingOccurrences(of:
+                "    count = 1 ifTrue: [ self _validateSortElement: (source at: 1) by: comparator ].\n", with: ""), in: sorted)
+            sorted.methods.removeValue(forKey: "_validateSortElement:by:")
+            try runtime.compile("description ^ 'A custom description'", in: zeroDivide)
+            return try ImageCodec.encode(runtime, workspace: "", transcript: "")
+        }
+        let restored = SmalltalkSession()
+        _ = try await restored.loadImage(data)
+        #expect(await restored.evaluate("[ 7 quo: 0 ] on: ZeroDivide do: [ :ex | ex resume: -7 ]").value == "-7")
+        #expect(await restored.evaluate("[ SortedCollection with: Object new ] on: Error do: [ :ex | #rejected ]").value == "#rejected")
+        #expect(await restored.evaluate("ZeroDivide new description").value == "'A custom description'")
     }
 
     @Test func legacyImagesUpgradeShippedBehaviorAndRetainCustomMethods() async throws {

@@ -120,6 +120,24 @@ struct ANSICollectionBehaviorTests {
         #expect(result.value == "#(#(1 2) #(2 1) #(#(3 1 2) #(2 3)) #(1))")
     }
 
+    @Test(arguments: [
+        "SortedCollection with: Object new",
+        "SortedCollection withAll: (Array with: Object new)",
+        "(Array with: Object new) asSortedCollection",
+        "#(1) asSortedCollection: [ :left :right | 42 ]",
+        "SortedCollection new add: Object new",
+        "(SortedCollection with: 1) copyReplaceAll: #(2) with: (Array with: Object new)",
+        "(SortedCollection with: 1) copyReplacing: 1 withObject: Object new",
+    ])
+    func sortedCollectionValidatesSingletons(expression: String) async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("[ \(expression). #accepted ] on: Error do: [ :exception | #rejected ]")
+        #expect(result.error == nil)
+        #expect(result.value == "#rejected")
+        #expect(await session.evaluate("(SortedCollection with: 3) asArray").value == "#(3)")
+        #expect(await session.evaluate("SortedCollection new asArray").value == "#()")
+    }
+
     @Test func sortedReplacementValidatesAnUnusedElementWithTheSortBlock() async {
         let session = SmalltalkSession()
         let result = await session.evaluate("""
@@ -533,6 +551,8 @@ struct ANSICollectionBehaviorTests {
         let invalid = await session.evaluate("(SortedCollection with: 1) copyReplaceAll: #(2) with: #(1 #bad)")
         #expect(invalid.error != nil)
         let valid = await session.evaluate("((SortedCollection with: 1) copyReplaceAll: #(1) with: #(3 2)) asArray")
+        let differentType = await session.evaluate("((SortedCollection with: 1) copyReplaceAll: #(1) with: #('text')) asArray")
+        #expect(differentType.value == "#('text')")
         #expect(valid.error == nil)
         #expect(valid.value == "#(2 3)")
     }

@@ -3,6 +3,29 @@ import Testing
 @testable import SmalltalkCore
 
 struct CompilerTests {
+    @Test func unicodeNamesKeepDistinctLocalAndArgumentBindings() async {
+        let session = SmalltalkSession()
+        let composed = "\u{00E9}"
+        let decomposed = "e\u{0301}"
+        let sameScope = await session.evaluate("""
+            | \(composed) \(decomposed) |
+            \(composed) := 11. \(decomposed) := 22.
+            Array with: \(composed) with: \(decomposed)
+            """)
+        #expect(sameScope.error == nil)
+        #expect(sameScope.value == "#(11 22)")
+        let nested = await session.evaluate("""
+            [ :\(composed) | [ :\(decomposed) | Array with: \(composed) with: \(decomposed) ] value: 22 ] value: 11
+            """)
+        #expect(nested.value == "#(11 22)")
+        let parameterAndTemporary = await session.evaluate("""
+            [ :\(composed) | | \(decomposed) | \(decomposed) := 22. Array with: \(composed) with: \(decomposed) ] value: 11
+            """)
+        #expect(parameterAndTemporary.error == nil, "\(parameterAndTemporary.error ?? "")")
+        #expect(parameterAndTemporary.value == "#(11 22)")
+        #expect(await session.evaluate("| \(composed) \(composed) | 0").error != nil)
+    }
+
     @Test func cascadeBranchesEvaluateMessageChainsAndResetTheReceiver() async throws {
         let session = SmalltalkSession()
         let method = """

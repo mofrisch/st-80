@@ -72,10 +72,10 @@ final class SmalltalkRuntime {
     let windowEpoch = UUID().uuidString
     var windowCommandRevision: Int64 = 0
     var acknowledgedWindowEvent: Int64 = 0
-    var classes: [String: STClass] = [:]
-    var globals: [String: Value] = [:]
-    var declaredGlobals: [String: DeclaredBinding] = [:]
-    var sharedPools: [String: [String: PoolBinding]] = [:]
+    var classes: IdentifierMap<STClass> = [:]
+    var globals: IdentifierMap<Value> = [:]
+    var declaredGlobals: IdentifierMap<DeclaredBinding> = [:]
+    var sharedPools: IdentifierMap<IdentifierMap<PoolBinding>> = [:]
     var transcript = ""
     var steps = 0
     private var stepLimit: Int
@@ -355,14 +355,14 @@ final class SmalltalkRuntime {
 
     private func instanceFieldReceiver(_ name: String, context: Context) -> STObject? {
         guard case .object(let object) = context.receiver, object.fields[name] != nil,
-              let home = context.homeClass, object.stClass === home || home.fields.contains(name) else { return nil }
+              let home = context.homeClass, object.stClass === home || home.fields.contains(where: IdentifierKey(name).matches) else { return nil }
         return object
     }
 
     private func classFieldReceiver(_ name: String, context: Context) -> STClass? {
         guard context.methodSide == .classSide, case .classObject(let receiver) = context.receiver,
               receiver.classState[name] != nil, let home = context.homeClass,
-              home.metaclass.fields.contains(name) else { return nil }
+              home.metaclass.fields.contains(where: IdentifierKey(name).matches) else { return nil }
         return receiver
     }
 

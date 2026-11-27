@@ -6,14 +6,14 @@ struct ImageArchive: Codable {
     var format = "st80-image"
     var version = ImageCodec.version
     var classes: [ImageClass]
-    var globals: [String: ImageValue]
+    var globals: IdentifierMap<ImageValue>
     var nodes: [ImageNode]
     var workspace: String
     var transcript: String
-    var executableMethods: [String: SelectorMap<MethodCode>]?
-    var executableClassMethods: [String: SelectorMap<MethodCode>]?
-    var declaredGlobals: [String: DeclaredBinding]? = nil
-    var sharedPools: [String: [String: ImagePoolBinding]]? = nil
+    var executableMethods: IdentifierMap<SelectorMap<MethodCode>>?
+    var executableClassMethods: IdentifierMap<SelectorMap<MethodCode>>?
+    var declaredGlobals: IdentifierMap<DeclaredBinding>? = nil
+    var sharedPools: IdentifierMap<IdentifierMap<ImagePoolBinding>>? = nil
 }
 
 struct ImageClass: Codable {
@@ -23,8 +23,8 @@ struct ImageClass: Codable {
     var methods: SelectorMap<String>
     var classMethods: SelectorMap<String>?
     var classFields: [String]? = nil
-    var classState: [String: ImageValue]? = nil
-    var classVariables: [String: ImageValue]? = nil
+    var classState: IdentifierMap<ImageValue>? = nil
+    var classVariables: IdentifierMap<ImageValue>? = nil
     var sharedPools: [String]? = nil
     var indexedStorage: IndexedStorage? = nil
     var usesANSIAllocation: Bool? = nil
@@ -54,7 +54,7 @@ enum ImageNode: Codable {
 
 struct ImageObject: Codable {
     var className: String
-    var fields: [String: ImageValue]
+    var fields: IdentifierMap<ImageValue>
     var indexedFields: [ImageValue]? = nil
 }
 
@@ -65,7 +65,7 @@ struct ImagePoolBinding: Codable {
 
 struct ImageEnvironment: Codable {
     var parent: Int?
-    var values: [String: ImageValue]
+    var values: IdentifierMap<ImageValue>
 }
 
 struct ImageBlock: Codable {

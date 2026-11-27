@@ -102,7 +102,7 @@ ZeroDivide compile: 'dividend
     ^ dividend'.
 
 ZeroDivide compile: 'description
-    ^ ''Division by zero.'''.
+    ^ self messageText ifNil: [ ''Division by zero.'' ]'.
 
 ZeroDivide compile: 'isResumable
     ^ true'.

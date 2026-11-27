@@ -12,11 +12,13 @@ final class SmalltalkExceptionHandler {
     let selector: Value
     let action: Value
     let enclosing: SmalltalkExceptionHandler?
+    let enclosingAction: SmalltalkExceptionAction?
 
-    init(selector: Value, action: Value, enclosing: SmalltalkExceptionHandler?) {
+    init(selector: Value, action: Value, enclosing: SmalltalkExceptionHandler?, enclosingAction: SmalltalkExceptionAction?) {
         self.selector = selector
         self.action = action
         self.enclosing = enclosing
+        self.enclosingAction = enclosingAction
     }
 }
 
@@ -45,11 +47,13 @@ struct ExceptionTransfer: Error {
     let target: ObjectIdentifier
     // Like ReturnSignal this value stays on the interpreter thread.
     nonisolated(unsafe) let value: Value?
+    nonisolated(unsafe) let exitingHandler: SmalltalkExceptionHandler?
 
     init(_ kind: Kind, to target: AnyObject, value: Value? = nil) {
         self.kind = kind
         self.target = ObjectIdentifier(target)
         self.value = value
+        self.exitingHandler = target as? SmalltalkExceptionHandler
     }
 }
 
@@ -64,7 +68,13 @@ extension SmalltalkRuntime {
         let result: Value
         do { result = try invokeBlock(block) }
         catch {
-            let returning = (error as? ReturnSignal)?.value ?? (error as? ExceptionTransfer)?.value
+            let transfer = error as? ExceptionTransfer
+            if let handler = transfer?.exitingHandler {
+                // Cleanup can signal before the on:do: frame catches the transfer.
+                exceptionHandler = handler.enclosing
+                exceptionAction = handler.enclosingAction
+            }
+            let returning = (error as? ReturnSignal)?.value ?? transfer?.value
             try withRoots(returning.map { [$0] } ?? []) { _ in _ = try invokeBlock(cleanup) }
             throw error
         }
@@ -99,13 +109,15 @@ extension SmalltalkRuntime {
             throw SmalltalkError("An exception handler must be a one-argument block.")
         }
         let previous = exceptionHandler
-        let handler = SmalltalkExceptionHandler(selector: selector, action: action, enclosing: previous)
-        exceptionHandler = handler
-        defer { exceptionHandler = previous }
+        let previousAction = exceptionAction
+        let handler = SmalltalkExceptionHandler(selector: selector, action: action, enclosing: previous, enclosingAction: previousAction)
+        defer { exceptionHandler = previous; exceptionAction = previousAction }
         let rootCount = evaluationRoots.count
         evaluationRoots.append(block)
         defer { evaluationRoots.removeSubrange(rootCount...) }
         while true {
+            exceptionHandler = handler
+            exceptionAction = previousAction
             do { return try invokeBlock(evaluationRoots[rootCount]) }
             catch let transfer as ExceptionTransfer where transfer.target == ObjectIdentifier(handler) {
                 if transfer.kind == .returned { return transfer.value ?? .nilValue }

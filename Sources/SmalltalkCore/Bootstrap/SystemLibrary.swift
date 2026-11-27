@@ -106,7 +106,7 @@ struct SystemLibrary: Sendable {
             guard Set(seed[side].keys) == Set(sources[side].keys) else { throw SmalltalkError("The boot image contains a different method table.") }
             for (name, code) in seed[side] {
                 guard let stClass = runtime.classes[name], let methodSources = sources[side][name],
-                      code.selectorKeys == methodSources.selectorKeys else {
+                      code.identifierKeys == methodSources.identifierKeys else {
                     throw SmalltalkError("Method table for \(side.displayName(for: name)) is incomplete in the boot image.")
                 }
                 for (selector, executable) in code {
@@ -205,6 +205,9 @@ struct SystemLibrary: Sendable {
             ("Transcript", .instance, "nextPutAll:", "0eaed9f2c0e56e6f86b9aaabd2bbb0dc325e7a33ba0d9b7751acfc9d4d04fd29"),
             ("TestRunner", .classSide, "testSelectorsFor:", "2093debff5e3ffedfe588bc9688be5b118f3119a3f9eb8baab44ed8ee572fd28"),
             ("Number", .instance, "rem:", "7a356c2f5573e14e1557e2e1e6fd5ec253fbdaccf10e79386d5bbc3ed1942a97"),
+            ("Number", .instance, "quo:", "0460eebfd66a76ac33044cd6eb45b74e080d013437bfef9ea395efe637cc8758"),
+            ("Number", .instance, "rem:", "d8adbff275e939480bc40380e64ebb7e6ec9d81af8b48108aebba6be6ff6340d"),
+            ("ZeroDivide", .instance, "description", "1123eaf8991d61d0f0dd0835652f253930b0aa28f8edb1fa3e6d9aedf5f12038"),
             ("Number", .instance, "roundTo:", "f245fe0e103a14c660d6e21c6f4b3222befca1092edb73f830a3e3aa68296711"),
             ("Number", .instance, "truncateTo:", "abc6135990bbd35aa81141d701a53a5e305248eb16649127c522f66cca214026"),
             ("Number", .instance, "raisedTo:", "67114c7c826e053b19d5ce1ccb6aba5b26f57c6f3e8f01bd044ae7b21b237cac"),
@@ -230,6 +233,9 @@ struct SystemLibrary: Sendable {
             ("SortedCollection", .instance, "addAll:", "dcffdbb8291a1e6d0d66955486460d796f134310655e72245868048595e7b0a4"),
             ("SortedCollection", .instance, "removeAll:", "3281f1b018b515339052ebd68f3ba5e2378b23090e62a7610c5995e26b40477a"),
             ("SortedCollection", .instance, "_sequenceFrom:", "2c5625838d99ad8e5ccdd88fc4a125c81427a2a9d851042cf0221a5e04172d4e"),
+            ("SortedCollection", .instance, "_sorted:by:", "f5e2cc574504d55f63e63ab41e9a4f2b4efb74a481c9924fca14a2009bcc6436"),
+            ("SortedCollection", .instance, "_insertionIndexOf:", "3664a3924c375d53133b493d114712d52a7b293f220fba6f2be7ee4db64ddf00"),
+            ("SortedCollection", .instance, "copyReplaceAll:with:", "cf4403706f7975f89178b3ba27126af2d345addd95591fed085998386e8a8890"),
             ("SortedCollection", .classSide, "withAll:", "a3a34b8b5a7162352af9182ae0508c1fe51420c3424bb8f77ba8527aa045069f"),
             ("CollectionStream", .instance, "_openOn:writing:", "47fdaf4c7e050a542807b95d8e268cdad2ff535a5b55f4f1c652d68965eed271"),
             ("DateAndTime", .instance, "_secondsOf:", "9678ec71d545274a4298e5b28c19650c51203888fba8697f07b7fd0d4d43d79a"),
@@ -257,7 +263,7 @@ struct SystemLibrary: Sendable {
             "DateAndTime": ["_secondsOf:ifAbsent:"],
             "Interval": ["_elementAt:"],
             "STCompiler": ["cascadeBranch"],
-            "SortedCollection": ["_insertionIndexOf:", "_sortElementsFrom:"],
+            "SortedCollection": ["_insertionIndexOf:", "_sortElementsFrom:", "_validateSortElement:by:"],
         ]
         for (name, side, selector, hash) in previous {
             guard let owner = runtime.classes[name], let old = owner[side][selector],
@@ -288,10 +294,10 @@ struct SystemLibrary: Sendable {
                   owner.methods.count < SmalltalkRuntime.methodsPerSideLimit,
                   let inherited = owner.superclass?.lookup(selector)?.0,
                   hashes.contains(Self.digest(Data(inherited.source.utf8))) else { continue }
-            if name == "SortedCollection", selector == "copyReplacing:withObject:",
-               owner.methods["_insertionIndexOf:"] == nil {
-                guard owner.methods.count + 2 <= SmalltalkRuntime.methodsPerSideLimit else { continue }
-                try installBundledMethod("_insertionIndexOf:", on: owner)
+            if name == "SortedCollection" {
+                let missing = ["_insertionIndexOf:", "_validateSortElement:by:"].filter { owner.methods[$0] == nil }
+                guard owner.methods.count + missing.count < SmalltalkRuntime.methodsPerSideLimit else { continue }
+                for helper in missing { try installBundledMethod(helper, on: owner) }
             }
             try installBundledMethod(selector, on: owner)
         }
@@ -338,6 +344,7 @@ struct SystemLibrary: Sendable {
                 "d8f36c420419a594dd037decee2beaf425730909ddb40c3bd1c72f26452ced42",
                 "b5b1bceefac15f4d9a37487ea74bf0dae8e758126ce5bb2bd46bb84fc726537a",
                 "e75bb31ac481edf61057381730ae3e143301db8234b00c176cf53129b05c6d5f",
+                "9f336f43cf736c3c1a801846376887f192631192f4aadd79164c7f1a2547655e",
             ]),
             (.instance, "shippedClassSideProtocols", [
                 "7b2f2950f5dc051c01fdcd0afcdde26c8505606a3c1f370ad2c6910c5eff398c",

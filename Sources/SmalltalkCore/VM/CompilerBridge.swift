@@ -186,7 +186,7 @@ enum CodeValidator {
     }
 
     static func validNames(_ names: [String]) -> Bool {
-        Set(names).count == names.count && names.allSatisfy {
+        IdentifierKey.set(names).count == names.count && names.allSatisfy {
             identifier($0) && !reservedIdentifiers.contains($0)
         }
     }
@@ -211,21 +211,23 @@ enum CodeValidator {
 
     static func check(_ method: Method) throws {
         try checkSelector(method.selector, arguments: method.parameters.count)
-        guard validNames(method.parameters), Set(method.parameters).isDisjoint(with: method.body.temporaries) else {
+        guard validNames(method.parameters),
+              IdentifierKey.set(method.parameters).isDisjoint(with: IdentifierKey.set(method.body.temporaries)) else {
             throw SmalltalkError("Invalid method arguments.")
         }
         try method.body.validate(parameters: method.parameters)
     }
 
-    static func check(_ body: Body, parameters: [String] = [], outerArguments: Set<String> = []) throws {
+    static func check(_ body: Body, parameters: [String] = [], outerArguments: Set<IdentifierKey> = []) throws {
         guard validNames(body.temporaries) else { throw SmalltalkError("Invalid local variables.") }
-        let arguments = outerArguments.subtracting(body.temporaries).union(parameters)
+        let arguments = outerArguments.subtracting(IdentifierKey.set(body.temporaries)).union(IdentifierKey.set(parameters))
         var pending = body.expressions.enumerated().map { ($0.element, $0.offset == body.expressions.count - 1) }
         while let (expression, allowsReturn) = pending.popLast() {
             guard expression.position.line > 0, expression.position.column > 0 else { throw SmalltalkError("Invalid source position.") }
             switch expression.kind {
             case .block(let parameters, let body):
-                guard validNames(parameters), validNames(body.temporaries), Set(parameters).isDisjoint(with: body.temporaries) else {
+                guard validNames(parameters), validNames(body.temporaries),
+                      IdentifierKey.set(parameters).isDisjoint(with: IdentifierKey.set(body.temporaries)) else {
                     throw SmalltalkError("Invalid block variables.")
                 }
                 try check(body, parameters: parameters, outerArguments: arguments)
@@ -233,7 +235,7 @@ enum CodeValidator {
                 guard identifier(name) else { throw SmalltalkError("Invalid variable.") }
             case .assignment(let name, let value):
                 guard identifier(name) else { throw SmalltalkError("Invalid assignment target.") }
-                guard !arguments.contains(name) else {
+                guard !arguments.contains(IdentifierKey(name)) else {
                     throw SmalltalkError("Argument \(name) cannot be reassigned.", at: expression.position)
                 }
                 pending.append((value, false))

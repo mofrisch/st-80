@@ -302,7 +302,7 @@ extension SmalltalkRuntime {
             try compile(record.source, in: stClass, side: record.side)
         case .classDefinition:
             if let definition = try SmalltalkInterchange.classDeclaration(in: compileWorkspace(record.source)) {
-                guard definition.name == record.className else {
+                guard IdentifierKey(definition.name) == IdentifierKey(record.className) else {
                     throw SmalltalkError("The class definition does not match its history entry.")
                 }
                 if let existing = classes[record.className] {

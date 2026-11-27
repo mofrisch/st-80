@@ -273,22 +273,22 @@ extension SmalltalkRuntime {
                 declarations = unresolved
             }
             var methods: [(STClass, MethodSide, Method)] = []
-            var selectors: [String: Set<SelectorKey>] = [:]
-            var initializers: Set<String> = []
-            var declaredClasses = Set(previousClasses.keys)
-            var globalsInOrder = Set(previousDeclaredGlobals.keys)
-            var poolVariablesInOrder = previousPools.mapValues { Set($0.keys) }
+            var selectors: IdentifierMap<Set<SelectorKey>> = [:]
+            var initializers: Set<IdentifierKey> = []
+            var declaredClasses = previousClasses.identifierKeys
+            var globalsInOrder = previousDeclaredGlobals.identifierKeys
+            var poolVariablesInOrder = previousPools.mapValues(\.identifierKeys)
             for entry in entries {
                 switch entry {
                 case .classDefinition(let declaration):
-                    declaredClasses.insert(declaration.name)
+                    declaredClasses.insert(IdentifierKey(declaration.name))
                 case .global(let name, _):
-                    globalsInOrder.insert(name)
+                    globalsInOrder.insert(IdentifierKey(name))
                 case .poolVariable(let pool, let name, _):
-                    poolVariablesInOrder[pool, default: []].insert(name)
+                    poolVariablesInOrder[pool, default: []].insert(IdentifierKey(name))
                 case .method(let owner, let side, let method):
                     guard let stClass = classes[owner] else { throw SmalltalkInterchange.invalid("Unknown method class \(owner).") }
-                    guard declaredClasses.contains(owner) else {
+                    guard declaredClasses.contains(IdentifierKey(owner)) else {
                         throw SmalltalkInterchange.invalid("The definition of \(owner) must precede its methods.")
                     }
                     let key = side.displayName(for: owner)
@@ -302,7 +302,7 @@ extension SmalltalkRuntime {
                         guard let binding = sharedPools[owner]?[variable] else {
                             throw SmalltalkInterchange.invalid("Unknown pool variable \(owner) » \(variable).")
                         }
-                        guard poolVariablesInOrder[owner]?.contains(variable) == true else {
+                        guard poolVariablesInOrder[owner]?.contains(IdentifierKey(variable)) == true else {
                             throw SmalltalkInterchange.invalid("The definition of \(owner) » \(variable) must precede its initializer.")
                         }
                         guard binding.kind != .initializedConstant else {
@@ -310,14 +310,14 @@ extension SmalltalkRuntime {
                         }
                     } else if owner != "Global", classes[owner] == nil, declaredGlobals[owner] == nil {
                         throw SmalltalkInterchange.invalid("Unknown initializer target \(owner).")
-                    } else if owner != "Global", !declaredClasses.contains(owner), !globalsInOrder.contains(owner) {
+                    } else if owner != "Global", !declaredClasses.contains(IdentifierKey(owner)), !globalsInOrder.contains(IdentifierKey(owner)) {
                         throw SmalltalkInterchange.invalid("The definition of \(owner) must precede its initializer.")
                     } else if declaredGlobals[owner] == .initializedConstant {
                         throw SmalltalkInterchange.invalid("The constant \(owner) is already initialized.")
                     }
                     if owner != "Global" || variable != nil {
                         let key = variable.map { "\(owner) \($0)" } ?? owner
-                        guard initializers.insert(key).inserted else {
+                        guard initializers.insert(IdentifierKey(key)).inserted else {
                             throw SmalltalkInterchange.invalid("Repeated initializer for \(key).")
                         }
                     }
@@ -328,11 +328,11 @@ extension SmalltalkRuntime {
                 }
             }
             for (stClass, side, method) in methods {
-                let installed = stClass[side].selectorKeys
+                let installed = stClass[side].identifierKeys
                 guard installed.union(selectors[side.displayName(for: stClass.name)]!).count <= Self.methodsPerSideLimit else {
                     throw SmalltalkInterchange.invalid("Too many methods in \(side.displayName(for: stClass.name)).")
                 }
-                try validateInterchangeBindings(method.body, in: stClass, side: side, locals: Set(method.parameters))
+                try validateInterchangeBindings(method.body, in: stClass, side: side, locals: IdentifierKey.set(method.parameters))
             }
             if shouldRecord { try journal.appendImportedRecords(changes) }
             for (stClass, side, method) in methods { stClass[side][method.selector] = method }
@@ -357,26 +357,26 @@ extension SmalltalkRuntime {
     }
 
     private func validateInterchangeBindings(_ body: BytecodeBody, in owner: STClass?, side: MethodSide,
-                                             pool: String? = nil, locals: Set<String> = [], initializer: Bool = false) throws {
-        let locals = locals.union(body.temporaries)
+                                             pool: String? = nil, locals: Set<IdentifierKey> = [], initializer: Bool = false) throws {
+        let locals = locals.union(IdentifierKey.set(body.temporaries))
         for instruction in body.instructions {
             switch instruction.operation {
             case .makeBlock(let arguments, let block):
                 try validateInterchangeBindings(block, in: owner, side: side, pool: pool,
-                                                locals: locals.union(arguments), initializer: initializer)
+                                                locals: locals.union(IdentifierKey.set(arguments)), initializer: initializer)
             case .prepareSend(isSuper: true) where initializer:
                 throw SmalltalkError("super is unavailable in an initializer.", at: instruction.position)
             case .load("self") where initializer && owner == nil:
                 throw SmalltalkError("self is only available in a class initializer.", at: instruction.position)
             case .load(let name), .store(let name):
-                if locals.contains(name) { continue }
+                if locals.contains(IdentifierKey(name)) { continue }
                 let writing: Bool
                 if case .store = instruction.operation { writing = true } else { writing = false }
                 if CodeValidator.reservedIdentifiers.contains(name) {
                     if writing { throw SmalltalkError("Cannot assign to \(name) in this scope.", at: instruction.position) }
                     continue
                 }
-                if owner.map({ (side == .instance ? $0.fields : $0.metaclass.fields).contains(name) }) == true { continue }
+                if owner.map({ (side == .instance ? $0.fields : $0.metaclass.fields).contains(where: IdentifierKey(name).matches) }) == true { continue }
                 var found = owner
                 while let scope = found, scope.classVariables[name] == nil { found = scope.superclass }
                 if found != nil { continue }

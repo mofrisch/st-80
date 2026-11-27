@@ -55,14 +55,14 @@ enum ImageCodec {
             }
         }
 
-        func bindings(_ bindings: [String: Value]) throws -> [String: ImageValue] {
-            var result: [String: ImageValue] = [:]
-            for name in bindings.keys.sorted() { result[name] = try value(bindings[name]!) }
+        func bindings(_ bindings: IdentifierMap<Value>) throws -> IdentifierMap<ImageValue> {
+            var result: IdentifierMap<ImageValue> = [:]
+            for name in bindings.keys.sorted(by: IdentifierKey.precedes) { result[name] = try value(bindings[name]!) }
             return result
         }
 
         let globals = try bindings(runtime.globals)
-        let classes = try runtime.classes.values.sorted { $0.name < $1.name }.map { stClass in
+        let classes = try runtime.classes.values.sorted { IdentifierKey.precedes($0.name, $1.name) }.map { stClass in
             let state = try bindings(stClass.classState)
             let classVariables = try bindings(stClass.classVariables)
             let classFields = stClass.metaclass.ownFields
@@ -75,11 +75,11 @@ enum ImageCodec {
                               indexedStorage: stClass.ownIndexedStorage,
                               usesANSIAllocation: stClass.usesANSIAllocation ? true : nil)
         }
-        var sharedPools: [String: [String: ImagePoolBinding]] = [:]
-        for poolName in runtime.sharedPools.keys.sorted() {
+        var sharedPools: IdentifierMap<IdentifierMap<ImagePoolBinding>> = [:]
+        for poolName in runtime.sharedPools.keys.sorted(by: IdentifierKey.precedes) {
             let pool = runtime.sharedPools[poolName]!
-            var encodedPool: [String: ImagePoolBinding] = [:]
-            for name in pool.keys.sorted() {
+            var encodedPool: IdentifierMap<ImagePoolBinding> = [:]
+            for name in pool.keys.sorted(by: IdentifierKey.precedes) {
                 let binding = pool[name]!
                 encodedPool[name] = ImagePoolBinding(value: try value(binding.value), kind: binding.kind)
             }
@@ -112,10 +112,16 @@ enum ImageCodec {
             if case .object(let object) = node { return object }
             return nil
         })
-        let code = includesCode ? runtime.classes.mapValues { $0.methods.mapValues(MethodCode.init) }.filter { !$0.value.isEmpty } : nil
-        let classCode = includesCode ? runtime.classes.mapValues { $0.classMethods.mapValues(MethodCode.init) }.filter { !$0.value.isEmpty } : [:]
+        var code: IdentifierMap<SelectorMap<MethodCode>> = [:]
+        var classCode: IdentifierMap<SelectorMap<MethodCode>> = [:]
+        if includesCode {
+            for (name, stClass) in runtime.classes {
+                if !stClass.methods.isEmpty { code[name] = stClass.methods.mapValues(MethodCode.init) }
+                if !stClass.classMethods.isEmpty { classCode[name] = stClass.classMethods.mapValues(MethodCode.init) }
+            }
+        }
         return ImageArchive(classes: classes, globals: globals, nodes: nodes, workspace: workspace, transcript: transcript,
-                            executableMethods: code, executableClassMethods: classCode.isEmpty ? nil : classCode,
+                            executableMethods: includesCode ? code : nil, executableClassMethods: classCode.isEmpty ? nil : classCode,
                             declaredGlobals: runtime.declaredGlobals.isEmpty ? nil : runtime.declaredGlobals,
                             sharedPools: sharedPools.isEmpty ? nil : sharedPools)
     }
@@ -167,9 +173,9 @@ enum ImageCodec {
         return (runtime, LoadedImage(evaluation: evaluation, workspace: image.workspace, transcript: image.transcript))
     }
 
-    private static func restoreGraph(_ image: ImageArchive, executableMethods: [String: SelectorMap<MethodCode>], into runtime: SmalltalkRuntime) throws {
+    private static func restoreGraph(_ image: ImageArchive, executableMethods: IdentifierMap<SelectorMap<MethodCode>>, into runtime: SmalltalkRuntime) throws {
         let supportsANSIStorage = image.version >= 10
-        var records: [String: ImageClass] = [:]
+        var records: IdentifierMap<ImageClass> = [:]
         for record in image.classes {
             guard supportsANSIStorage || record.classVariables == nil && record.sharedPools == nil && record.indexedStorage == nil else {
                 throw invalid("ANSI class metadata requires image version 10.")
@@ -235,14 +241,14 @@ enum ImageCodec {
         }
         for side in MethodSide.allCases {
             let executable = side == .instance ? executableMethods : image.executableClassMethods ?? [:]
-            guard Set(executable.keys) == Set(image.classes.filter { !$0[side].isEmpty }.map(\.name)) else {
+            guard executable.identifierKeys == IdentifierKey.set(image.classes.lazy.filter { !$0[side].isEmpty }.map(\.name)) else {
                 throw invalid("The executable methods do not match the class table.")
             }
             for record in image.classes {
                 let code = executable[record.name] ?? [:]
                 let sources = record[side]
                 guard sources.count <= SmalltalkRuntime.methodsPerSideLimit, let stClass = runtime.classes[record.name],
-                      code.selectorKeys == sources.selectorKeys else { throw invalid("Invalid method table.") }
+                      code.identifierKeys == sources.identifierKeys else { throw invalid("Invalid method table.") }
                 for (selector, source) in sources {
                     guard let methodCode = code[selector] else { throw invalid("Executable method is missing.") }
                     // A legacy String dictionary kept the first spelling as
@@ -290,7 +296,7 @@ enum ImageCodec {
                 guard let stClass = runtime.classes[record.className],
                       stClass === runtime.classes["String"] || SmalltalkRuntime.heapBuiltinNames.contains(stClass.name)
                         || !SmalltalkRuntime.builtinNames.contains(stClass.name),
-                      Set(record.fields.keys) == Set(stClass.fields),
+                      record.fields.identifierKeys == IdentifierKey.set(stClass.fields),
                       record.indexedFields == nil || supportsANSIStorage && stClass.indexedStorage != nil else {
                     throw invalid("Invalid object layout.")
                 }
@@ -411,7 +417,7 @@ enum ImageCodec {
         for record in image.classes {
             let stClass = runtime.classes[record.name]!
             let state = record.classState ?? [:]
-            guard Set(state.keys) == Set(stClass.classState.keys) else { throw invalid("Invalid class instance variables for \(record.name).") }
+            guard state.identifierKeys == stClass.classState.identifierKeys else { throw invalid("Invalid class instance variables for \(record.name).") }
             stClass.classState = try state.mapValues(value)
             stClass.classVariables = try (record.classVariables ?? [:]).mapValues(value)
         }

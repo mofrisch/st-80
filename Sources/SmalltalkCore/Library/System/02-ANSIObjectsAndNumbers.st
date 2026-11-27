@@ -56,12 +56,16 @@ Number compile: 'sign
 
 Number compile: 'quo: divisor
     | quotient |
+    divisor = 0 ifTrue: [ ^ ZeroDivide dividend: self ].
+    ((self isKindOf: Float) or: [ divisor isKindOf: Float ]) ifTrue: [
+        ^ self asFloat _floatQuo: divisor ].
     quotient := self // divisor.
     (quotient < 0 and: [ (self \\ divisor) ~= 0 ]) ifTrue: [ ^ quotient + 1 ].
     ^ quotient'.
 
 Number compile: 'rem: divisor
-    (((self isKindOf: Float) or: [ divisor isKindOf: Float ]) and: [ divisor ~= 0 ]) ifTrue: [
+    divisor = 0 ifTrue: [ ^ ZeroDivide dividend: self ].
+    ((self isKindOf: Float) or: [ divisor isKindOf: Float ]) ifTrue: [
         ^ self asFloat _floatRem: divisor ].
     ^ self - ((self quo: divisor) * divisor)'.
 

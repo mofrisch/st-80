@@ -444,9 +444,16 @@ SortedCollection compile: 'sortBlock: comparator
     comparator argumentCount = 2 ifFalse: [ self error: ''Expected a two-argument sort block.'' ].
     state := Array with: comparator with: (self _sorted: self asArray by: comparator)'.
 
+SortedCollection compile: '_validateSortElement: element by: comparator
+    | result |
+    result := comparator value: element value: element.
+    (result == true or: [ result == false ])
+        ifFalse: [ self error: ''A sort block must answer a Boolean.'' ]'.
+
 SortedCollection compile: '_sorted: source by: comparator
     | current target count width start middle stop left right position item swap |
     count := source size.
+    count = 1 ifTrue: [ self _validateSortElement: (source at: 1) by: comparator ].
     count < 2 ifTrue: [ ^ OrderedCollection withAll: source ].
     current := source.
     target := Array new: count.
@@ -482,6 +489,7 @@ SortedCollection compile: 'add: element
 
 SortedCollection compile: '_insertionIndexOf: element
     | lower upper middle |
+    self isEmpty ifTrue: [ self _validateSortElement: element by: self sortBlock. ^ 1 ].
     lower := 1.
     upper := self size + 1.
     [ lower < upper ] whileTrue: [
@@ -528,6 +536,7 @@ SortedCollection compile: 'copy
 SortedCollection compile: 'copyReplaceAll: target with: replacements
     | incoming |
     incoming := Array withAll: replacements.
+    incoming size = 1 ifTrue: [ self _validateSortElement: incoming first by: self sortBlock ].
     incoming size > 1 ifTrue: [ self _sorted: incoming copy by: self sortBlock ].
     ^ super copyReplaceAll: target with: incoming'.
 

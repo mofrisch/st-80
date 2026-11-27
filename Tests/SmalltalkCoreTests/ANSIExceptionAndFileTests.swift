@@ -3,6 +3,59 @@ import Testing
 @testable import SmalltalkCore
 
 struct ANSIExceptionAndFileTests {
+    @Test(arguments: ["ensure:", "ifCurtailed:"], ["#inner", "exception return: #inner", "exception retry", "exception retryUsing: [ #retried ]"])
+    func terminationBlocksRunInTheRestoredHandlerEnvironment(cleanup: String, handlerExit: String) async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | log result |
+            log := OrderedCollection new.
+            result := [
+                [
+                    [ Error signal: 'protected' ] \(cleanup) [ Error signal: 'cleanup' ]
+                ] on: Error do: [ :exception |
+                    log add: 'inner ' , exception messageText.
+                    \(handlerExit) ]
+            ] on: Error do: [ :exception |
+                log add: 'outer ' , exception messageText.
+                #outer ].
+            Array with: result with: log asArray
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(#outer #('inner protected' 'outer cleanup'))")
+    }
+
+    @Test func retryRestoresTheHandlerForTheNextAttempt() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | attempts cleanups result |
+            attempts := 0.
+            cleanups := OrderedCollection new.
+            result := [
+                [
+                    attempts := attempts + 1.
+                    attempts < 3 ifTrue: [ Error signal ].
+                    #complete
+                ] ensure: [ cleanups add: attempts ]
+            ] on: Error do: [ :exception | exception retry ].
+            Array with: result with: cleanups asArray
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(#complete #(1 2 3))")
+    }
+
+    @Test func zeroDivideDescriptionIncludesTheExplicitSignalText() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | named default |
+            named := [ ZeroDivide signal: 'Undefined quotient' ] on: ZeroDivide do: [ :exception |
+                Array with: exception messageText with: exception description ].
+            default := [ 1 / 0 ] on: ZeroDivide do: [ :exception | exception description ].
+            Array with: named with: default
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(#('Undefined quotient' 'Undefined quotient') 'Division by zero.')")
+    }
+
     @Test func dateComparisonAndSubtractionAcceptAForwardingDate() async {
         let session = SmalltalkSession()
         let result = await session.evaluate("""

@@ -232,14 +232,14 @@ final class DebuggerExecution {
     }
 
     private func variables(in context: Context, runtime: SmalltalkRuntime) -> [DebuggerVariable] {
-        var values = ["self": context.receiver]
+        var values: IdentifierMap<Value> = ["self": context.receiver]
         var scope: Environment? = context.environment
         while let current = scope {
-            values.merge(current.values) { inner, _ in inner }
+            for (name, value) in current.values where values[name] == nil { values[name] = value }
             scope = current.parent
         }
         if case .object(let receiver) = context.receiver {
-            values.merge(receiver.fields) { local, _ in local }
+            for (name, value) in receiver.fields where values[name] == nil { values[name] = value }
         } else if case .classObject(let receiver) = context.receiver, context.methodSide == .classSide,
                   let home = context.homeClass {
             for name in home.metaclass.fields where values[name] == nil {
@@ -256,7 +256,7 @@ final class DebuggerExecution {
         }
         // Object previews are shallow so even cyclic collections remain cheap
         // to inspect while execution is suspended.
-        return values.keys.sorted().compactMap { name in
+        return values.keys.sorted(by: IdentifierKey.precedes).compactMap { name in
             guard let value = values[name] else { return nil }
             return DebuggerVariable(name: name, value: runtime.inspectionPreview(value, limit: 128),
                                     className: runtime.inspectionClassName(value))

@@ -14,7 +14,7 @@ extension SmalltalkRuntime {
         try validateFields(fields, inherited: superclass?.fields ?? [])
         try validateFields(classFields, inherited: superclass?.metaclass.fields ?? [])
         try validateFields(classVariables, inherited: [])
-        guard Set(classVariables).isDisjoint(with: fields + classFields) else {
+        guard IdentifierKey.set(classVariables).isDisjoint(with: IdentifierKey.set(fields + classFields)) else {
             throw SmalltalkError("Class variables share names with instance variables.")
         }
         guard CodeValidator.validNames(pools), pools.allSatisfy({ sharedPools[$0] != nil }) else {
@@ -48,7 +48,7 @@ extension SmalltalkRuntime {
     }
 
     func validateFields(_ fields: [String], inherited: [String]) throws {
-        guard CodeValidator.validNames(fields), Set(fields).isDisjoint(with: inherited),
+        guard CodeValidator.validNames(fields), IdentifierKey.set(fields).isDisjoint(with: IdentifierKey.set(inherited)),
               fields.count + inherited.count <= Self.namedFieldsLimit else {
             throw SmalltalkError("Instance variable names must be valid and unique, with at most \(Self.namedFieldsLimit) variables.")
         }
@@ -77,9 +77,9 @@ extension SmalltalkRuntime {
     func acceptDefinition(_ source: String, for target: STClass) throws {
         let body = try compileWorkspace(source)
         if let definition = try SmalltalkInterchange.classDeclaration(in: body) {
-            guard definition.name == target.name else { throw SmalltalkError("The definition must name the selected class \(target.name).") }
-            guard Set(definition.classVariables) == Set(target.classVariables.keys),
-                  definition.pools == target.sharedPools, definition.indexedStorage == target.ownIndexedStorage else {
+            guard IdentifierKey(definition.name) == IdentifierKey(target.name) else { throw SmalltalkError("The definition must name the selected class \(target.name).") }
+            guard IdentifierKey.set(definition.classVariables) == target.classVariables.identifierKeys,
+                  definition.pools.map(IdentifierKey.init) == target.sharedPools.map(IdentifierKey.init), definition.indexedStorage == target.ownIndexedStorage else {
                 throw SmalltalkError("A live class must keep its declared shared variables, pools, and indexed storage.")
             }
             try redefineClass(target, superclass: superclass(named: definition.superclass), fields: definition.fields,
@@ -95,7 +95,7 @@ extension SmalltalkRuntime {
               case .literal(.string(let fields)) = arguments[1].kind else {
             throw SmalltalkError("Enter one class definition using subclass:instanceVariableNames: with optional classInstanceVariableNames:.")
         }
-        guard name == target.name else { throw SmalltalkError("The definition must name the selected class \(target.name).") }
+        guard IdentifierKey(name) == IdentifierKey(target.name) else { throw SmalltalkError("The definition must name the selected class \(target.name).") }
         guard let parent = classes[parentName] else { throw SmalltalkError("Superclass \(parentName) does not exist.") }
         var classFields: [String] = []
         if arguments.count == 3 {
@@ -112,11 +112,11 @@ extension SmalltalkRuntime {
         guard !Self.builtinNames.contains(target.name) else { throw SmalltalkError("Built-in class layouts are read-only.") }
         if let superclass { try validateSuperclass(superclass) }
         if target.superclass !== superclass {
-            func sharedBindings(in parent: STClass?) -> [String: ObjectIdentifier] {
-                var result: [String: ObjectIdentifier] = [:]
+            func sharedBindings(in parent: STClass?) -> [IdentifierKey: ObjectIdentifier] {
+                var result: [IdentifierKey: ObjectIdentifier] = [:]
                 var owner = parent
                 while let stClass = owner {
-                    for name in stClass.classVariables.keys where result[name] == nil { result[name] = ObjectIdentifier(stClass) }
+                    for key in stClass.classVariables.identifierKeys where result[key] == nil { result[key] = ObjectIdentifier(stClass) }
                     owner = stClass.superclass
                 }
                 return result
@@ -131,25 +131,26 @@ extension SmalltalkRuntime {
             guard current !== target else { throw SmalltalkError("A class cannot inherit from itself or one of its subclasses.") }
             ancestor = current.superclass
         }
-        guard target.superclass !== superclass || target.ownFields != fields || target.metaclass.ownFields != classFields else { return }
+        guard target.superclass !== superclass || target.ownFields.map(IdentifierKey.init) != fields.map(IdentifierKey.init)
+            || target.metaclass.ownFields.map(IdentifierKey.init) != classFields.map(IdentifierKey.init) else { return }
         let hierarchy = Array(classes.values) + classes.values.map(\.metaclass)
         let children = Dictionary(grouping: hierarchy.compactMap { item in
             item.superclass.map { (ObjectIdentifier($0), item) }
         }, by: { $0.0 })
         var layouts: [ObjectIdentifier: [String]] = [:]
-        var removedFields: [ObjectIdentifier: Set<String>] = [:]
+        var removedFields: [ObjectIdentifier: Set<IdentifierKey>] = [:]
 
         func plan(_ current: STClass, own: [String], inherited: [String]) throws {
             try validateFields(own, inherited: inherited)
             let layout = inherited + own
             let owner = current.instanceClass ?? current
-            guard Set(own).isDisjoint(with: owner.classVariables.keys),
+            guard IdentifierKey.set(own).isDisjoint(with: owner.classVariables.identifierKeys),
                   current.indexedStorage != .byte || layout.isEmpty else {
                 throw SmalltalkError("The named fields conflict with the class's shared or indexed storage.")
             }
-            let removed = Set(current.fields).subtracting(layout)
+            let removed = IdentifierKey.set(current.fields).subtracting(IdentifierKey.set(layout))
             for method in current.methods.values {
-                if !removed.isEmpty, let field = method.body.reference(to: removed, excluding: Set(method.parameters)) {
+                if !removed.isEmpty, let field = method.body.reference(to: removed, excluding: IdentifierKey.set(method.parameters)) {
                     throw SmalltalkError("\(current.name) » \(method.selector) still uses instance variable \(field).")
                 }
             }
@@ -167,17 +168,17 @@ extension SmalltalkRuntime {
         // The allocation registry also holds unreachable instances. Their old
         // field values must not veto an edit to the reachable object space.
         collectGarbage()
-        let updates = try objects.compactMap { object -> (object: STObject, previous: [String: Value], next: [String: Value])? in
+        let updates = try objects.compactMap { object -> (object: STObject, previous: IdentifierMap<Value>, next: IdentifierMap<Value>)? in
             guard let layout = layouts[ObjectIdentifier(object.stClass)] else { return nil }
-            let next = Dictionary(uniqueKeysWithValues: layout.map { ($0, object.fields[$0] ?? .nilValue) })
+            let next = IdentifierMap(uniqueKeysWithValues: layout.map { ($0, object.fields[$0] ?? .nilValue) })
             for (name, value) in object.fields where next[name] == nil && !isNil(value) {
                 throw SmalltalkError("Instance variable \(name) still holds a value in a \(object.stClass.name) instance.")
             }
             return (object, object.fields, next)
         }
-        let classUpdates = try classes.values.compactMap { current -> (target: STClass, previous: [String: Value], next: [String: Value])? in
+        let classUpdates = try classes.values.compactMap { current -> (target: STClass, previous: IdentifierMap<Value>, next: IdentifierMap<Value>)? in
             guard let layout = layouts[ObjectIdentifier(current.metaclass)] else { return nil }
-            let next = Dictionary(uniqueKeysWithValues: layout.map { ($0, current.classState[$0] ?? .nilValue) })
+            let next = IdentifierMap(uniqueKeysWithValues: layout.map { ($0, current.classState[$0] ?? .nilValue) })
             for (name, value) in current.classState where next[name] == nil && !isNil(value) {
                 throw SmalltalkError("Class instance variable \(name) still holds a value in \(current.name).")
             }
@@ -214,7 +215,7 @@ extension SmalltalkRuntime {
         catalogDirty = true
     }
 
-    private func validateRetainedCode(target: STClass, superclass: STClass?, removedFields: [ObjectIdentifier: Set<String>]) throws {
+    private func validateRetainedCode(target: STClass, superclass: STClass?, removedFields: [ObjectIdentifier: Set<IdentifierKey>]) throws {
         func validateHome(_ receiver: STClass, home: STClass) throws {
             var ancestor: STClass? = receiver
             while let current = ancestor, current !== home {
@@ -237,10 +238,10 @@ extension SmalltalkRuntime {
                 return
             }
             guard let removed = removedFields[ObjectIdentifier(owner)] else { return }
-            var locals = Set(parameters)
+            var locals = IdentifierKey.set(parameters)
             var scope: Environment? = context.environment
             while let current = scope {
-                locals.formUnion(current.values.keys)
+                locals.formUnion(current.values.identifierKeys)
                 scope = current.parent
             }
             if let field = body.reference(to: removed, excluding: locals) {

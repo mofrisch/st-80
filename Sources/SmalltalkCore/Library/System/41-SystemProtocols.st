@@ -179,7 +179,8 @@ BrowserOrganization compile: 'shippedProtocols
             (''Removing'' (''remove:'' ''remove:ifAbsent:'' ''removeAll:'' ''removeAtIndex:'' ''removeFirst'' ''removeLast''))
             (''Enumerating'' (''do:'' ''collect:'' ''select:'' ''reverse''))
             (''Copying and Conversion'' (''copy'' '','' ''asArray'' ''asSortedCollection'' ''copyReplaceAll:with:'' ''copyReplacing:withObject:''))
-            (''Private'' (''_elements'' ''_reserve:'' ''_sorted:by:'' ''_sortElementsFrom:'' ''_insertionIndexOf:'' ''_sequenceFrom:''))))
+            (''Private'' (''_elements'' ''_reserve:'' ''_sorted:by:'' ''_sortElementsFrom:'' ''_insertionIndexOf:''
+                ''_validateSortElement:by:'' ''_sequenceFrom:''))))
         (''String'' (
             (''Accessing'' (''size'' ''at:'' ''characters'' ''isEmpty''))
             (''Updating'' (''at:put:'' ''atAll:put:'' ''atAllPut:'' ''replaceFrom:to:with:''

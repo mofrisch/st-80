@@ -146,6 +146,13 @@ extension SmalltalkRuntime {
             default: return nil
             }
         case .object(let object):
+            if selector == "_tryFloatCalculation:", let interval = classes["Interval"], object.stClass.inherits(from: interval) {
+                let previousRecovery = recoveringFloatRangeError
+                recoveringFloatRangeError = true
+                defer { recoveringFloatRangeError = previousRecovery }
+                do { return try invokeBlock(args[0]) }
+                catch let error as SmalltalkError where error.isFloatRangeError { return .nilValue }
+            }
             if selector == "_coerceElement:", let interval = classes["Interval"], object.stClass.inherits(from: interval) {
                 let element = args[0]
                 guard element.isInteger else { return element }

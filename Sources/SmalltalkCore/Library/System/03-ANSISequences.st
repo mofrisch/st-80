@@ -327,10 +327,13 @@ Interval compileClass: 'from: first to: last by: increment
     ^ self new initializeFrom: first to: last by: increment'.
 
 Interval compile: 'initializeFrom: first to: last by: increment
+    | extent |
     increment = 0 ifTrue: [ self error: ''The interval step must be nonzero.'' ].
+    extent := (self _tryFloatCalculation: [ (last - first) // increment ])
+        ifNil: [ (last asFraction - first asFraction) // increment asFraction ].
+    count := (extent + 1) max: 0.
     start := first.
     step := increment.
-    count := (((last - first) // increment) + 1) max: 0.
     ^ self'.
 
 Interval compile: 'size
@@ -345,7 +348,11 @@ Interval compile: 'at: index
     ^ self _elementAt: index'.
 
 Interval compile: '_elementAt: index
-    ^ self _coerceElement: (index - 1) * step + start'.
+    | offset element |
+    offset := index - 1.
+    element := (self _tryFloatCalculation: [ offset * step + start ])
+        ifNil: [ (offset * step asFraction + start asFraction) asFloat ].
+    ^ self _coerceElement: element'.
 
 Interval compile: 'do: operation
     1 to: count do: [ :index | operation value: (self _elementAt: index) ]'.

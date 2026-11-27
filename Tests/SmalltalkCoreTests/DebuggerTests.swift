@@ -5,14 +5,19 @@ struct DebuggerTests {
     @Test(.timeLimit(.minutes(1)))
     func onlyAnUnhandledExceptionPausesTheDebuggerAsAnError() async throws {
         let session = SmalltalkSession()
-        let handled = await session.debugSource("[ Error signal: 'handled' ] on: Error do: [ :exception | 42 ]")
-        defer { handled.send(.stop) }
-        var handledEvents = handled.events.makeAsyncIterator()
-        #expect(try requirePause(await handledEvents.next()).reason == .entry)
-        handled.send(.resume)
-        let result = try requireResult(await handledEvents.next())
-        #expect(result.value == "42")
-        #expect(result.executionError == nil)
+        for (source, expected) in [
+            ("[ Error signal: 'handled' ] on: Error do: [ :exception | 42 ]", "42"),
+            ("(-1.0e308 to: 1.0e308 by: 1.0e308) at: 3", "1.0e308")
+        ] {
+            let handled = await session.debugSource(source)
+            defer { handled.send(.stop) }
+            var handledEvents = handled.events.makeAsyncIterator()
+            #expect(try requirePause(await handledEvents.next()).reason == .entry)
+            handled.send(.resume)
+            let result = try requireResult(await handledEvents.next())
+            #expect(result.value == expected)
+            #expect(result.executionError == nil)
+        }
 
         let unhandled = await session.debugSource("Error signal: 'unhandled'")
         defer { unhandled.send(.stop) }

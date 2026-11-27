@@ -87,6 +87,7 @@ final class SmalltalkRuntime {
     var evaluationRoots: [Value] = []
     var pendingMessages: [(receiver: Value, lookup: MessageLookup)] = []
     var debugger: DebuggerExecution?
+    var recoveringFloatRangeError = false
     var executionCancellation: (any ExecutionCancellation)?
     var exceptionHandler: SmalltalkExceptionHandler?
     var exceptionAction: SmalltalkExceptionAction?

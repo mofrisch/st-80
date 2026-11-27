@@ -157,7 +157,10 @@ extension SmalltalkRuntime {
             "_spliceAt:remove:with:": "Splices the active storage range and updates the collection size.",
             "_tryAddAll:": "Appends a collection as a batch when it uses the bundled iteration and insertion methods.",
         ],
-        "Interval": ["_coerceElement:": "Preserves the arithmetic progression's numeric protocol."],
+        "Interval": [
+            "_coerceElement:": "Preserves the arithmetic progression's numeric protocol.",
+            "_tryFloatCalculation:": "Evaluates the block and returns nil if a floating-point result is outside the supported range.",
+        ],
         "CollectionStream": [
             "_commitWrite:": "Updates the stream storage and advances its position together.",
             "_hasStockSliceMethods:": "Checks whether the backing collection uses the bundled slice and selection methods.",

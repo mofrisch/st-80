@@ -210,6 +210,29 @@ struct ANSIExceptionAndFileTests {
         return session
     }
 
+    @Test func fileStreamsAcceptPathsImplementingReadableString() async throws {
+        let directory = try newFixtureDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let path = directory.appendingPathComponent("readable-name.bin")
+        let session = try await session(for: path)
+        let result = await session.evaluate("""
+            | name writer reader |
+            Object subclass: #AuditReadablePath instanceVariableNames: 'text'.
+            AuditReadablePath compile: 'text: aString text := aString'.
+            AuditReadablePath compile: 'asString ^ text'.
+            AuditReadablePath compile: 'doesNotUnderstand: message
+                ^ text perform: message selector withArguments: message arguments'.
+            name := AuditReadablePath new text: filePath; yourself.
+            writer := FileStream write: name mode: #create check: true type: #binary.
+            [ writer nextPut: 17 ] ensure: [ writer close ].
+            reader := FileStream read: name type: #binary.
+            [ reader next ] ensure: [ reader close ]
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "17")
+        #expect(try Data(contentsOf: path) == Data([17]))
+    }
+
     @Test func writeOnlyBinaryFileSupportsAppendAndPositioning() async throws {
         let directory = try newFixtureDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -320,6 +343,30 @@ struct ANSIExceptionAndFileTests {
         #expect(result.error == nil)
         #expect(result.value == "#(1 #(1 #(7 8)) 1 #(7 8))")
         #expect(try Data(contentsOf: path) == Data([7, 8]))
+    }
+
+    @Test func puttableStreamSubclassesInheritNextPutAllAndDispatchNextPut() async throws {
+        let directory = try newFixtureDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let path = directory.appendingPathComponent("inherited.bin")
+        let session = try await session(for: path)
+        let result = await session.evaluate("""
+            | writer readWriter file |
+            WriteStream subclass: #AuditStreamWriter instanceVariableNames: ''.
+            ReadWriteStream subclass: #AuditStreamReaderWriter instanceVariableNames: ''.
+            AuditStreamReaderWriter compile: 'nextPut: element ^ super nextPut: element + 10'.
+            WriteFileStream subclass: #AuditFileWriter instanceVariableNames: ''.
+            writer := AuditStreamWriter with: #().
+            readWriter := AuditStreamReaderWriter on: #().
+            file := AuditFileWriter new _openFile: filePath mode: #create check: true type: #binary.
+            [ file nextPutAll: #(5 6) ] ensure: [ file close ].
+            writer nextPutAll: #(1 2).
+            readWriter nextPutAll: #(3 4).
+            Array with: writer contents with: readWriter contents
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(#(1 2) #(13 14))")
+        #expect(try Data(contentsOf: path) == Data([5, 6]))
     }
 
     @Test func puttableStreamsHonorEditedNextPutMethodsWithBuiltInSources() async throws {

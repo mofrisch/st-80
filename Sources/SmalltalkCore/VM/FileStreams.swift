@@ -280,10 +280,17 @@ extension SmalltalkRuntime {
     /// types. Keep large transfers within the execution budget, while allowing
     /// current-image method edits and user collections to use ordinary sends.
     func nextPutAllBatch(_ receiver: Value, source: Value) throws -> Value? {
-        let name = classOf(receiver).name
+        let receiverClass = classOf(receiver)
+        let name = receiverClass.name
         let isTranscript = name == "Transcript"
         let isFileStream = name == "WriteFileStream"
-        guard isTranscript || isFileStream || name == "WriteStream" || name == "ReadWriteStream" else { return nil }
+        let writerNames = ["WriteStream", "ReadWriteStream", "WriteFileStream"]
+        guard isTranscript || writerNames.contains(name) else {
+            let isWriter = writerNames.contains { name in
+                classes[name].map { receiverClass.inherits(from: $0) } ?? false
+            }
+            return isWriter ? .nilValue : nil
+        }
         guard let library = try? SystemLibrary.shared.get() else { return .nilValue }
 
         func isShipped(_ selector: String, on object: Value, owner name: String, side: MethodSide = .instance) -> Bool {
@@ -359,18 +366,16 @@ extension SmalltalkRuntime {
 
     private func performFileStreamPrimitive(_ stream: STObject, _ selector: String, _ args: [Value]) throws -> Value {
         if selector == "_openFile:mode:check:type:" {
-            let path: String?
-            if case .symbol(let name) = args[0] {
-                path = name
-            } else {
-                path = args[0].textContents
-            }
-            guard stream.fileStream == nil, let path, !path.isEmpty, !path.utf8.contains(0),
+            guard stream.fileStream == nil,
                   case .symbol(let modeName) = args[1], let mode = FileStreamHandle.Mode(rawValue: modeName),
                   case .boolean(let check) = args[2],
                   case .symbol(let typeName) = args[3], let type = FileStreamHandle.ExternalType(rawValue: typeName),
                   let streamClass = classes[mode == .read ? "ReadFileStream" : "WriteFileStream"],
                   stream.stClass.inherits(from: streamClass) else {
+                throw FileStreamFailure.invalid("Invalid file path, mode, check flag or external type.")
+            }
+            let path = try readableString(args[0])
+            guard stream.fileStream == nil, !path.isEmpty, !path.utf8.contains(0) else {
                 throw FileStreamFailure.invalid("Invalid file path, mode, check flag or external type.")
             }
             let file = try FileStreamHandle(path: path, mode: mode, check: check, type: type)

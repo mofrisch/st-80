@@ -9,16 +9,18 @@ public struct SmalltalkError: Error, LocalizedError, Sendable {
     public let message: String
     public var position: SourcePosition?
     let isTestFailure: Bool
+    let isFloatRangeError: Bool
 
     public var errorDescription: String? {
         if let position { return "Line \(position.line), column \(position.column): \(message)" }
         return message
     }
 
-    init(_ message: String, at position: SourcePosition? = nil, isTestFailure: Bool = false) {
+    init(_ message: String, at position: SourcePosition? = nil, isTestFailure: Bool = false, isFloatRangeError: Bool = false) {
         self.message = message
         self.position = position
         self.isTestFailure = isTestFailure
+        self.isFloatRangeError = isFloatRangeError
     }
 
     mutating func locate(at position: SourcePosition, in context: Context) {

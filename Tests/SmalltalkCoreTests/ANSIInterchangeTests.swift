@@ -3,6 +3,30 @@ import Testing
 @testable import SmalltalkCore
 
 struct ANSIInterchangeTests {
+    @Test func interchangeGlobalsAndPoolEntriesFollowTheirDeclarations() async throws {
+        let session = SmalltalkSession()
+        let header = "Smalltalk interchangeVersion: '1.0'!\n"
+        let global = "Global constant: 'SIFOrderedGlobal'!"
+        let globalInitializer = "SIFOrderedGlobal initializer! 17!"
+        let pool = "Pool named: 'SIFOrderedPool'!"
+        let variable = "SIFOrderedPool variable: 'Item'!"
+        let initializer = "SIFOrderedPool initializerFor: 'Item'! 23!"
+        for entries in [[globalInitializer, global], [variable, pool], [pool, initializer, variable]] {
+            let rejected = await session.evaluate(header + entries.joined(separator: "\n"))
+            #expect(rejected.error?.contains("must precede") == true)
+        }
+        #expect(await session.evaluate("SIFOrderedGlobal").error?.contains("Unknown variable") == true)
+        #expect(await session.evaluate("SIFOrderedPool").error?.contains("Unknown variable") == true)
+
+        let valid = await session.evaluate(header + [global, globalInitializer, pool, variable, initializer, """
+            Class named: 'SIFOrderedLookup' superclass: 'Object' indexedInstanceVariables: #'none'
+                instanceVariableNames: '' classVariableNames: '' sharedPools: 'SIFOrderedPool' classInstanceVariableNames: ''!
+            SIFOrderedLookup method! item ^ Item!
+            """].joined(separator: "\n"))
+        try #require(valid.error == nil)
+        #expect(await session.evaluate("Array with: SIFOrderedGlobal with: SIFOrderedLookup new item").value == "#(17 23)")
+    }
+
     @Test func interchangeMethodsAndClassInitializersFollowTheirClassDeclaration() async {
         let session = SmalltalkSession()
         let header = "Smalltalk interchangeVersion: '1.0'!\n"

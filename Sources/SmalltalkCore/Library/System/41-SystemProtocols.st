@@ -214,7 +214,7 @@ BrowserOrganization compile: 'shippedProtocols
             (''Initialization'' (''initializeFrom:to:by:''))
             (''Accessing'' (''size'' ''at:'' ''isEmpty'' ''includes:''))
             (''Enumerating'' (''do:'' ''collect:'' ''select:''))
-            (''Private'' (''_elementAt:'' ''_coerceElement:''))
+            (''Private'' (''_elementAt:'' ''_coerceElement:'' ''_tryFloatCalculation:''))
             (''Copying'' (''copyFrom:to:'' '',''))))
         (''BlockClosure'' (
             (''Evaluation'' (''value'' ''value:'' ''value:value:'' ''argumentCount'' ''valueWithArguments:''))

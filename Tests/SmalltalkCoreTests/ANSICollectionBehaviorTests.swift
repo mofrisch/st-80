@@ -2,6 +2,21 @@ import Testing
 import SmalltalkCore
 
 struct ANSICollectionBehaviorTests {
+    @Test func floatIntervalsAvoidOverflowWhenCountingAndAccessingElements() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | ascending descending |
+            ascending := -1.0e308 to: 1.0e308 by: 1.0e308.
+            descending := 1.0e308 to: -1.0e308 by: -1.0e308.
+            Array with: ascending asArray with: (descending at: 3)
+                with: (Array with: (-1.0e308 to: 1.0e308 by: -1.0) size
+                    with: (1.0e308 to: -1.0e308 by: 1.0) size)
+                with: (0.1 to: 0.9 by: 0.2) size
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(#(-1.0e308 0.0 1.0e308) -1.0e308 #(0 0) 5)")
+    }
+
     @Test func intervalElementsKeepTheCommonNumericProtocolDuringAccessAndEnumeration() async {
         let session = SmalltalkSession()
         let result = await session.evaluate("""

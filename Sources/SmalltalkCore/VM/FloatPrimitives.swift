@@ -11,7 +11,9 @@ extension SmalltalkRuntime {
     }
 
     func finiteDouble(_ number: Double) throws -> Double {
-        guard number.isFinite else { throw SmalltalkError("Floating-point result is outside the supported range.") }
+        guard number.isFinite else {
+            throw SmalltalkError("Floating-point result is outside the supported range.", isFloatRangeError: true)
+        }
         return number
     }
 

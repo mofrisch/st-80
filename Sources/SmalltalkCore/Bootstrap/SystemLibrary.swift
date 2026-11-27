@@ -242,6 +242,8 @@ struct SystemLibrary: Sendable {
             ("STScanner", .instance, "readToken", "70caa551966f06d3e39d3f05393516dda8cf92d4facc6dc9efda7d899e370959"),
             ("Interval", .instance, "at:", "2daeb92537fbe936d9eba788514f05306df5d3219bd93ef83a18ea309672565b"),
             ("Interval", .instance, "do:", "8c6e61ac5b7ddc7a2d0fb5ab80f2d22e3d2ccb64995b24f66156b63cbf16c35d"),
+            ("Interval", .instance, "initializeFrom:to:by:", "94e5907b4f2e505485ea4772e499ac063509744fa89399f6b4bd09547550e53a"),
+            ("Interval", .instance, "_elementAt:", "44140153b2c5b7f97367ba026f50a994c5ded5c657910e9f7bead5e112643918"),
             ("String", .instance, "atAll:put:", "dd53f6f22da39ec119cd2ca2aaa6768a277ffc7da8548f962a784a9abe3449fa"),
             ("String", .instance, "atAllPut:", "f920caa69425f10f9514140fd8577a677032a85f899c9f1b2f2386e6e2993a7f"),
             ("ByteArray", .instance, "atAll:put:", "a732a713cd71548c376135c4b6d8b97c88e1f4bde8fa1b25489659ef778a690a"),
@@ -331,6 +333,7 @@ struct SystemLibrary: Sendable {
                 "75ed1f3d16104189da608725c97fef2ebe14043c0e0b82330456cc5182adcba2",
                 "a267649a8048e76bc31c92de3d30c3bc43ee598b46c9057c7147d908649a58c1",
                 "d8f36c420419a594dd037decee2beaf425730909ddb40c3bd1c72f26452ced42",
+                "b5b1bceefac15f4d9a37487ea74bf0dae8e758126ce5bb2bd46bb84fc726537a",
             ]),
             (.instance, "shippedClassSideProtocols", [
                 "7b2f2950f5dc051c01fdcd0afcdde26c8505606a3c1f370ad2c6910c5eff398c",

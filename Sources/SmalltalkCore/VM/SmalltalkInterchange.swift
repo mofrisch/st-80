@@ -243,16 +243,17 @@ extension SmalltalkRuntime {
                 case .pool(let name):
                     try reserveGlobal(name)
                     sharedPools[name] = [:]
+                case .poolVariable(let pool, let name, let constant):
+                    guard let bindings = sharedPools[pool] else {
+                        throw SmalltalkInterchange.invalid("The definition of \(pool) must precede its variable declarations.")
+                    }
+                    guard bindings[name] == nil, bindings.count < 1_000 else {
+                        throw SmalltalkInterchange.invalid("Duplicate variable or full pool \(pool) for \(name).")
+                    }
+                    sharedPools[pool]![name] = PoolBinding(kind: constant ? .constant : .variable)
                 case .classDefinition(let declaration): declarations.append(declaration)
                 default: break
                 }
-            }
-            for entry in entries {
-                guard case .poolVariable(let pool, let name, let constant) = entry else { continue }
-                guard let bindings = sharedPools[pool], bindings[name] == nil, bindings.count < 1_000 else {
-                    throw SmalltalkInterchange.invalid("Unknown pool, duplicate variable, or full pool \(pool) for \(name).")
-                }
-                sharedPools[pool]![name] = PoolBinding(kind: constant ? .constant : .variable)
             }
             var changes: [ChangeInfo] = []
             while !declarations.isEmpty {
@@ -275,10 +276,16 @@ extension SmalltalkRuntime {
             var selectors: [String: Set<String>] = [:]
             var initializers: Set<String> = []
             var declaredClasses = Set(previousClasses.keys)
+            var globalsInOrder = Set(previousDeclaredGlobals.keys)
+            var poolVariablesInOrder = previousPools.mapValues { Set($0.keys) }
             for entry in entries {
                 switch entry {
                 case .classDefinition(let declaration):
                     declaredClasses.insert(declaration.name)
+                case .global(let name, _):
+                    globalsInOrder.insert(name)
+                case .poolVariable(let pool, let name, _):
+                    poolVariablesInOrder[pool, default: []].insert(name)
                 case .method(let owner, let side, let method):
                     guard let stClass = classes[owner] else { throw SmalltalkInterchange.invalid("Unknown method class \(owner).") }
                     guard declaredClasses.contains(owner) else {
@@ -291,18 +298,20 @@ extension SmalltalkRuntime {
                     methods.append((stClass, side, method))
                     changes.append(interchangeChange(.method, owner: stClass, source: method.source, side: side, selector: method.selector))
                 case .initializer(let owner, let variable, let syntax, _):
-                    if variable == nil, classes[owner] != nil, !declaredClasses.contains(owner) {
-                        throw SmalltalkInterchange.invalid("The definition of \(owner) must precede its initializer.")
-                    }
                     if let variable {
                         guard let binding = sharedPools[owner]?[variable] else {
                             throw SmalltalkInterchange.invalid("Unknown pool variable \(owner) » \(variable).")
+                        }
+                        guard poolVariablesInOrder[owner]?.contains(variable) == true else {
+                            throw SmalltalkInterchange.invalid("The definition of \(owner) » \(variable) must precede its initializer.")
                         }
                         guard binding.kind != .initializedConstant else {
                             throw SmalltalkInterchange.invalid("The constant \(owner) » \(variable) is already initialized.")
                         }
                     } else if owner != "Global", classes[owner] == nil, declaredGlobals[owner] == nil {
                         throw SmalltalkInterchange.invalid("Unknown initializer target \(owner).")
+                    } else if owner != "Global", !declaredClasses.contains(owner), !globalsInOrder.contains(owner) {
+                        throw SmalltalkInterchange.invalid("The definition of \(owner) must precede its initializer.")
                     } else if declaredGlobals[owner] == .initializedConstant {
                         throw SmalltalkInterchange.invalid("The constant \(owner) is already initialized.")
                     }

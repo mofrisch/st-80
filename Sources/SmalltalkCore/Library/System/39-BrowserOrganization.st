@@ -128,6 +128,7 @@ BrowserOrganization compileClass: 'shippedClassCategories
             ''OrderedCollection'' ''SortedCollection'' ''UnorderedCollection'' ''Bag'' ''Set''
             ''Dictionary'' ''IdentityDictionary'' ''String'' ''Character'' ''Symbol''
             ''CollectionStream'' ''ReadStream'' ''WriteStream'' ''ReadWriteStream''))
+        (''Files'' (''FileStream'' ''ReadFileStream'' ''WriteFileStream''))
         (''Compiler'' (''STCompilerList'' ''STScanner'' ''STCompiler''))
         (''MVC'' (''Model'' ''Controller'' ''UIBinding''))
         (''Desktop'' (''SystemWindow'' ''DesktopModel'' ''DisplayScreen'' ''DesktopManager'' ''UIWindow''))
@@ -154,7 +155,7 @@ BrowserOrganization compile: 'classCategories
     ^ classCategories'.
 
 BrowserOrganization compile: 'categoryOf: name
-    ^ classCategories groupOf: name default: (self defaultCategoryOf: name)'.
+    ^ self classCategories groupOf: name default: (self defaultCategoryOf: name)'.
 
 BrowserOrganization compile: 'defaultCategoryOf: name
     self class shippedClassCategories do: [ :entry |

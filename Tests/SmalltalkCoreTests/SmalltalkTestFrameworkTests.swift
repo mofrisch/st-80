@@ -18,6 +18,86 @@ struct SmalltalkTestFrameworkTests {
         #expect(await session.evaluate("ANSISmalltalkTest run passedCount").value == "64")
     }
 
+    @Test func ansiFileStreamSmalltalkTestsPass() async throws {
+        let directory = try newFixtureDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let session = SmalltalkSession()
+        try await session.worker.submitThrowing { runtime in
+            runtime.globals["ansiFileStreamDirectory"] = .string(directory.path)
+        }
+        try await load(fixtureDirectory().appendingPathComponent("Fixtures/ANSIFileStreams.st"), in: session)
+        let execution = await session.evaluate("testReport := ANSIFileStreamTest run. testReport summary")
+        try #require(execution.executionError == nil, "\(execution.executionError ?? "")")
+        let report = try await inspectReport(in: session)
+        #expect(report.passed, "\(execution.value ?? "No test summary")")
+        for message in report.diagnostics { Issue.record(Comment(rawValue: message)) }
+        #expect(await session.evaluate("testReport passedCount").value == "6")
+        let text = try String(contentsOf: directory.appendingPathComponent("text.txt"), encoding: .utf8)
+        #expect(text == "Grüße 猫\t!\n")
+        let binary = try Data(contentsOf: directory.appendingPathComponent("bytes.bin"))
+        #expect(binary == Data([0, 255, 128, 255, 42]))
+    }
+
+    @Test func fileStreamsReadAcrossBuffersAndPreserveTheSuffixWhenOverwritingText() async throws {
+        let directory = try newFixtureDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let path = directory.appendingPathComponent("boundary.txt")
+        let prefix = "\u{FEFF}" + String(repeating: "x", count: 4_092)
+        let suffix = String(repeating: "y", count: 9_000)
+        try Data((prefix + "🐱" + suffix).utf8).write(to: path)
+        let session = SmalltalkSession()
+        try await session.worker.submitThrowing { runtime in
+            runtime.globals["filePath"] = .string(path.path)
+        }
+        let read = await session.evaluate("""
+            fileReader := FileStream read: filePath.
+            fileReader skip: 4093.
+            Array with: (fileReader contents at: 1) codePoint
+                with: fileReader peek with: (fileReader next: 2) with: fileReader position
+            """)
+        #expect(read.error == nil)
+        #expect(read.value == "#(65279 $🐱 '🐱y' 4095)")
+        let write = await session.evaluate("""
+            fileWriter := FileStream write: filePath mode: #append.
+            fileWriter position: 4093.
+            fileWriter nextPut: $é.
+            fileWriter position: 4094.
+            fileWriter nextPut: $猫; close.
+            fileReader close
+            """)
+        #expect(write.error == nil)
+        #expect(try Data(contentsOf: path) == Data((prefix + "é猫" + suffix.dropFirst()).utf8))
+    }
+
+    @Test func fileStreamCollectionLimitsLeaveLargerFilesReadableInChunks() async throws {
+        let directory = try newFixtureDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let path = directory.appendingPathComponent("large.bin")
+        let output = directory.appendingPathComponent("copy.bin")
+        let bytes = Data(repeating: 255, count: 70_000)
+        try bytes.write(to: path)
+        let session = SmalltalkSession()
+        try await session.worker.submitThrowing { runtime in
+            runtime.globals["filePath"] = .string(path.path)
+            runtime.globals["outputPath"] = .string(output.path)
+        }
+        let execution = await session.evaluate("""
+            fileReader := FileStream read: filePath type: #binary.
+            contentsError := [ fileReader contents. false ] on: Error do: [ :error | true ].
+            readError := [ fileReader next: 70000. false ] on: Error do: [ :error | true ].
+            positionAfterError := fileReader position.
+            firstChunk := fileReader next: 65535.
+            secondChunk := fileReader next: 4465.
+            fileReader close.
+            fileWriter := FileStream write: outputPath mode: #create check: true type: #binary.
+            fileWriter nextPutAll: firstChunk; nextPutAll: secondChunk; close.
+            Array with: contentsError & readError with: positionAfterError with: firstChunk size with: secondChunk size
+            """)
+        #expect(execution.error == nil)
+        #expect(execution.value == "#(true 0 65535 4465)")
+        #expect(try Data(contentsOf: output) == bytes)
+    }
+
     @Test func runnerSeparatesFailuresFromErrorsAndAlwaysAttemptsCleanup() async throws {
         let session = SmalltalkSession()
         let bundled = await session.evaluate("TestRunner runAll testCount")
@@ -71,6 +151,12 @@ struct SmalltalkTestFrameworkTests {
         #endif
         let resources = try #require(bundle.resourceURL)
         return resources.appendingPathComponent("SmalltalkTests", isDirectory: true)
+    }
+
+    private func newFixtureDirectory() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("st80-file-streams-\(UUID())")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        return directory
     }
 
     private func load(_ source: URL, in session: SmalltalkSession) async throws {

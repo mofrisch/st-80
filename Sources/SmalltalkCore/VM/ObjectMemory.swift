@@ -39,7 +39,9 @@ enum HeapReference {
 
     func clearReferences() {
         switch self {
-        case .object(let object): object.fields.removeAll()
+        case .object(let object):
+            object.fileStream = nil
+            object.fields.removeAll()
         case .array(let array): array.elements.removeAll()
         case .environment(let environment):
             environment.values.removeAll()

@@ -137,6 +137,14 @@ extension SmalltalkRuntime {
             if selector == "_commitWrite:", let stream = classes["CollectionStream"], object.stClass.inherits(from: stream) {
                 return try commitStreamWrite(object, incoming: args[0])
             }
+            if selector.hasPrefix("_"), let stream = classes["FileStream"], object.stClass.inherits(from: stream) {
+                for name in ["FileStream", "ReadFileStream", "WriteFileStream"] {
+                    if Self.primitiveDescriptions[name]?[selector] != nil,
+                       let owner = classes[name], object.stClass.inherits(from: owner) {
+                        return try fileStreamPrimitive(object, selector, args)
+                    }
+                }
+            }
             if object.stClass === classes["String"], let contents = receiver.textContents {
                 return try stringPrimitive(receiver, contents: contents, selector, args)
             }

@@ -123,6 +123,23 @@ BrowserOrganization compile: 'shippedProtocols
         (''ReadWriteStream'' (
             (''Writing'' (''nextPut:'' ''nextPutAll:'' ''cr'' ''space'' ''tab''))
             (''Lifecycle'' (''flush''))))
+        (''FileStream'' (
+            (''Contents'' (''contents'' ''isEmpty''))
+            (''External Type'' (''externalType'' ''isBinary'' ''isText''))
+            (''Positioning'' (''position'' ''position:'' ''reset'' ''setToEnd''))
+            (''Lifecycle'' (''close''))
+            (''Private'' (''_openFile:mode:check:type:'' ''_closeFile'' ''_fileContents'' ''_fileIsEmpty''
+                ''_filePosition'' ''_seekFile:'' ''_seekFileToEnd''))))
+        (''ReadFileStream'' (
+            (''Reading'' (''next'' ''next:'' ''nextLine'' ''nextMatchFor:'' ''peek'' ''peekFor:'' ''upTo:''))
+            (''Positioning'' (''atEnd'' ''skip:'' ''skipTo:''))
+            (''Enumerating'' (''do:''))
+            (''Private'' (''_fileAtEnd'' ''_peekFileElement'' ''_readFileElement'' ''_readFileElements:''
+                ''_skipFileElements:'' ''_scanFileUntil:collecting:''))))
+        (''WriteFileStream'' (
+            (''Writing'' (''nextPut:'' ''nextPutAll:'' ''cr'' ''space'' ''tab''))
+            (''Lifecycle'' (''flush''))
+            (''Private'' (''_writeFileElements:'' ''_flushFile''))))
         (''ByteArray'' (
             (''Initialization'' (''initialize''))
             (''Accessing'' (''size'' ''at:'' ''isEmpty'' ''includes:''))
@@ -435,6 +452,9 @@ BrowserOrganization compile: 'shippedClassSideProtocols
         (''ReadStream'' ((''Instance Creation'' (''on:''))))
         (''WriteStream'' ((''Instance Creation'' (''with:''))))
         (''ReadWriteStream'' ((''Instance Creation'' (''on:'' ''with:''))))
+        (''FileStream'' (
+            (''Opening for Reading'' (''read:'' ''read:type:''))
+            (''Opening for Writing'' (''write:'' ''write:mode:'' ''write:mode:check:type:''))))
         (''ByteArray'' ((''Instance Creation'' (''new:'' ''withAll:''))))
         (''OrderedCollection'' ((''Instance Creation'' (''new:''))))
         (''SortedCollection'' (

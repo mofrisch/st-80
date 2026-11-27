@@ -148,6 +148,27 @@ extension SmalltalkRuntime {
         "CollectionStream": [
             "_commitWrite:": "Updates the stream storage and advances its position together.",
         ],
+        "FileStream": [
+            "_openFile:mode:check:type:": "Opens the external backing file.",
+            "_closeFile": "Flushes and closes the external backing file.",
+            "_fileContents": "Returns all file elements without advancing the stream.",
+            "_fileIsEmpty": "Tests whether the external file is empty.",
+            "_filePosition": "Returns the number of elements before the cursor.",
+            "_seekFile:": "Moves the cursor to an element position.",
+            "_seekFileToEnd": "Moves the cursor to the end of the file.",
+        ],
+        "ReadFileStream": [
+            "_fileAtEnd": "Tests whether the cursor is at the end of the file.",
+            "_peekFileElement": "Reads the next file element without advancing.",
+            "_readFileElement": "Reads the next file element and advances.",
+            "_readFileElements:": "Reads a bounded sequence of file elements.",
+            "_skipFileElements:": "Advances by up to the requested number of file elements.",
+            "_scanFileUntil:collecting:": "Advances to the first matching element, optionally collecting the prefix.",
+        ],
+        "WriteFileStream": [
+            "_writeFileElements:": "Writes a sequence of elements at the current position.",
+            "_flushFile": "Synchronizes the changes with the external file.",
+        ],
         "BlockClosure": [
             "value": "Evaluates the block.", "value:": "Evaluates the block with one argument.", "value:value:": "Evaluates the block with two arguments.",
             "argumentCount": "Returns the number of block arguments.", "valueWithArguments:": "Evaluates the block with the elements of a collection as arguments.",

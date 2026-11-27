@@ -308,6 +308,74 @@ struct ImageTests {
         #expect(await value("source", in: restored) == "'é🐱a'")
     }
 
+    @Test func fileStreamsAreClosedInRestoredImages() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("st80-image-file-streams-\(UUID())")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let path = directory.appendingPathComponent("live.txt")
+        let original = SmalltalkSession()
+        try await original.worker.submitThrowing { runtime in
+            runtime.globals["filePath"] = .string(path.path)
+        }
+        let setup = await original.evaluate("""
+            writer := FileStream write: filePath.
+            writer nextPutAll: 'live'; flush.
+            reader := FileStream read: filePath
+            """)
+        try #require(setup.error == nil, "\(setup.error ?? "")")
+        let restored = SmalltalkSession()
+        _ = try await restored.loadImage(original.imageData())
+        #expect(await value("writer externalType", in: restored) == "#text")
+        #expect(await value("[ writer nextPut: $! ] on: Error do: [ :error | #closed ]", in: restored) == "#closed")
+        #expect(await value("[ reader next ] on: Error do: [ :error | #closed ]", in: restored) == "#closed")
+        #expect(try String(contentsOf: path, encoding: .utf8) == "live")
+        #expect(await value("writer nextPut: $!; close. reader close", in: original) != nil)
+        #expect(try String(contentsOf: path, encoding: .utf8) == "live!")
+    }
+
+    @Test(arguments: [false, true])
+    func versionNineImagesBackfillFileStreamsWithoutReplacingBindings(customBinding: Bool) async throws {
+        let original = SmalltalkSession()
+        try await original.worker.submitThrowing { runtime in
+            guard case .object(let organization)? = runtime.globals["SystemOrganization"],
+                  case .object(let categories)? = organization.fields["classCategories"],
+                  case .array(let groups)? = categories.fields["groups"] else {
+                throw SmalltalkError("Missing class categories.")
+            }
+            // The old image's catalog has no default group for file streams.
+            groups.elements.removeAll { element in
+                guard case .object(let group) = element else { return false }
+                return group.fields["defaultName"]?.textContents == "Files"
+            }
+        }
+        var archive = try JSONDecoder().decode(ImageArchive.self, from: await original.imageData())
+        let names = SmalltalkRuntime.shippedFileStreamNames
+        archive.classes.removeAll { names.contains($0.name) }
+        for name in names {
+            archive.globals.removeValue(forKey: name)
+            archive.executableMethods?.removeValue(forKey: name)
+            archive.executableClassMethods?.removeValue(forKey: name)
+        }
+        if customBinding { archive.globals["FileStream"] = .symbol("custom") }
+
+        let restored = SmalltalkSession()
+        _ = try await restored.loadImage(JSONEncoder().encode(archive))
+        if customBinding {
+            #expect(await value("FileStream", in: restored) == "#custom")
+        } else {
+            #expect(await value("(FileStream classMethodNames includes: 'read:type:') and: [ WriteFileStream superclass == FileStream ]", in: restored) == "true")
+            #expect(await value("SystemOrganization categoryOf: 'FileStream'", in: restored) == "'Files'")
+            #expect(await value("""
+                (SystemOrganization protocolsOf: FileStream side: #class)
+                    groupOf: 'write:mode:check:type:' default: 'Unclassified'
+                """, in: restored) == "'Opening for Writing'")
+            #expect(await value("""
+                (SystemOrganization protocolsOf: ReadFileStream side: #instance)
+                    groupOf: 'nextLine' default: 'Unclassified'
+                """, in: restored) == "'Reading'")
+        }
+    }
+
     @Test func textStreamSizeLimitLeavesPositionAndContentsIntact() async throws {
         let session = SmalltalkSession()
         let setup = try await session.worker.submitThrowing { runtime in

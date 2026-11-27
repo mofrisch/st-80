@@ -178,11 +178,13 @@ struct SystemLibrary: Sendable {
                 "7ea8d999df67b9777d1c79ae510d3f93677423a2b8407699d2d534c376349576",
                 "7fa293e8a83174d786a7453a592a3e45123750cda2b8b8f291375f2779bd18ab",
                 "cc354ef0e71fc134f9f19929c4a44403584e9ebcc7dbd9085efa9bcb0716b8c3",
+                "653ab4efb336295ac621f4148d18c8514eee3a4c1bbbaa4494e4d8b653bed335",
             ]),
             (.instance, "shippedClassSideProtocols", [
                 "7b2f2950f5dc051c01fdcd0afcdde26c8505606a3c1f370ad2c6910c5eff398c",
                 "a57049aae45eec58838977d232ca38087f17d6cadfc40092e4a23df2e68a9a13",
                 "b47e4912fcc451571d5cef706f0cc72fdf9e8d9a4642a4e2e6813c2c680df201",
+                "b7974c43ae3dd01bbbbcbc727dab84713023b8ee1a57e63894caa2243cf53765",
             ]),
             (.classSide, "shippedClassCategories", [
                 "94b28fa4e197128a9942bda803c88b225ff4b73c86eb419a706c4b06c8dc4b1e",
@@ -193,6 +195,7 @@ struct SystemLibrary: Sendable {
                 "e0bc5333d08db3e3d27d006ea23e374351a5e468cc5be4023e1ce012b8bb3421",
                 "386c630d15d0ef4cfee1ef93fc238c610b3cca4774c91a15d9c80e5f7efdc3ef",
                 "e1980acc550da5ca0237e0eac5c268fd24cb6f1226190fba9946133a2aef6f2c",
+                "8f14c680d8411bf47e591c778eb7b66fad36e7493fc9bee2484710a6998bf2dc",
             ]),
         ]
         var refresh = collectionsAdded
@@ -207,6 +210,7 @@ struct SystemLibrary: Sendable {
             if target.methods[selector] == nil { try install(selector, side: .instance, on: target) }
         }
         let catalogMethods = [
+            ("BrowserOrganization", "categoryOf:", "40851d09b4019a31318a7b955d4043754931af7da7ce25e1af7e206da10f549a"),
             ("BrowserOrganization", "classCategories", "d5674dfea3a9fc64f919d5fb85669a89e99bed540b2e67c61f0d186cc1fd4d14"),
             ("BrowserOrganization", "refreshShippedProtocols", "95225c9639971dd27259bedc112f082faf1ecddf13a64a134e667568e8521aa4"),
             ("BrowserGrouping", "defineDefaults:", "0d430fcdeca2dec92ec0f69cc725f873bd75414e7fa84aba1e9cf9c3ad29eda0"),

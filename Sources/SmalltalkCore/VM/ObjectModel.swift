@@ -97,6 +97,7 @@ final class STObject {
     let nativeID = UUID().uuidString
     let stClass: STClass
     var fields: [String: Value]
+    var fileStream: FileStreamHandle?
 
     init(_ stClass: STClass) {
         self.stClass = stClass

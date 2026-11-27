@@ -15,10 +15,10 @@ struct LibrarySources: Codable, Sendable {
 
     var version = 1
     let definitions: [Definition]
-    let methods: [String: [String: String]]
-    var classMethods: [String: [String: String]]?
+    let methods: [String: SelectorMap<String>]
+    var classMethods: [String: SelectorMap<String>]?
 
-    subscript(side: MethodSide) -> [String: [String: String]] { side == .instance ? methods : classMethods ?? [:] }
+    subscript(side: MethodSide) -> [String: SelectorMap<String>] { side == .instance ? methods : classMethods ?? [:] }
 
     static func decode(_ data: Data) throws -> Self {
         let result = try JSONDecoder().decode(Self.self, from: data)
@@ -31,10 +31,10 @@ struct LibrarySeed: Codable, Sendable {
     static let currentVersion = 2
     var version = Self.currentVersion
     let sourcesID: String
-    let methods: [String: [String: MethodCode]]
-    var classMethods: [String: [String: MethodCode]]?
+    let methods: [String: SelectorMap<MethodCode>]
+    var classMethods: [String: SelectorMap<MethodCode>]?
 
-    subscript(side: MethodSide) -> [String: [String: MethodCode]] { side == .instance ? methods : classMethods ?? [:] }
+    subscript(side: MethodSide) -> [String: SelectorMap<MethodCode>] { side == .instance ? methods : classMethods ?? [:] }
 }
 
 struct SystemLibrary: Sendable {
@@ -105,7 +105,8 @@ struct SystemLibrary: Sendable {
         for side in MethodSide.allCases {
             guard Set(seed[side].keys) == Set(sources[side].keys) else { throw SmalltalkError("The boot image contains a different method table.") }
             for (name, code) in seed[side] {
-                guard let stClass = runtime.classes[name], let methodSources = sources[side][name], Set(code.keys) == Set(methodSources.keys) else {
+                guard let stClass = runtime.classes[name], let methodSources = sources[side][name],
+                      code.selectorKeys == methodSources.selectorKeys else {
                     throw SmalltalkError("Method table for \(side.displayName(for: name)) is incomplete in the boot image.")
                 }
                 for (selector, executable) in code {
@@ -240,6 +241,7 @@ struct SystemLibrary: Sendable {
             ("Float", .instance, "degreesToRadians", "14d1c26bd3a6cfdbac233c1c959e8b20fe3c9fec7e087b306668cd78720db96e"),
             ("Float", .instance, "radiansToDegrees", "d741857951fc023c9c6470282c6e286c856c2dffa1d0414bba334476397cafaf"),
             ("STScanner", .instance, "readToken", "70caa551966f06d3e39d3f05393516dda8cf92d4facc6dc9efda7d899e370959"),
+            ("STCompiler", .instance, "expressionNode", "36ec61e2d292ee1bfbd61d439df6465b3e693a1bd77cb055a3b9455eaf726373"),
             ("Interval", .instance, "at:", "2daeb92537fbe936d9eba788514f05306df5d3219bd93ef83a18ea309672565b"),
             ("Interval", .instance, "do:", "8c6e61ac5b7ddc7a2d0fb5ab80f2d22e3d2ccb64995b24f66156b63cbf16c35d"),
             ("Interval", .instance, "initializeFrom:to:by:", "94e5907b4f2e505485ea4772e499ac063509744fa89399f6b4bd09547550e53a"),
@@ -254,6 +256,7 @@ struct SystemLibrary: Sendable {
         let instanceHelpers = [
             "DateAndTime": ["_secondsOf:ifAbsent:"],
             "Interval": ["_elementAt:"],
+            "STCompiler": ["cascadeBranch"],
             "SortedCollection": ["_insertionIndexOf:", "_sortElementsFrom:"],
         ]
         for (name, side, selector, hash) in previous {
@@ -334,6 +337,7 @@ struct SystemLibrary: Sendable {
                 "a267649a8048e76bc31c92de3d30c3bc43ee598b46c9057c7147d908649a58c1",
                 "d8f36c420419a594dd037decee2beaf425730909ddb40c3bd1c72f26452ced42",
                 "b5b1bceefac15f4d9a37487ea74bf0dae8e758126ce5bb2bd46bb84fc726537a",
+                "e75bb31ac481edf61057381730ae3e143301db8234b00c176cf53129b05c6d5f",
             ]),
             (.instance, "shippedClassSideProtocols", [
                 "7b2f2950f5dc051c01fdcd0afcdde26c8505606a3c1f370ad2c6910c5eff398c",

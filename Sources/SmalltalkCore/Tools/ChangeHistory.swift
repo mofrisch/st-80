@@ -18,10 +18,11 @@ extension SmalltalkRuntime {
         case "historyFor:selector:side:":
             let className = isNil(args[0]) ? nil : try string(args[0])
             let method = isNil(args[1]) ? nil : try string(args[1])
+            let methodKey = method.map(SelectorKey.init)
             let side: MethodSide? = isNil(args[2]) ? nil : MethodSide(rawValue: try symbol(args[2]))
             var records = Array(journal.records.lazy.reversed().filter {
                 (className == nil || $0.className == className) &&
-                (method == nil || $0.selector == method) &&
+                (methodKey == nil || $0.selector.map(SelectorKey.init) == methodKey) &&
                 (side == nil || $0.side == side)
             }.prefix(2000))
             if let className, let method, let side,

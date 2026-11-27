@@ -1,6 +1,9 @@
 import Foundation
 
 extension SmalltalkRuntime {
+    private static let largestFloatDigits = Array(BigInteger(exactly: Double.greatestFiniteMagnitude)!.description.utf8)
+    private static let floatOrderingSelectors: Set<String> = ["<", ">", "<=", ">="]
+
     static func floatLiteralText(_ number: Double) -> String {
         let spelling = String(number)
         guard let exponent = spelling.firstIndex(of: "e") else { return spelling }
@@ -19,15 +22,44 @@ extension SmalltalkRuntime {
 
     func finiteFloat(_ number: Double) throws -> Value { .float(try finiteDouble(number)) }
 
-    private func floatingNumber(_ value: Value) throws -> Double {
+    func parseFloatLiteral(_ source: String) -> Value {
+        let spelling = source.replacingOccurrences(of: "d", with: "e").replacingOccurrences(of: "q", with: "e")
+        guard let number = Double(spelling), number.isFinite else { return .nilValue }
+        // Rounding to binary64 can hide values just above the largest finite Float.
+        if abs(number) == Double.greatestFiniteMagnitude, !Self.floatLiteralWithinRange(spelling) { return .nilValue }
+        return .float(number)
+    }
+
+    private static func floatLiteralWithinRange(_ spelling: String) -> Bool {
+        let components = spelling.split(whereSeparator: { $0 == "e" || $0 == "E" })
+        let mantissa = components[0].split(separator: ".", omittingEmptySubsequences: false)
+        guard let exponent = components.count == 1 ? 0 : Int(components[1]) else { return false }
+        let digits = mantissa.joined().utf8.filter { (48...57).contains($0) }.drop(while: { $0 == 48 })
+        let fractionalDigits = mantissa.count == 2 ? mantissa[1].utf8.count : 0
+        let (integerDigits, overflow) = (digits.count - fractionalDigits).addingReportingOverflow(exponent)
+        guard !overflow else { return false }
+        if integerDigits != largestFloatDigits.count { return integerDigits < largestFloatDigits.count }
+        for (digit, limit) in zip(digits, largestFloatDigits) where digit != limit { return digit < limit }
+        return digits.dropFirst(largestFloatDigits.count).allSatisfy { $0 == 48 }
+    }
+
+    private func floatingNumber(_ value: Value, forOrdering: Bool = false) throws -> Double {
+        let approximation: Double
         switch value {
-        case .integer(let number): return Double(number)
-        case .largeInteger(let number): return try finiteDouble(number.doubleValue)
-        case .fraction(let number): return try finiteDouble(number.doubleValue(charge: chargeNumericWork))
-        case .scaledDecimal(let number): return try finiteDouble(number.doubleValue)
-        case .float(let number): return number
+        case .integer(let number): approximation = Double(number)
+        case .largeInteger(let number): approximation = number.doubleValue
+        case .fraction(let number): approximation = try number.doubleValue(charge: chargeNumericWork)
+        case .scaledDecimal(let number): approximation = number.doubleValue
+        case .float(let number): approximation = number
         default: throw SmalltalkError("Expected a number.")
         }
+        // In mixed ordering there is one finite Float. An out-of-range exact
+        // operand sorts beyond it without producing a nonfinite Smalltalk value.
+        return forOrdering ? approximation : try finiteDouble(approximation)
+    }
+
+    func mixedFloatPrimitive(_ receiver: Value, _ selector: String, _ arguments: [Value]) throws -> Value? {
+        try floatPrimitive(floatingNumber(receiver, forOrdering: Self.floatOrderingSelectors.contains(selector)), selector, arguments)
     }
 
     func floatPrimitive(_ number: Double, _ selector: String, _ arguments: [Value]) throws -> Value? {
@@ -50,10 +82,10 @@ extension SmalltalkRuntime {
             let remainder = number.truncatingRemainder(dividingBy: divisor)
             if selector == "_floatRem:" { return .float(remainder) }
             return .float(remainder != 0 && remainder.sign != divisor.sign ? remainder + divisor : remainder)
-        case "<": return .boolean(try number < floatingNumber(arguments[0]))
-        case ">": return .boolean(try number > floatingNumber(arguments[0]))
-        case "<=": return .boolean(try number <= floatingNumber(arguments[0]))
-        case ">=": return .boolean(try number >= floatingNumber(arguments[0]))
+        case "<": return .boolean(try number < floatingNumber(arguments[0], forOrdering: true))
+        case ">": return .boolean(try number > floatingNumber(arguments[0], forOrdering: true))
+        case "<=": return .boolean(try number <= floatingNumber(arguments[0], forOrdering: true))
+        case ">=": return .boolean(try number >= floatingNumber(arguments[0], forOrdering: true))
         case "negated": return .float(-number)
         case "abs": return .float(abs(number))
         case "squared": return try finiteFloat(number * number)

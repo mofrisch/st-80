@@ -273,7 +273,7 @@ extension SmalltalkRuntime {
                 declarations = unresolved
             }
             var methods: [(STClass, MethodSide, Method)] = []
-            var selectors: [String: Set<String>] = [:]
+            var selectors: [String: Set<SelectorKey>] = [:]
             var initializers: Set<String> = []
             var declaredClasses = Set(previousClasses.keys)
             var globalsInOrder = Set(previousDeclaredGlobals.keys)
@@ -292,7 +292,7 @@ extension SmalltalkRuntime {
                         throw SmalltalkInterchange.invalid("The definition of \(owner) must precede its methods.")
                     }
                     let key = side.displayName(for: owner)
-                    guard selectors[key, default: []].insert(method.selector).inserted else {
+                    guard selectors[key, default: []].insert(SelectorKey(method.selector)).inserted else {
                         throw SmalltalkInterchange.invalid("Repeated method \(key) » \(method.selector).")
                     }
                     methods.append((stClass, side, method))
@@ -328,7 +328,7 @@ extension SmalltalkRuntime {
                 }
             }
             for (stClass, side, method) in methods {
-                let installed = Set(stClass[side].keys)
+                let installed = stClass[side].selectorKeys
                 guard installed.union(selectors[side.displayName(for: stClass.name)]!).count <= Self.methodsPerSideLimit else {
                     throw SmalltalkInterchange.invalid("Too many methods in \(side.displayName(for: stClass.name)).")
                 }

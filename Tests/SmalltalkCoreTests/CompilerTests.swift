@@ -3,6 +3,88 @@ import Testing
 @testable import SmalltalkCore
 
 struct CompilerTests {
+    @Test func cascadeBranchesEvaluateMessageChainsAndResetTheReceiver() async throws {
+        let session = SmalltalkSession()
+        let method = """
+            cascadeValues
+                | stream |
+                stream := ReadStream on: #(3 4).
+                ^ Array with: (stream peek; next squared + 2 min: 10)
+                    with: (stream peek; next squared; atEnd)
+            """
+        try #require(await session.compile(method, in: "Counter").error == nil)
+        #expect(await session.evaluate("Counter new cascadeValues").value == "#(10 true)")
+
+        let restored = SmalltalkSession()
+        _ = try await restored.loadImage(session.imageData())
+        #expect(await restored.evaluate("Counter new cascadeValues").value == "#(10 true)")
+        #expect(await restored.evaluate("| stream | stream := ReadStream on: #(3). stream peek; next squared").value == "9")
+    }
+
+    @Test func unicodeSelectorsKeepTheirDistinctMethodsInBothImageFormats() async throws {
+        let session = SmalltalkSession()
+        let composed = "\u{00E9}"
+        let decomposed = "e\u{0301}"
+        let imported = await session.evaluate("""
+            Smalltalk interchangeVersion: '1.0'!
+            Class named: 'UnicodeSelectorProbe' superclass: 'Object' indexedInstanceVariables: #'none'
+                instanceVariableNames: '' classVariableNames: '' sharedPools: '' classInstanceVariableNames: ''!
+            UnicodeSelectorProbe method! \(composed) ^ 11!
+            UnicodeSelectorProbe method! \(decomposed) ^ 22!
+            UnicodeSelectorProbe classMethod! \(composed) ^ 33!
+            UnicodeSelectorProbe classMethod! \(decomposed) ^ 44!
+            """)
+        try #require(imported.error == nil)
+        let source = """
+            | probe |
+            probe := UnicodeSelectorProbe new.
+            Array with: probe \(composed) with: (probe perform: #\(decomposed))
+                with: UnicodeSelectorProbe \(composed) with: (UnicodeSelectorProbe perform: #\(decomposed))
+            """
+        #expect(await session.evaluate(source).value == "#(11 22 33 44)")
+
+        let portable = SmalltalkSession()
+        let image = try await session.imageData()
+        _ = try await portable.loadImage(image)
+        #expect(await portable.evaluate(source).value == "#(11 22 33 44)")
+
+        // A legacy portable image could preserve the old dictionary key after
+        // a method with a canonically equivalent spelling overwrote the value.
+        var legacy = try JSONDecoder().decode(ImageArchive.self, from: image)
+        let record = try #require(legacy.classes.firstIndex { $0.name == "UnicodeSelectorProbe" })
+        let oldSource = legacy.classes[record].methods.removeValue(forKey: decomposed)
+        let oldCode = legacy.executableMethods?["UnicodeSelectorProbe"]?.removeValue(forKey: decomposed)
+        legacy.classes[record].methods[composed] = try #require(oldSource)
+        legacy.executableMethods?["UnicodeSelectorProbe"]?[composed] = try #require(oldCode)
+        let fromLegacy = SmalltalkSession()
+        _ = try await fromLegacy.loadImage(JSONEncoder().encode(legacy))
+        #expect(await fromLegacy.evaluate("UnicodeSelectorProbe new \(decomposed)").value == "22")
+        #expect(await fromLegacy.evaluate("UnicodeSelectorProbe new respondsTo: #\(composed)").value == "false")
+
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("Unicode.stimage")
+        try await session.saveImage(to: url, workspace: "", transcript: "")
+        let native = SmalltalkSession()
+        _ = try await native.loadImage(from: url)
+        #expect(await native.evaluate(source).value == "#(11 22 33 44)")
+    }
+
+    @Test func floatLiteralRangeIsCheckedBeforeRounding() async {
+        let session = SmalltalkSession()
+        for source in ["1.7976931348623158e308", "-1.7976931348623158d308", "1.7976931348623158q308"] {
+            #expect(await session.evaluate(source).error?.contains("supported range") == true)
+        }
+        #expect(await session.evaluate("1.7976931348623157e308 = Float fmax").value == "true")
+        let maximum = await session.evaluate("Float fmax asFraction")
+        if let digits = maximum.value {
+            #expect(await session.evaluate(digits + ".0 = Float fmax").value == "true")
+        } else {
+            Issue.record("The exact integer value of Float fmax is unavailable.")
+        }
+    }
+
     @Test func quotedCarriageReturnCanBeFollowedByLineFeed() async {
         let session = SmalltalkSession()
         let result = await session.evaluate("$\r\n codePoint")

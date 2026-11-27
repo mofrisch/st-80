@@ -134,11 +134,11 @@ STCompiler compile: 'expressionNode
     self kind = #semicolon ifFalse: [ ^ first ].
     (first at: 1) = #send ifFalse: [ self fail: ''A cascade must follow a message.'' ].
     messages := STCompilerList new.
-    messages add: (first at: 5).
+    messages add: (self single: (first at: 5)).
     [ self kind = #semicolon ] whileTrue: [
         self advance.
-        messages add: self cascadeMessage ].
-    ^ self node: #cascade at: position with: (first at: 4) with: messages elements'.
+        messages add: self cascadeBranch ].
+    ^ self node: #cascadeBranches at: position with: (first at: 4) with: messages elements'.
 
 STCompiler compile: 'keywordExpression
     | receiver |
@@ -184,6 +184,18 @@ STCompiler compile: 'cascadeMessage
     (#(binary bar) includes: self kind) ifTrue: [ ^ self binaryMessage ].
     self kind = #keyword ifTrue: [ ^ self keywordMessage ].
     self fail: ''Expected a message after ;.'''.
+
+STCompiler compile: 'cascadeBranch
+    | messages firstKind |
+    messages := STCompilerList new.
+    firstKind := self kind.
+    messages add: self cascadeMessage.
+    firstKind = #identifier ifTrue: [
+        [ self kind = #identifier ] whileTrue: [ messages add: self unaryMessage ] ].
+    firstKind ~= #keyword ifTrue: [
+        [ #(binary bar) includes: self kind ] whileTrue: [ messages add: self binaryMessage ].
+        self kind = #keyword ifTrue: [ messages add: self keywordMessage ] ].
+    ^ messages elements'.
 
 STCompiler compile: 'primary
     | position kind payload node |

@@ -440,10 +440,7 @@ extension SmalltalkRuntime {
             let digits = signed ? String(string.dropFirst()) : string
             guard let magnitude = try BigInteger.parseMagnitude(digits, radix: 10, charge: chargeNumericWork) else { return .nilValue }
             return integerValue(string.first == "-" ? -magnitude : magnitude)
-        case "parseFloatOrNil":
-            let spelling = string.replacingOccurrences(of: "d", with: "e").replacingOccurrences(of: "q", with: "e")
-            guard let number = Double(spelling), number.isFinite else { return .nilValue }
-            return .float(number)
+        case "parseFloatOrNil": return parseFloatLiteral(string)
         case "parseScaledDecimalOrNil":
             return try scaledDecimalLiteral(string).map(Value.scaledDecimal) ?? .nilValue
         case "parseIntegerMagnitudeRadix:":

@@ -54,7 +54,7 @@ extension SmalltalkRuntime {
             return try scaledDecimalBinary(ScaledDecimal(number, scale: 0), selector, decimal)
         }
         if case .float? = arguments.first, Self.exactBinarySelectors.contains(selector) {
-            return try floatPrimitive(finiteDouble(number.doubleValue), selector, arguments)
+            return try mixedFloatPrimitive(.largeInteger(number), selector, arguments)
         }
         if case .fraction? = arguments.first, Self.exactBinarySelectors.contains(selector) {
             return try fractionPrimitive(ExactFraction(number, .one, charge: chargeNumericWork), selector, arguments)
@@ -135,7 +135,7 @@ extension SmalltalkRuntime {
 
     func fractionPrimitive(_ number: ExactFraction, _ selector: String, _ arguments: [Value]) throws -> Value? {
         if case .float? = arguments.first, Self.exactBinarySelectors.contains(selector) {
-            return try floatPrimitive(finiteDouble(number.doubleValue(charge: chargeNumericWork)), selector, arguments)
+            return try mixedFloatPrimitive(.fraction(number), selector, arguments)
         }
         if Self.exactBinarySelectors.contains(selector) {
             let operand: ExactFraction

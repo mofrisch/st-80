@@ -54,13 +54,16 @@ struct BytecodeBody: Codable, Sendable {
             lowerReceiver(receiver, position: position, into: &instructions)
             for argument in arguments { lower(argument, into: &instructions) }
             instructions.append(.init(operation: .send(selector), position: position))
-        case .cascade(let receiver, let messages):
+        case .cascade(let receiver, let branches):
             lowerReceiver(receiver, position: position, into: &instructions)
-            for (index, message) in messages.enumerated() {
+            for (index, branch) in branches.enumerated() {
                 if index > 0 { instructions.append(.init(operation: .pop, position: position)) }
                 instructions.append(.init(operation: .duplicate, position: position))
-                for argument in message.arguments { lower(argument, into: &instructions) }
-                instructions.append(.init(operation: .send(message.selector), position: position))
+                for (messageIndex, message) in branch.enumerated() {
+                    if messageIndex > 0 { instructions.append(.init(operation: .prepareSend(isSuper: false), position: position)) }
+                    for argument in message.arguments { lower(argument, into: &instructions) }
+                    instructions.append(.init(operation: .send(message.selector), position: position))
+                }
             }
             instructions.append(.init(operation: .discardReceiverBelowResult, position: position))
         case .block(let parameters, let body):

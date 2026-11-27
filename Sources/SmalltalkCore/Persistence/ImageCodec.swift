@@ -167,7 +167,7 @@ enum ImageCodec {
         return (runtime, LoadedImage(evaluation: evaluation, workspace: image.workspace, transcript: image.transcript))
     }
 
-    private static func restoreGraph(_ image: ImageArchive, executableMethods: [String: [String: MethodCode]], into runtime: SmalltalkRuntime) throws {
+    private static func restoreGraph(_ image: ImageArchive, executableMethods: [String: SelectorMap<MethodCode>], into runtime: SmalltalkRuntime) throws {
         let supportsANSIStorage = image.version >= 10
         var records: [String: ImageClass] = [:]
         for record in image.classes {
@@ -242,10 +242,15 @@ enum ImageCodec {
                 let code = executable[record.name] ?? [:]
                 let sources = record[side]
                 guard sources.count <= SmalltalkRuntime.methodsPerSideLimit, let stClass = runtime.classes[record.name],
-                      Set(code.keys) == Set(sources.keys) else { throw invalid("Invalid method table.") }
+                      code.selectorKeys == sources.selectorKeys else { throw invalid("Invalid method table.") }
                 for (selector, source) in sources {
                     guard let methodCode = code[selector] else { throw invalid("Executable method is missing.") }
-                    stClass[side][selector] = try methodCode.validatedMethod(selector: selector, source: source)
+                    // A legacy String dictionary kept the first spelling as
+                    // its key after a canonically equivalent method replaced it.
+                    let spelling = selector == methodCode.selector && code[methodCode.selector] == nil
+                        ? methodCode.selector : selector
+                    guard stClass[side][spelling] == nil else { throw invalid("Duplicate executable method.") }
+                    stClass[side][spelling] = try methodCode.validatedMethod(selector: spelling, source: source)
                 }
             }
         }

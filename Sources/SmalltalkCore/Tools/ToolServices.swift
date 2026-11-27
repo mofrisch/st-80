@@ -106,10 +106,10 @@ extension SmalltalkRuntime {
             return try outcome {
                 try compile(string(args[0]), in: stClass, side: methodSide) { method in
                     if let originalSelector,
-                       stClass[methodSide][originalSelector]?.source != originalSource {
+                       stClass[methodSide][originalSelector]?.source.utf8.elementsEqual(originalSource.utf8) != true {
                         throw SmalltalkError("The method changed. Reopen it before accepting your edits.")
                     }
-                    if method.selector != originalSelector, stClass[methodSide][method.selector] != nil {
+                    if SelectorKey(method.selector) != originalSelector.map(SelectorKey.init), stClass[methodSide][method.selector] != nil {
                         throw SmalltalkError("A method named \(method.selector) already exists. Reopen it before accepting your edits.")
                     }
                 }

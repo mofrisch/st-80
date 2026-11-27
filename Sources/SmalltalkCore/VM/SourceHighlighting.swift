@@ -46,8 +46,8 @@ private struct SourceScannerDefinition: Sendable {
     let name: String
     let superclass: String
     let ownFields: [String]
-    let methods: [String: Method]
-    let classMethods: [String: Method]
+    let methods: SelectorMap<Method>
+    let classMethods: SelectorMap<Method>
 
     static func capture(in runtime: SmalltalkRuntime) -> [Self]? {
         let hierarchy = [("STCompilerList", "Object"), ("STScanner", "Object"), ("STSourceScanner", "STScanner")]

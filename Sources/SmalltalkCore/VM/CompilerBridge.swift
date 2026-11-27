@@ -136,8 +136,13 @@ private enum CompilerOutput {
             let send = try message(second, depth: next)
             kind = .send(try expression(first, depth: next), send.selector, send.arguments)
         case "cascade":
-            let sends = try parts(second).map { try message($0, depth: next) }
-            kind = .cascade(try expression(first, depth: next), sends)
+            let branches = try parts(second).map { [try message($0, depth: next)] }
+            kind = .cascade(try expression(first, depth: next), branches)
+        case "cascadeBranches":
+            let branches = try parts(second).map { branch in
+                try parts(branch).map { try message($0, depth: next) }
+            }
+            kind = .cascade(try expression(first, depth: next), branches)
         case "block": kind = .block(try names(first), try body(second, depth: next))
         default: throw invalid()
         }
@@ -239,10 +244,10 @@ enum CodeValidator {
                 try checkSelector(selector, arguments: args.count)
                 pending.append((receiver, false))
                 pending.append(contentsOf: args.map { ($0, false) })
-            case .cascade(let receiver, let messages):
-                guard !messages.isEmpty else { throw SmalltalkError("Empty cascade.") }
+            case .cascade(let receiver, let branches):
+                guard !branches.isEmpty, branches.allSatisfy({ !$0.isEmpty }) else { throw SmalltalkError("Empty cascade.") }
                 pending.append((receiver, false))
-                for message in messages {
+                for message in branches.joined() {
                     try checkSelector(message.selector, arguments: message.arguments.count)
                     pending.append(contentsOf: message.arguments.map { ($0, false) })
                 }

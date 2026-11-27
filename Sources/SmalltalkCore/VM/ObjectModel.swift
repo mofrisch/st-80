@@ -52,8 +52,8 @@ final class STClass {
         }
     }
     var ownFields: [String]
-    var methods: [String: Method] = [:]
-    var classMethods: [String: Method] {
+    var methods: SelectorMap<Method> = [:]
+    var classMethods: SelectorMap<Method> {
         get { metaclass.methods }
         set { metaclass.methods = newValue }
     }
@@ -92,7 +92,7 @@ final class STClass {
         usesANSIAllocation = false
     }
 
-    subscript(side: MethodSide) -> [String: Method] {
+    subscript(side: MethodSide) -> SelectorMap<Method> {
         get { side == .instance ? methods : classMethods }
         set {
             switch side {

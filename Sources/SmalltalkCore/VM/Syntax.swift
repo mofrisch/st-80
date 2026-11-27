@@ -57,7 +57,10 @@ struct Expression: Codable, Sendable {
         case .literal, .variable: height = 1
         case .assignment(_, let value), .returnValue(let value): height = value.height + 1
         case .send(let receiver, _, let arguments): height = max(receiver.height, arguments.map(\.height).max() ?? 0) + 1
-        case .cascade(let receiver, let messages): height = max(receiver.height, messages.flatMap(\.arguments).map(\.height).max() ?? 0) + 1
+        case .cascade(let receiver, let branches):
+            height = branches.map { branch in
+                branch.reduce(receiver.height) { max($0, $1.arguments.map(\.height).max() ?? 0) + 1 }
+            }.max() ?? receiver.height
         case .block(_, let body): height = (body.expressions.map(\.height).max() ?? 0) + 1
         }
         guard height <= 128 else { throw SmalltalkError("Expression is nested too deeply.", at: position) }
@@ -67,7 +70,7 @@ struct Expression: Codable, Sendable {
 indirect enum ExpressionKind: Codable, Sendable {
     case literal(Literal), variable(String), assignment(String, Expression)
     case send(Expression, String, [Expression])
-    case cascade(Expression, [Message])
+    case cascade(Expression, [[Message]])
     case block([String], Body), returnValue(Expression)
 }
 

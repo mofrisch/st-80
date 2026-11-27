@@ -53,14 +53,32 @@ struct ANSINumericTests {
         #expect(result.value == "#(true true #(0.0 -0.0) 1.0)")
     }
 
-    @Test func scaledDecimalLiteralsCanDropInsignificantTrailingZeroes() async {
+    @Test func scaledDecimalLiteralScaleCannotBeLessThanTheWrittenFraction() async {
         let session = SmalltalkSession()
         let result = await session.evaluate("""
-            Array with: 123.00s1 with: 12.000s0 with: 12.3400s2 with: -0.00100s3
+            Array with: 123.00s2 with: 123.00s3 with: 12.3400s with: (123.00s2 asScaledDecimal: 1)
             """)
         #expect(result.error == nil)
-        #expect(result.value == "#(123.0s1 12s0 12.34s2 -0.001s3)")
-        #expect(await session.evaluate("12.3401s2").error != nil)
+        #expect(result.value == "#(123.00s2 123.000s3 12.3400s4 123.0s1)")
+        for source in ["123.00s1", "12.000s0", "12.3401s2", "-0.00100s3"] {
+            #expect(await session.evaluate(source).error?.contains("scaled decimal literal") == true)
+        }
+    }
+
+    @Test func floatsCanBeOrderedAgainstExactNumbersBeyondTheFiniteRange() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | wide fraction decimal |
+            wide := 10 raisedToInteger: 400.
+            fraction := Fraction numerator: wide denominator: 3.
+            decimal := wide negated asScaledDecimal: 0.
+            Array with: (1.0 < wide) with: (wide > 1.0)
+                with: (Float fmax <= fraction and: [ fraction >= Float fmax ])
+                with: (decimal < -1.0 and: [ -1.0 > decimal ])
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#(true true true true)")
+        #expect(await session.evaluate("1.0 + (10 raisedToInteger: 400)").error?.contains("supported range") == true)
     }
 
     @Test func numericMinAndMaxReturnTheOperandOnATie() async {

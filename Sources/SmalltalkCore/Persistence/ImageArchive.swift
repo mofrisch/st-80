@@ -10,8 +10,8 @@ struct ImageArchive: Codable {
     var nodes: [ImageNode]
     var workspace: String
     var transcript: String
-    var executableMethods: [String: [String: MethodCode]]?
-    var executableClassMethods: [String: [String: MethodCode]]?
+    var executableMethods: [String: SelectorMap<MethodCode>]?
+    var executableClassMethods: [String: SelectorMap<MethodCode>]?
     var declaredGlobals: [String: DeclaredBinding]? = nil
     var sharedPools: [String: [String: ImagePoolBinding]]? = nil
 }
@@ -20,8 +20,8 @@ struct ImageClass: Codable {
     var name: String
     var superclass: String?
     var fields: [String]
-    var methods: [String: String]
-    var classMethods: [String: String]?
+    var methods: SelectorMap<String>
+    var classMethods: SelectorMap<String>?
     var classFields: [String]? = nil
     var classState: [String: ImageValue]? = nil
     var classVariables: [String: ImageValue]? = nil
@@ -29,7 +29,7 @@ struct ImageClass: Codable {
     var indexedStorage: IndexedStorage? = nil
     var usesANSIAllocation: Bool? = nil
 
-    subscript(side: MethodSide) -> [String: String] {
+    subscript(side: MethodSide) -> SelectorMap<String> {
         get { side == .instance ? methods : classMethods ?? [:] }
         set {
             switch side {
@@ -91,7 +91,8 @@ struct MethodCode: Codable, Sendable {
         sourceHash = SystemLibrary.digest(Data(method.source.utf8))
     }
     func validatedMethod(selector expected: String, source: String) throws -> Method {
-        guard expected == selector, source.utf8.count <= 262_144, SystemLibrary.digest(Data(source.utf8)) == sourceHash else {
+        guard SelectorKey(expected) == SelectorKey(selector), source.utf8.count <= 262_144,
+              SystemLibrary.digest(Data(source.utf8)) == sourceHash else {
             throw SmalltalkError("The method source and executable code do not match.")
         }
         let method = Method(selector: selector, parameters: parameters, body: body, source: source)

@@ -60,14 +60,10 @@ extension SmalltalkRuntime {
         guard (1...2).contains(mantissa.count), mantissa.allSatisfy({ !$0.isEmpty }) else { return nil }
         let fractionalDigits = mantissa.count == 2 ? mantissa[1].utf8.count : 0
         guard let scale = parts[1].isEmpty ? fractionalDigits : Int(parts[1]),
-              (0...ScaledDecimal.maximumScale).contains(scale),
+              scale >= fractionalDigits, scale <= ScaledDecimal.maximumScale,
               parts[1].utf8.allSatisfy({ (48...57).contains($0) }),
               let coefficient = try BigInteger.parseMagnitude(mantissa.joined(), radix: 10, charge: chargeNumericWork) else { return nil }
-        let places = scale - fractionalDigits
-        if places >= 0 { return try ScaledDecimal(shiftDecimal(coefficient, by: places), scale: scale) }
-        let (reduced, remainder) = try coefficient.divided(by: decimalFactor(-places), charge: chargeNumericWork)
-        guard remainder.isZero else { return nil }
-        return try ScaledDecimal(reduced, scale: scale)
+        return try ScaledDecimal(shiftDecimal(coefficient, by: scale - fractionalDigits), scale: scale)
     }
 
     func convertToScaledDecimal(_ number: Value, scale argument: Value) throws -> Value {
@@ -105,7 +101,7 @@ extension SmalltalkRuntime {
         if Self.exactBinarySelectors.contains(selector) {
             let other = arguments[0]
             if case .float = other {
-                return try floatPrimitive(finiteDouble(decimal.doubleValue), selector, arguments)
+                return try mixedFloatPrimitive(.scaledDecimal(decimal), selector, arguments)
             }
             if case .fraction(let fraction) = other {
                 return try fractionBinary(fractionFromDecimal(decimal), selector, fraction)

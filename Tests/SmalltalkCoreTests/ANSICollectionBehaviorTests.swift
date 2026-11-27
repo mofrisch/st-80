@@ -2,6 +2,25 @@ import Testing
 import SmalltalkCore
 
 struct ANSICollectionBehaviorTests {
+    @Test func collectionWriterCopiesHaveIndependentContentAndPosition() async {
+        let session = SmalltalkSession()
+        let result = await session.evaluate("""
+            | writer writerCopy readWriter readWriterCopy |
+            writer := WriteStream with: 'ab'.
+            writerCopy := writer copy.
+            writerCopy nextPut: $é.
+            readWriter := ReadWriteStream with: #(1 2).
+            readWriterCopy := readWriter copy.
+            readWriter reset; nextPut: 9.
+            Array with: writer contents with: writerCopy contents
+                with: (Array with: readWriter contents with: readWriterCopy contents)
+                with: (Array with: writer position with: writerCopy position
+                    with: readWriter position with: readWriterCopy position)
+            """)
+        #expect(result.error == nil)
+        #expect(result.value == "#('ab' 'abé' #(#(9 2) #(1 2)) #(2 3 1 2))")
+    }
+
     @Test func floatIntervalsAvoidOverflowWhenCountingAndAccessingElements() async {
         let session = SmalltalkSession()
         let result = await session.evaluate("""

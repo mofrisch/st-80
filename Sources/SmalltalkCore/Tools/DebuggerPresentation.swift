@@ -19,8 +19,8 @@ struct DebuggerClassDefinition: Sendable {
     let name: String
     let superclass: String
     let fields: [String]
-    let methods: [String: Method]
-    let classMethods: [String: Method]
+    let methods: SelectorMap<Method>
+    let classMethods: SelectorMap<Method>
 
     init?(_ source: STClass?) {
         guard let source, let parent = source.superclass else { return nil }

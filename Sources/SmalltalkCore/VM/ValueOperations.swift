@@ -70,6 +70,13 @@ extension SmalltalkRuntime {
             let copy = try object(original.stClass, indexedCount: original.indexedFields.count)
             copy.fields = original.fields
             copy.indexedFields = original.indexedFields
+            if let stream = classes["CollectionStream"], original.stClass.inherits(from: stream),
+               let buffer = original.fields["buffer"], !isNil(buffer) {
+                return try withRoots([.object(copy)]) { _ in
+                    copy.fields["buffer"] = try send(buffer, "copy", [])
+                    return .object(copy)
+                }
+            }
             return .object(copy)
         case .array(let original):
             return try array(original.elements)

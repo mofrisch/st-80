@@ -15,12 +15,16 @@ extension SmalltalkRuntime {
             case .send(let receiverExpression, let selector, let arguments):
                 let (receiver, lookup) = try messageReceiver(receiverExpression, context: context)
                 return try evaluateMessage(receiver, selector, arguments, context: context, startingAt: lookup)
-            case .cascade(let receiverExpression, let messages):
+            case .cascade(let receiverExpression, let branches):
                 let (receiver, lookup) = try messageReceiver(receiverExpression, context: context)
                 return try withRoots([receiver]) { _ in
                     var result = receiver
-                    for message in messages {
-                        result = try evaluateMessage(receiver, message.selector, message.arguments, context: context, startingAt: lookup)
+                    for branch in branches {
+                        result = receiver
+                        for (index, message) in branch.enumerated() {
+                            result = try evaluateMessage(result, message.selector, message.arguments, context: context,
+                                                         startingAt: index == 0 ? lookup : .normal)
+                        }
                     }
                     return result
                 }

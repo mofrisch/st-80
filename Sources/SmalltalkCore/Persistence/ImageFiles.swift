@@ -36,10 +36,14 @@ enum ImageFiles {
         var methods: [ImageFileArchive.CodeRecord] = []
         for cls in runtime.classes.values.sorted(by: { $0.name < $1.name }) {
             for side in MethodSide.allCases {
-                for method in cls[side].values.sorted(by: { $0.selector < $1.selector }) {
+                for method in cls[side].values.sorted(by: { $0.selector.utf8.lexicographicallyPrecedes($1.selector.utf8) }) {
                     var changeID: String?
-                    if library.sources[side][cls.name]?[method.selector] != method.source {
-                        if let existing = candidate.records.last(where: { $0.kind == .method && $0.className == cls.name && $0.side == side && $0.selector == method.selector && $0.source == method.source }) { changeID = existing.id }
+                    if library.sources[side][cls.name]?[method.selector]?.utf8.elementsEqual(method.source.utf8) != true {
+                        let selector = SelectorKey(method.selector)
+                        if let existing = candidate.records.last(where: {
+                            $0.kind == .method && $0.className == cls.name && $0.side == side
+                                && $0.selector.map(SelectorKey.init) == selector && $0.source.utf8.elementsEqual(method.source.utf8)
+                        }) { changeID = existing.id }
                         else { changeID = try candidate.append(kind: .method, className: cls.name, selector: method.selector, side: side, source: method.source).id }
                     }
                     methods.append(.init(className: cls.name, code: MethodCode(method), changeID: changeID, methodSide: side == .classSide ? side : nil))
@@ -144,7 +148,7 @@ enum ImageFiles {
         var memory = archive.memory
         guard memory.format == "st80-image", memory.version == archive.version, memory.executableMethods == nil,
               memory.executableClassMethods == nil else { throw SmalltalkError("The image contains invalid object memory.") }
-        var code: [MethodSide: [String: [String: MethodCode]]] = [:]
+        var code: [MethodSide: [String: SelectorMap<MethodCode>]] = [:]
         let records = Dictionary(memory.classes.enumerated().map { ($0.element.name, $0.offset) }, uniquingKeysWith: { first, _ in first })
         guard records.count == memory.classes.count, memory.classes.allSatisfy({ $0.methods.isEmpty && $0[.classSide].isEmpty }) else { throw SmalltalkError("The image file contains duplicate classes or embedded sources.") }
         for record in archive.methods {
@@ -152,7 +156,11 @@ enum ImageFiles {
             guard let index = records[record.className], code[side]?[record.className]?[record.code.selector] == nil else { throw SmalltalkError("The image contains an invalid or duplicate method reference.") }
             let source: String
             if let changeID = record.changeID {
-                guard let change = changes[changeID], change.kind == .method, change.sequence <= archive.checkpoint, change.className == record.className, change.side == side, change.selector == record.code.selector else { throw SmalltalkError("The method source is missing from the changes log.") }
+                guard let change = changes[changeID], change.kind == .method, change.sequence <= archive.checkpoint,
+                      change.className == record.className, change.side == side,
+                      change.selector.map(SelectorKey.init) == SelectorKey(record.code.selector) else {
+                    throw SmalltalkError("The method source is missing from the changes log.")
+                }
                 source = change.source
             } else {
                 guard let text = base[side][record.className]?[record.code.selector] else { throw SmalltalkError("The method source is missing from the sources archive.") }

@@ -259,7 +259,7 @@ BrowserOrganization compile: 'shippedProtocols
             (''Token Handling'' (''advance'' ''expect:'' ''kind'' ''tokenValue'' ''tokenLabel:'' ''identifier''))
             (''Body Parsing'' (''workspaceBody'' ''bodyUntil:'' ''blockAt:'' ''returnStatement''))
             (''Expression Parsing'' (''expression'' ''expressionNode'' ''primary'' ''unaryExpression'' ''binaryExpression'' ''keywordExpression''))
-            (''Message Parsing'' (''unaryMessage'' ''binaryMessage'' ''keywordMessage'' ''cascadeMessage''))
+            (''Message Parsing'' (''unaryMessage'' ''binaryMessage'' ''keywordMessage'' ''cascadeMessage'' ''cascadeBranch''))
             (''Literal Parsing'' (''arrayElement'' ''arrayElements'' ''negativeNumber'' ''floatFrom:''))
             (''Syntax Trees'' (''node:at:with:with:'' ''single:'' ''pair:with:'' ''triple:with:with:'' ''sendTo:message:''))
             (''Validation and Errors'' (''fail:'' ''validateNames:'' ''validate:separateFrom:error:''))))

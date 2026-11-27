@@ -55,7 +55,7 @@ public enum SmalltalkBootstrap {
 
     private struct Build {
         let sources: LibrarySources
-        let methods: [MethodSide: [String: [String: Method]]]
+        let methods: [MethodSide: [String: SelectorMap<Method>]]
     }
 
     private static func scripts(in directory: URL) throws -> [String] {

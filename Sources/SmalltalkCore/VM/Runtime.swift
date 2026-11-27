@@ -48,9 +48,11 @@ final class SmalltalkRuntime {
     static let shippedDictionaryNames: Set<String> = ["Dictionary", "IdentityDictionary"]
     static let shippedStreamNames: Set<String> = ["CollectionStream", "ReadStream", "WriteStream", "ReadWriteStream"]
     static let shippedFileStreamNames: Set<String> = ["FileStream", "ReadFileStream", "WriteFileStream"]
-    static let shippedDateTimeNames: Set<String> = ["DateAndTime", "Duration"]
+    static let shippedDateTimeNames: Set<String> = ["DateAndTime", "Duration", "TimeLocal"]
     static let shippedNotificationNames: Set<String> = ["Notification", "Warning"]
     static let floatAliases: Set<String> = ["FloatE", "FloatD", "FloatQ"]
+    /// Smalltalk-80 synonym for the ANSI failed-send class `Message`.
+    static let messageAliases: Set<String> = ["FailedMessage"]
     static let classLimit = 128 + additiveBuiltinNames.count + shippedCollectionNames.count
         + shippedDictionaryNames.count + shippedStreamNames.count + shippedFileStreamNames.count + shippedDateTimeNames.count
         + shippedNotificationNames.count
@@ -128,12 +130,25 @@ final class SmalltalkRuntime {
             do {
                 let library = try SystemLibrary.shared.get()
                 try library.install(in: self)
+                installMessageAliases()
                 _ = try evaluate(library.initialWorld)
             } catch { bootstrapError = error.localizedDescription }
         }
         catalogDirty = false
         recordingChanges = bootstrap
         transcript = ""
+    }
+
+    /// Expose `FailedMessage` as a synonym for ANSI `Message`, and the reverse
+    /// when loading an older image that still names the class `FailedMessage`.
+    func installMessageAliases() {
+        if let message = globals["Message"] {
+            for name in Self.messageAliases where globals[name] == nil {
+                globals[name] = message
+            }
+        } else if let failed = globals["FailedMessage"], globals["Message"] == nil {
+            globals["Message"] = failed
+        }
     }
 
     deinit {
@@ -342,7 +357,8 @@ final class SmalltalkRuntime {
             return
         }
         guard name != "Transcript", classes[name] == nil, !Self.floatAliases.contains(name),
-              declaredGlobals[name]?.isConstant != true, sharedPools[name] == nil else {
+              !Self.messageAliases.contains(name), declaredGlobals[name]?.isConstant != true,
+              sharedPools[name] == nil else {
             throw SmalltalkError("\(name) cannot be reassigned.")
         }
         if context.isWorkspace || globals[name] != nil {

@@ -222,7 +222,7 @@ BrowserOrganization compile: 'shippedProtocols
             (''Exception Handling'' (''on:do:''))
             (''Termination'' (''ensure:'' ''ifCurtailed:''))
             (''Looping'' (''whileTrue'' ''whileFalse'' ''whileTrue:'' ''whileFalse:''))))
-        (''FailedMessage'' ((''Accessing'' (''selector'' ''arguments''))))
+        (''Message'' ((''Accessing'' (''selector'' ''arguments''))))
         (''Exception'' (
             (''Exception Description'' (''messageText'' ''messageText:'' ''tag'' ''tag:'' ''description'' ''isResumable''))
             (''Signaling'' (''signal'' ''signal:'' ''defaultAction'' ''_signalException'' ''_failUnhandledException''))
@@ -475,7 +475,9 @@ BrowserOrganization compile: 'shippedProtocols
             (''Date and Time Tests'' (''testDurationComponentsAndPrinting'' ''testDurationArithmeticAndOrdering''
                 ''testDateAndTimeCalendarAndTimeOfDay'' ''testDateAndTimeOffsetsAndComparison''
                 ''testDateAndTimeAcrossGregorianBoundaries'' ''testDateAndTimeRejectsOutOfRangeComponents''
-                ''testDateAndTimeClock''))
+                ''testDateAndTimeClock'' ''testTimeLocalUsesImplementationLocalTime''
+                ''testFailedMessageIsAvailableAsMessage''))
+            (''Shared Variable Tests'' (''testLiveSubclassCreatesClassVariables''))
             (''Exception Tests'' (''testExceptionNormalCompletion'' ''testExceptionSignalersAndMetadata''
                 ''testExceptionSelectsNearestMatchingHandler'' ''testExceptionFromAnActionUsesTheOuterEnvironment''
                 ''testExceptionHandlerRunsBeforeUnwindBlocks'' ''testExceptionActionCanReturnFromItsHomeMethod''
@@ -495,6 +497,9 @@ BrowserOrganization compile: 'shippedClassSideProtocols
             (''System Clock'' (''now'' ''clockPrecision''))
             (''Private'' (''_year:ordinal:hour:minute:second:offset:'' ''_atUTCSeconds:offset:'' ''_checkYear:'' ''_checkOffset:''
                 ''_isLeapYear:'' ''_daysBeforeYear:'' ''_monthStartsFor:'' ''_datePartsForDay:''))))
+        (''TimeLocal'' (
+            (''Instance Creation'' (''year:month:day:hour:minute:second:'' ''year:day:hour:minute:second:'' ''now''))
+            (''Local Time'' (''offset'' ''clockPrecision''))))
         (''Duration'' (
             (''Instance Creation'' (''seconds:'' ''days:hours:minutes:seconds:'' ''zero''))
             (''Private'' (''_exactSeconds:'' ''_secondsOf:ifAbsent:'' ''_pad:to:'' ''_printSeconds:'' ''_decimalDigitsOf:''))))

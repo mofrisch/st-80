@@ -241,6 +241,7 @@ struct SystemLibrary: Sendable {
             ("DateAndTime", .instance, "_secondsOf:", "9678ec71d545274a4298e5b28c19650c51203888fba8697f07b7fd0d4d43d79a"),
             ("DateAndTime", .instance, "-", "a8919fbbd832a612bb9193a8681fa6236f7d5b74b23395900bea800628003fa0"),
             ("DateAndTime", .instance, "=", "1ea3d6c5e555b7a5a68d8b2d301adb33c818152db90c48f3cae1316732e39fd6"),
+            ("DateAndTime", .instance, "asLocal", "6b41d492c4cdc804559766f82537498ca02e0c6e34f8fe50820b03a09d9d5de2"),
             ("Fraction", .instance, "sqrt", "fc3b3aead2ade1001067870caae4c1dc452003ebe5ea5f9ce72575297133067a"),
             ("ScaledDecimal", .instance, "sqrt", "fc3b3aead2ade1001067870caae4c1dc452003ebe5ea5f9ce72575297133067a"),
             ("Float", .instance, "log:", "58b4458e6a3de5b1406ce2d0972afb0cdc0e052881ffb1550fb534f9d8a1a241"),

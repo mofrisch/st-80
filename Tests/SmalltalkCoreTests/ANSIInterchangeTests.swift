@@ -323,4 +323,36 @@ struct ANSIInterchangeTests {
         #expect(await session.evaluate("(SIFVector slots: 0) capacity").value == "0")
         #expect(await session.evaluate("Array with: (sifVector respondsTo: #basicSize) with: (sifVector perform: #basicSize)").value == "#(true 2)")
     }
+
+    @Test func exportsClassDefinitionAndMethodsForRoundTrip() async throws {
+        let session = SmalltalkSession()
+        let created = await session.evaluate("""
+            Object subclass: #SIFExportProbe instanceVariableNames: 'label' classVariableNames: 'Shared'
+                poolDictionaries: '' category: 'Tests'.
+            SIFExportProbe compile: 'label ^ label'.
+            SIFExportProbe compile: 'label: value label := value. ^ self'.
+            SIFExportProbe compileClass: 'shared ^ Shared'.
+            SIFExportProbe compileClass: 'shared: value Shared := value'.
+            SIFExportProbe shared: 7.
+            """)
+        try #require(created.error == nil, "\(created.error ?? "")")
+
+        let exported = try await session.worker.submitThrowing { runtime in
+            try SmalltalkInterchange.export(classes: ["SIFExportProbe"], from: runtime)
+        }
+        #expect(exported.contains("Smalltalk interchangeVersion: '1.0'!"))
+        #expect(exported.contains("classVariableNames: 'Shared'"))
+        #expect(exported.contains("SIFExportProbe method!"))
+        #expect(exported.contains("SIFExportProbe classMethod!"))
+
+        let other = SmalltalkSession()
+        let imported = await other.evaluate(exported)
+        try #require(imported.error == nil, "\(imported.error ?? "")")
+        let values = await other.evaluate("""
+            SIFExportProbe shared: 11.
+            probe := SIFExportProbe new label: 'hi'.
+            Array with: probe label with: SIFExportProbe shared
+            """)
+        #expect(values.value == "#('hi' 11)")
+    }
 }

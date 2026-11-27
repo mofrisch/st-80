@@ -24,7 +24,7 @@ extension SmalltalkRuntime {
             "allSuperclasses": "Returns all superclasses.", "allSubclasses": "Returns all subclasses.",
             "subclass:instanceVariableNames:": "Creates a subclass.",
             "subclass:instanceVariableNames:classInstanceVariableNames:": "Creates a subclass with per-class instance variables.",
-            "subclass:instanceVariableNames:classVariableNames:poolDictionaries:category:": "Creates a subclass. Class variables and pools must be empty.",
+            "subclass:instanceVariableNames:classVariableNames:poolDictionaries:category:": "Creates a subclass with shared class variables and imported pools (pools must already exist).",
             "compile:": "Compiles or replaces an instance method.",
             "compileClass:": "Compiles or replaces a class method.",
             "methodNames": "Returns selectors of methods defined on the class.",

@@ -1087,6 +1087,47 @@ ANSISmalltalkTest compile: 'testDateAndTimeClock
     self assert: precision class equals: Duration.
     self assert: precision asSeconds > 0'.
 
+ANSISmalltalkTest compile: 'testTimeLocalUsesImplementationLocalTime
+    | local now |
+    self assert: TimeLocal offset equals: Duration zero.
+    self assert: TimeLocal clockPrecision equals: DateAndTime clockPrecision.
+    now := DateAndTime now.
+    self assert: now asLocal offset equals: TimeLocal offset.
+    self assert: now asLocal equals: now asUTC.
+    local := TimeLocal year: 2024 month: 2 day: 29 hour: 12 minute: 0 second: 0.
+    self assert: local offset equals: TimeLocal offset.
+    self assert: local equals: (DateAndTime year: 2024 month: 2 day: 29 hour: 12 minute: 0 second: 0).
+    self assert: (TimeLocal year: 2024 day: 60 hour: 12 minute: 0 second: 0) equals: local.
+    self assert: TimeLocal now class equals: DateAndTime'.
+
+ANSISmalltalkTest compile: 'testFailedMessageIsAvailableAsMessage
+    | object payload |
+    object := Object new.
+    payload := [ object ansiMissing: 7 ] on: MessageNotUnderstood do: [ :exception |
+        self assert: exception message class == Message.
+        self assert: exception message class == FailedMessage.
+        self assert: Message == FailedMessage.
+        self assert: exception message selector equals: #ansiMissing:.
+        self assert: exception message arguments equals: #(7).
+        exception resume: 42 ].
+    self assert: payload equals: 42.
+    self assert: (ANSIDispatchProbe new ansiMissing: 9) class == Message'.
+
+ANSISmalltalkTest compile: 'testLiveSubclassCreatesClassVariables
+    | child |
+    Object subclass: #ANSILiveClassVarProbe instanceVariableNames: '''' classVariableNames: ''Shared''
+        poolDictionaries: '''' category: ''Tests''.
+    ANSILiveClassVarProbe compileClass: ''shared ^ Shared''.
+    ANSILiveClassVarProbe compileClass: ''shared: value Shared := value''.
+    ANSILiveClassVarProbe shared: 41.
+    child := ANSILiveClassVarProbe subclass: #ANSILiveClassVarChild instanceVariableNames: ''''
+        classVariableNames: '''' poolDictionaries: '''' category: ''Tests''.
+    child compileClass: ''shared ^ Shared''.
+    self assert: ANSILiveClassVarProbe shared equals: 41.
+    self assert: child shared equals: 41.
+    ANSILiveClassVarProbe shared: 42.
+    self assert: child shared equals: 42'.
+
 ANSISmalltalkTest compile: 'testNotificationDefaultsToNilAndContinues
     | answer after |
     answer := Notification signal: ''A notification''.
